@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Versão (ex: v0.1.0)'
-        required: false
-        default: 'v0.1.0-beta'
+        description: 'Versão (ex: v0.1.1)'
+        required: true
+        default: 'v0.1.1'
 
 jobs:
   build:
@@ -55,8 +55,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name != 'refs/heads/main' && github.ref_name || inputs.version }}
-          releaseName: 'MP3 Manager ${{ github.ref_name != ''refs/heads/main'' && github.ref_name || inputs.version }}'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'MP3 Manager ${{ github.ref_name }}'
           releaseBody: |
             ## Como instalar
 
