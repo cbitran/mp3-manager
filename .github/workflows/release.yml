@@ -1,0 +1,73 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão (ex: v0.1.0)'
+        required: false
+        default: 'v0.1.0-beta'
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          - platform: windows-latest
+            args: ''
+            rust_targets: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name != 'refs/heads/main' && github.ref_name || inputs.version }}
+          releaseName: 'MP3 Manager ${{ github.ref_name != ''refs/heads/main'' && github.ref_name || inputs.version }}'
+          releaseBody: |
+            ## Como instalar
+
+            **macOS** → baixe o `.dmg`, abra, arraste para Applications.
+            Se aparecer aviso de segurança: clique com botão direito → Abrir → Abrir.
+
+            **Windows** → baixe o `_x64-setup.exe`, instale.
+            Se aparecer SmartScreen: "Mais informações" → "Executar assim mesmo".
+
+            ---
+            Esta é uma versão de teste. Reporte problemas em Issues.
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
