@@ -106,22 +106,41 @@ struct DJConsensus {
 // MARK: - API Keys + DJ Settings
 
 struct APIKeys {
-    static let discogsKey           = "apikey.discogs"
-    static let acoustIDKey          = "apikey.acoustid"
-    static let spotifyClientIdKey   = "apikey.spotify.clientId"
-    static let spotifyClientSecKey  = "apikey.spotify.clientSecret"
-    static let lastFMApiKeyKey      = "apikey.lastfm"
-    static let djPrimaryKey         = "dj.primarySoftware"
-    static let djAutoImportKey      = "dj.autoImport"
-    static let djShowAllKey         = "dj.showAllSources"
-    static let djUseRekordboxKey    = "dj.useRekordbox"
-    static let djUseSeratoKey       = "dj.useSerato"
+    // Chaves de serviços que requerem conta individual (não expostas na UI)
+    static let discogsKey  = "apikey.discogs"
+    static let acoustIDKey = "apikey.acoustid"
+    static var discogs:  String { UserDefaults.standard.string(forKey: discogsKey)  ?? "" }
+    static var acoustID: String { UserDefaults.standard.string(forKey: acoustIDKey) ?? "" }
 
-    static var discogs: String        { UserDefaults.standard.string(forKey: discogsKey)          ?? "" }
-    static var acoustID: String       { UserDefaults.standard.string(forKey: acoustIDKey)         ?? "" }
-    static var spotifyClientId: String     { UserDefaults.standard.string(forKey: spotifyClientIdKey)  ?? "" }
-    static var spotifyClientSecret: String { UserDefaults.standard.string(forKey: spotifyClientSecKey) ?? "" }
-    static var lastFMApiKey: String   { UserDefaults.standard.string(forKey: lastFMApiKeyKey)     ?? "" }
+    // Serviços habilitados (defaults: tudo ligado)
+    static let useSpotifyKey      = "service.spotify.enabled"
+    static let useLastFMKey       = "service.lastfm.enabled"
+    static let useiTunesKey       = "service.itunes.enabled"
+    static let useMusicBrainzKey  = "service.musicbrainz.enabled"
+
+    static var useSpotify: Bool {
+        guard UserDefaults.standard.object(forKey: useSpotifyKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: useSpotifyKey)
+    }
+    static var useLastFM: Bool {
+        guard UserDefaults.standard.object(forKey: useLastFMKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: useLastFMKey)
+    }
+    static var useiTunes: Bool {
+        guard UserDefaults.standard.object(forKey: useiTunesKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: useiTunesKey)
+    }
+    static var useMusicBrainz: Bool {
+        guard UserDefaults.standard.object(forKey: useMusicBrainzKey) != nil else { return true }
+        return UserDefaults.standard.bool(forKey: useMusicBrainzKey)
+    }
+
+    // DJ
+    static let djPrimaryKey      = "dj.primarySoftware"
+    static let djAutoImportKey   = "dj.autoImport"
+    static let djShowAllKey      = "dj.showAllSources"
+    static let djUseRekordboxKey = "dj.useRekordbox"
+    static let djUseSeratoKey    = "dj.useSerato"
 
     static var djPrimary: DJSoftwarePreference {
         let raw = UserDefaults.standard.string(forKey: djPrimaryKey) ?? ""
@@ -138,20 +157,6 @@ struct APIKeys {
         let pref = djPrimary
         if pref == .serato || pref == .both { return true }
         return UserDefaults.standard.bool(forKey: djUseSeratoKey)
-    }
-
-    static func save(discogs: String, acoustID: String) {
-        UserDefaults.standard.set(discogs,  forKey: discogsKey)
-        UserDefaults.standard.set(acoustID, forKey: acoustIDKey)
-    }
-
-    static func saveSpotify(clientId: String, clientSecret: String) {
-        UserDefaults.standard.set(clientId,     forKey: spotifyClientIdKey)
-        UserDefaults.standard.set(clientSecret, forKey: spotifyClientSecKey)
-    }
-
-    static func saveLastFM(apiKey: String) {
-        UserDefaults.standard.set(apiKey, forKey: lastFMApiKeyKey)
     }
 
     static func saveDJPrefs(primary: DJSoftwarePreference, autoImport: Bool, showAll: Bool) {

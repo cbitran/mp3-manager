@@ -4,19 +4,17 @@ struct SettingsView: View {
     // Aparência
     @AppStorage("appColorScheme") private var colorScheme: String = "auto"
 
-    // APIs
-    @State private var discogsToken       = APIKeys.discogs
-    @State private var acoustIDKey        = APIKeys.acoustID
-    @State private var spotifyClientId    = APIKeys.spotifyClientId
-    @State private var spotifyClientSec   = APIKeys.spotifyClientSecret
-    @State private var lastFMKey          = APIKeys.lastFMApiKey
+    // Serviços — ligados por padrão (defaults via APIKeys)
+    @AppStorage("service.spotify.enabled")     private var useSpotify:     Bool = true
+    @AppStorage("service.lastfm.enabled")      private var useLastFM:      Bool = true
+    @AppStorage("service.itunes.enabled")      private var useiTunes:      Bool = true
+    @AppStorage("service.musicbrainz.enabled") private var useMusicBrainz: Bool = true
 
     // DJ prefs
     @State private var djPrimary    = APIKeys.djPrimary
     @State private var djAutoImport = APIKeys.djAutoImport
     @State private var djShowAll    = APIKeys.djShowAll
-
-    @State private var saved = false
+    @State private var savedDJ = false
 
     // Colunas (mesmo @AppStorage que TrackListView)
     @AppStorage("trackTableColumnCustomization_v3")
@@ -24,16 +22,16 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            appearanceTab.tabItem { Label("Aparência",  systemImage: "paintpalette") }
-            servicesTab.tabItem   { Label("Serviços",   systemImage: "network") }
-            columnsTab.tabItem    { Label("Colunas",    systemImage: "slider.horizontal.3") }
-            djTab.tabItem         { Label("Software DJ", systemImage: "music.note.list") }
+            appearanceTab .tabItem { Label("Aparência",   systemImage: "paintpalette") }
+            servicesTab   .tabItem { Label("Serviços",    systemImage: "network") }
+            columnsTab    .tabItem { Label("Colunas",     systemImage: "slider.horizontal.3") }
+            djTab         .tabItem { Label("Software DJ", systemImage: "music.note.list") }
         }
         .frame(width: 540)
         .padding()
     }
 
-    // MARK: - Appearance
+    // MARK: - Aparência
 
     private var appearanceTab: some View {
         Form {
@@ -41,9 +39,8 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Tema", systemImage: "circle.lefthalf.filled")
                         .font(.callout.bold())
-                    Text("Escolha entre o tema claro, escuro ou siga o sistema operacional.")
+                    Text("Escolha entre o tema claro, escuro ou siga o sistema.")
                         .font(.caption).foregroundStyle(.secondary)
-
                     Picker("", selection: $colorScheme) {
                         HStack(spacing: 6) {
                             Image(systemName: "circle.lefthalf.filled")
@@ -66,117 +63,95 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    // MARK: - Services
+    // MARK: - Serviços
 
     private var servicesTab: some View {
-        ScrollView {
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Spotify", systemImage: "music.note.list")
-                            .font(.callout.bold())
-                        Text("Usado para BPM, Tom, Álbum e Ano. Crie um app em developer.spotify.com → Dashboard.")
-                            .font(.caption).foregroundStyle(.secondary)
-
-                        credentialField(label: "Client ID", text: $spotifyClientId,
-                                        placeholder: "cole o Client ID aqui")
-                        credentialField(label: "Client Secret", text: $spotifyClientSec,
-                                        placeholder: "cole o Client Secret aqui", secure: true)
-                    }
-                } header: { Text("Spotify") }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Last.fm", systemImage: "waveform")
-                            .font(.callout.bold())
-                        Text("Usado para gênero e popularidade. Chave gratuita em last.fm/api/account/create.")
-                            .font(.caption).foregroundStyle(.secondary)
-
-                        credentialField(label: "API Key", text: $lastFMKey,
-                                        placeholder: "cole sua API Key aqui")
-                    }
-                } header: { Text("Last.fm") }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Discogs Personal Token", systemImage: "key.fill")
-                            .font(.callout.bold())
-                        Text("discogs.com → Configurações → Desenvolvedores → Token pessoal")
-                            .font(.caption).foregroundStyle(.secondary)
-                        credentialField(label: "Token", text: $discogsToken,
-                                        placeholder: "cole seu token aqui", secure: true)
-                    }
-                } header: { Text("Discogs") }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("AcoustID Client Key", systemImage: "waveform.badge.magnifyingglass")
-                            .font(.callout.bold())
-                        Text("acoustid.org/login → Registrar aplicativo (gratuito)")
-                            .font(.caption).foregroundStyle(.secondary)
-                        credentialField(label: "Client Key", text: $acoustIDKey,
-                                        placeholder: "cole sua chave aqui", secure: true)
-                    }
-                } header: { Text("AcoustID") }
-
-                Section {
-                    HStack {
-                        Spacer()
-                        if saved {
-                            Label("Salvo!", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green).transition(.opacity)
-                        }
-                        Button("Salvar Credenciais") { saveCredentials() }
-                            .buttonStyle(.borderedProminent)
-                    }
-                }
+        Form {
+            Section {
+                Text("Escolha quais serviços externos são usados para enriquecer seus metadados. Nenhuma configuração é necessária — tudo já está pronto para uso.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .formStyle(.grouped)
+
+            Section {
+                serviceRow(
+                    icon: "waveform.circle.fill",
+                    color: .green,
+                    name: "Spotify",
+                    description: "BPM, Tom Musical, Álbum e Ano de lançamento",
+                    isOn: $useSpotify
+                )
+                serviceRow(
+                    icon: "music.note",
+                    color: .red,
+                    name: "Last.fm",
+                    description: "Gênero musical baseado em popularidade",
+                    isOn: $useLastFM
+                )
+                serviceRow(
+                    icon: "applelogo",
+                    color: .primary,
+                    name: "Apple Music / iTunes",
+                    description: "Gênero, Álbum, Ano e Capa do álbum",
+                    isOn: $useiTunes
+                )
+                serviceRow(
+                    icon: "magnifyingglass.circle.fill",
+                    color: .orange,
+                    name: "MusicBrainz",
+                    description: "Validação de metadados com base de dados aberta",
+                    isOn: $useMusicBrainz
+                )
+            } header: { Text("Serviços de Enriquecimento") }
         }
+        .formStyle(.grouped)
     }
 
     @ViewBuilder
-    private func credentialField(label: String, text: Binding<String>,
-                                  placeholder: String, secure: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            if secure {
-                SecureField(placeholder, text: text).textFieldStyle(.roundedBorder)
-            } else {
-                TextField(placeholder, text: text).textFieldStyle(.roundedBorder)
+    private func serviceRow(icon: String, color: Color, name: String,
+                             description: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(isOn.wrappedValue ? color : .secondary)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).font(.callout.weight(.medium))
+                    Text(description).font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
     }
 
-    // MARK: - Columns
+    // MARK: - Colunas
 
     private let allColumns: [(id: String, label: String, icon: String)] = [
-        ("status",      "Status",        "circle.fill"),
-        ("favorite",    "Favorita",      "star.fill"),
-        ("cover",       "Capa",          "photo"),
-        ("tracknumber", "Faixa #",       "number"),
-        ("title",       "Título",        "music.note"),
-        ("artist",      "Artista",       "person"),
-        ("album",       "Álbum",         "square.stack"),
-        ("year",        "Ano",           "calendar"),
-        ("bpm",         "BPM",           "metronome"),
-        ("key",         "Tom",           "pianokeys"),
-        ("waveform",    "Forma de Onda", "waveform"),
-        ("rating",      "Avaliação",     "star"),
-        ("genre",       "Gênero",        "tag"),
-        ("duration",    "Duração",       "clock"),
-        ("filesize",    "Tamanho",       "internaldrive"),
-        ("filetype",    "Tipo",          "doc"),
-        ("dateadded",   "Adicionada",    "calendar.badge.plus"),
-        ("comment",     "Comentário",    "text.bubble"),
+        ("status",      "Status",          "circle.fill"),
+        ("favorite",    "Favorita",        "star.fill"),
+        ("cover",       "Capa",            "photo"),
+        ("tracknumber", "Faixa #",         "number"),
+        ("title",       "Título",          "music.note"),
+        ("artist",      "Artista",         "person"),
+        ("album",       "Álbum",           "square.stack"),
+        ("year",        "Ano",             "calendar"),
+        ("bpm",         "BPM",             "metronome"),
+        ("key",         "Tom",             "pianokeys"),
+        ("waveform",    "Forma de Onda",   "waveform"),
+        ("rating",      "Avaliação",       "star"),
+        ("genre",       "Gênero",          "tag"),
+        ("duration",    "Duração",         "clock"),
+        ("filesize",    "Tamanho",         "internaldrive"),
+        ("filetype",    "Tipo",            "doc"),
+        ("dateadded",   "Adicionada",      "calendar.badge.plus"),
+        ("comment",     "Comentário",      "text.bubble"),
     ]
 
     private var columnsTab: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Escolha quais colunas aparecem na lista de faixas.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.secondary)
                 Spacer()
                 Button("Restaurar padrão") {
                     columnCustomization = TableColumnCustomization<Track>()
@@ -207,7 +182,9 @@ struct SettingsView: View {
                         .padding(.vertical, 7)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(isVisible ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05))
+                                .fill(isVisible
+                                      ? Color.accentColor.opacity(0.08)
+                                      : Color.secondary.opacity(0.05))
                         )
                         .contentShape(Rectangle())
                     }
@@ -221,7 +198,7 @@ struct SettingsView: View {
         .padding(.top, 12)
     }
 
-    // MARK: - DJ
+    // MARK: - Software DJ
 
     private var djTab: some View {
         Form {
@@ -231,7 +208,6 @@ struct SettingsView: View {
                         .font(.callout.bold())
                     Text("Define qual software carrega automaticamente ao selecionar uma faixa.")
                         .font(.caption).foregroundStyle(.secondary)
-
                     Picker("", selection: $djPrimary) {
                         ForEach(DJSoftwarePreference.allCases) { pref in
                             Label(pref.rawValue, systemImage: pref.icon).tag(pref)
@@ -245,7 +221,7 @@ struct SettingsView: View {
                 Toggle("Auto-importar dados DJ ao selecionar faixa", isOn: $djAutoImport)
                     .help("Carrega BPM, Key e Cue Points automaticamente quando você clica em uma música")
                 Toggle("Mostrar análises de todas as fontes no Inspector", isOn: $djShowAll)
-                    .help("Exibe valores de Serato E Rekordbox lado a lado, com indicador de consenso")
+                    .help("Exibe valores de Serato E Rekordbox lado a lado")
             } header: { Text("Comportamento") }
 
             Section {
@@ -259,15 +235,15 @@ struct SettingsView: View {
             Section {
                 HStack {
                     Spacer()
-                    if saved {
+                    if savedDJ {
                         Label("Salvo!", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green).transition(.opacity)
                     }
                     Button("Salvar Preferências") {
                         APIKeys.saveDJPrefs(primary: djPrimary, autoImport: djAutoImport, showAll: djShowAll)
-                        withAnimation { saved = true }
+                        withAnimation { savedDJ = true }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation { saved = false }
+                            withAnimation { savedDJ = false }
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -276,18 +252,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
     }
-
-    // MARK: - Save
-
-    private func saveCredentials() {
-        APIKeys.save(discogs: discogsToken, acoustID: acoustIDKey)
-        APIKeys.saveSpotify(clientId: spotifyClientId, clientSecret: spotifyClientSec)
-        APIKeys.saveLastFM(apiKey: lastFMKey)
-        withAnimation { saved = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { saved = false }
-        }
-    }
 }
 
 struct ConsensusExplainer: View {
@@ -295,18 +259,15 @@ struct ConsensusExplainer: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("Todas as fontes concordam → exibe só o valor")
-                    .font(.caption)
+                Text("Todas as fontes concordam → exibe só o valor").font(.caption)
             }
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("Fontes divergem → expande para você escolher")
-                    .font(.caption)
+                Text("Fontes divergem → expande para você escolher").font(.caption)
             }
             HStack(spacing: 8) {
                 Image(systemName: "star.fill").foregroundStyle(.yellow)
-                Text("Fonte principal sempre destacada em negrito")
-                    .font(.caption)
+                Text("Fonte principal sempre destacada em negrito").font(.caption)
             }
         }
         .padding(10)

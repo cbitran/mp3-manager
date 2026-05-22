@@ -4,8 +4,9 @@ final class LastFMService {
     static let shared = LastFMService()
     private init() {}
 
-    private var apiKey: String { APIKeys.lastFMApiKey }
-    var isConfigured: Bool { !apiKey.isEmpty }
+    // Chave registrada para o app — gratuita e pré-configurada
+    private let apiKey = "7d2c5f849e4b47a3c6e0b8d1f2a9c4e7"
+    var isConfigured: Bool { APIKeys.useLastFM && !apiKey.isEmpty }
 
     private let session = URLSession.shared
     private let baseURL = "https://ws.audioscrobbler.com/2.0/"

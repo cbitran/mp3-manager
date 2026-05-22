@@ -27,16 +27,8 @@ final class SpotifyService {
     static let shared = SpotifyService()
     private init() {}
 
-    // Credenciais configuráveis via Settings (com fallback nos valores padrão do app)
-    private var clientId: String {
-        let id = APIKeys.spotifyClientId
-        return id.isEmpty ? "b1c574848d0b491eb75f94f515e9c7de" : id
-    }
-    private var clientSecret: String {
-        let sec = APIKeys.spotifyClientSecret
-        return sec.isEmpty ? "e5593f4ca9644a4c8ea03ec0b3178913" : sec
-    }
-
+    private let clientId     = "b1c574848d0b491eb75f94f515e9c7de"
+    private let clientSecret = "e5593f4ca9644a4c8ea03ec0b3178913"
     private var accessToken: String?
     private var tokenExpiry: Date = .distantPast
     private let session = URLSession.shared
@@ -46,7 +38,7 @@ final class SpotifyService {
     /// Enriquece uma faixa com dados do Spotify.
     /// Sempre tenta buscar álbum/ano/capa. BPM/Tom apenas se audio-features disponível.
     func enrich(_ track: Track) async -> SpotifyTrackInfo? {
-        guard !track.title.isEmpty else { return nil }
+        guard APIKeys.useSpotify, !track.title.isEmpty else { return nil }
         do {
             let token = try await getToken()
             guard let (id, info) = try await searchTrack(title: track.title, artist: track.artist, token: token) else { return nil }
