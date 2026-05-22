@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
-import { enrichTrack, type SpotifyFeatures } from "../services/SpotifyService";
+import { enrichTrackFull } from "../services/SpotifyService";
+import { searchTrack as iTunesSearch } from "../services/iTunesService";
 
 interface FieldProps {
   label: string;
@@ -30,25 +31,24 @@ function Field({ label, value, onChange, disabled, placeholder, mono }: FieldPro
 }
 
 export default function Inspector() {
-  const { selectedIds, tracks, setTracks } = useAppStore();
+  const { selectedIds, tracks, updateTrack } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
 
-  const [title, setTitle] = useState(first?.title ?? "");
-  const [artist, setArtist] = useState(first?.artist ?? "");
-  const [album, setAlbum] = useState(first?.album ?? "");
-  const [genre, setGenre] = useState(first?.genre ?? "");
-  const [year, setYear] = useState(first?.year?.toString() ?? "");
+  const [title, setTitle]           = useState(first?.title ?? "");
+  const [artist, setArtist]         = useState(first?.artist ?? "");
+  const [album, setAlbum]           = useState(first?.album ?? "");
+  const [genre, setGenre]           = useState(first?.genre ?? "");
+  const [year, setYear]             = useState(first?.year?.toString() ?? "");
   const [trackNumber, setTrackNumber] = useState(first?.track_number?.toString() ?? "");
-  const [bpm, setBpm] = useState(first?.bpm ?? "");
-  const [key, setKey] = useState(first?.key ?? "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const [spotifyLoading, setSpotifyLoading] = useState(false);
-  const [spotifyResult, setSpotifyResult] = useState<SpotifyFeatures | null>(null);
-  const [spotifyError, setSpotifyError] = useState(false);
+  const [bpm, setBpm]               = useState(first?.bpm ?? "");
+  const [key, setKey]               = useState(first?.key ?? "");
+  const [saving, setSaving]         = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [enriching, setEnriching]   = useState(false);
+  const [enrichSummary, setEnrichSummary] = useState<string | null>(null);
+  const [coverDataUrl, setCoverDataUrl]   = useState<string | null>(null);
 
   useEffect(() => {
     if (!first) return;
@@ -61,28 +61,66 @@ export default function Inspector() {
     setBpm(first.bpm ?? "");
     setKey(first.key ?? "");
     setSaved(false);
-    setSpotifyResult(null);
-    setSpotifyError(false);
+    setEnrichSummary(null);
   }, [first?.id]);
 
-  async function fetchSpotify() {
+  // Reload cover when cover_version changes
+  useEffect(() => {
+    if (!first?.has_cover) { setCoverDataUrl(null); return; }
+    invoke<string | null>("read_cover_base64", { path: first.path })
+      .then((b64) => {
+        setCoverDataUrl(b64 ? `data:image/jpeg;base64,${b64}` : null);
+      })
+      .catch(() => setCoverDataUrl(null));
+  }, [first?.id, first?.cover_version]);
+
+  async function enrichAll() {
     if (!first) return;
-    setSpotifyLoading(true);
-    setSpotifyError(false);
+    setEnriching(true);
+    setEnrichSummary(null);
+    const gained: string[] = [];
+
     try {
-      const f = await enrichTrack(title || first.filename, artist);
-      if (f) {
-        setBpm(f.bpm);
-        setKey(f.key);
-        setSpotifyResult(f);
-      } else {
-        setSpotifyError(true);
+      // 1. Spotify: BPM + Tom + Álbum + Ano
+      const spInfo = await enrichTrackFull(title || first.filename, artist);
+      if (spInfo) {
+        if (spInfo.features) {
+          setBpm(spInfo.features.bpm);
+          setKey(spInfo.features.key);
+          gained.push(`BPM ${spInfo.features.bpm} · ${spInfo.features.key}`);
+        }
+        if (!album && spInfo.album) { setAlbum(spInfo.album); gained.push("Álbum"); }
+        if (!year && spInfo.year)   setYear(spInfo.year);
       }
-    } catch {
-      setSpotifyError(true);
-    } finally {
-      setSpotifyLoading(false);
-    }
+
+      // 2. iTunes: Gênero + Álbum + Ano + Capa
+      const iTResult = await iTunesSearch(title || first.filename, artist);
+      if (iTResult) {
+        if (!genre && iTResult.genre)  { setGenre(iTResult.genre); gained.push("Gênero"); }
+        if (!year  && iTResult.year)   setYear(iTResult.year);
+        if (!album && iTResult.album)  { setAlbum(iTResult.album); gained.push("Álbum"); }
+
+        // Baixar e salvar capa se ausente
+        if (!first.has_cover && iTResult.artworkUrl) {
+          try {
+            await invoke("save_cover", { path: first.path, coverUrl: iTResult.artworkUrl });
+            const newIssues = first.issues.filter((i) => i !== "sem capa");
+            updateTrack({
+              ...first,
+              has_cover: true,
+              cover_version: (first.cover_version ?? 0) + 1,
+              issues: newIssues,
+            });
+            gained.push("Capa");
+          } catch { /* silent */ }
+        }
+      }
+    } catch { /* silent */ }
+
+    setEnriching(false);
+    setEnrichSummary(
+      gained.length > 0 ? `✓ ${gained.join(" · ")}` : "Nenhum dado novo encontrado"
+    );
   }
 
   async function handleSave() {
@@ -102,30 +140,25 @@ export default function Inspector() {
           key: key || null,
           rating: null,
         });
+        const newIssues: string[] = [];
+        if (!title)  newIssues.push("sem título");
+        if (!artist) newIssues.push("sem artista");
+        if (!genre)  newIssues.push("sem gênero");
+        if (!track.has_cover) newIssues.push("sem capa");
+        if (!bpm)    newIssues.push("sem BPM");
+        updateTrack({
+          ...track,
+          title: title || undefined,
+          artist: artist || undefined,
+          album: album || undefined,
+          genre: genre || undefined,
+          year: year ? parseInt(year) : undefined,
+          track_number: trackNumber ? parseInt(trackNumber) : undefined,
+          bpm: bpm || undefined,
+          key: key || undefined,
+          issues: newIssues,
+        });
       }
-      setTracks(
-        tracks.map((t) => {
-          if (!selectedIds.has(t.id)) return t;
-          const updated = {
-            ...t,
-            title: title || undefined,
-            artist: artist || undefined,
-            album: album || undefined,
-            genre: genre || undefined,
-            year: year ? parseInt(year) : undefined,
-            track_number: trackNumber ? parseInt(trackNumber) : undefined,
-            bpm: bpm || undefined,
-            key: key || undefined,
-          };
-          const issues: string[] = [];
-          if (!updated.title) issues.push("sem título");
-          if (!updated.artist) issues.push("sem artista");
-          if (!updated.genre) issues.push("sem gênero");
-          if (!updated.has_cover) issues.push("sem capa");
-          if (!updated.bpm) issues.push("sem BPM");
-          return { ...updated, issues };
-        })
-      );
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -143,11 +176,28 @@ export default function Inspector() {
           {isBatch ? `${selectedArr.length} faixas selecionadas` : "Inspector"}
         </p>
         {!isBatch && (
-          <p className="text-xs text-gray-500 mt-1 truncate leading-tight">
-            {first.filename}
-          </p>
+          <p className="text-xs text-gray-500 mt-1 truncate leading-tight">{first.filename}</p>
         )}
       </div>
+
+      {/* Cover art thumbnail */}
+      {!isBatch && coverDataUrl && (
+        <div className="mx-3 mt-3">
+          <img
+            src={coverDataUrl}
+            alt="Cover"
+            className="w-full rounded-lg object-cover"
+            style={{ maxHeight: 180 }}
+          />
+        </div>
+      )}
+
+      {/* Cover placeholder */}
+      {!isBatch && !coverDataUrl && (
+        <div className="mx-3 mt-3 h-16 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+          <span className="text-gray-700 text-xs">sem capa</span>
+        </div>
+      )}
 
       {/* Issues */}
       {!isBatch && first.issues.length > 0 && (
@@ -179,39 +229,52 @@ export default function Inspector() {
           <Field label="Ano" value={year} onChange={setYear} />
           <Field label="Faixa #" value={trackNumber} onChange={setTrackNumber} />
         </div>
-
-        {/* BPM + Tom */}
         <div className="grid grid-cols-2 gap-2">
           <Field label="BPM" value={bpm} onChange={setBpm} mono />
           <Field label="Tom" value={key} onChange={setKey} mono />
         </div>
 
-        {/* Spotify */}
-        {!isBatch && (
-          <div>
-            <button
-              onClick={fetchSpotify}
-              disabled={spotifyLoading}
-              className="w-full py-1.5 rounded-md text-xs font-semibold bg-[#1DB954]/20 hover:bg-[#1DB954]/30 text-[#1DB954] border border-[#1DB954]/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              {spotifyLoading ? (
-                <><span className="animate-spin text-sm">⟳</span> Buscando…</>
-              ) : (
-                <>♫ Enriquecer com Spotify</>
-              )}
-            </button>
-            {spotifyResult && (
-              <p className="mt-1.5 text-[10px] text-emerald-400 text-center">
-                ✓ BPM {spotifyResult.bpm} · {spotifyResult.key} · E:{(spotifyResult.energy * 100).toFixed(0)}%
-              </p>
-            )}
-            {spotifyError && (
-              <p className="mt-1.5 text-[10px] text-red-400 text-center">
-                Não encontrado no Spotify
-              </p>
+        {/* Enriquecer Metadados */}
+        <button
+          onClick={enrichAll}
+          disabled={enriching}
+          className="w-full rounded-xl disabled:opacity-60 overflow-hidden"
+          style={{
+            background: enriching
+              ? "rgba(99,102,241,0.3)"
+              : enrichSummary
+              ? "rgba(22,163,74,0.2)"
+              : "linear-gradient(to right, #1e9e66, #2e6bd4)",
+          }}
+        >
+          <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+            {enriching ? (
+              <>
+                <span className="animate-spin text-white text-base">⟳</span>
+                <span className="text-white text-xs font-semibold">Buscando metadados…</span>
+              </>
+            ) : enrichSummary ? (
+              <>
+                <span className="text-white text-sm">
+                  {enrichSummary.startsWith("✓") ? "✓" : "✗"}
+                </span>
+                <span className="text-white/90 text-[11px] font-medium flex-1 text-left leading-tight">
+                  {enrichSummary.replace(/^[✓✗]\s*/, "")}
+                </span>
+                <span className="text-white/60 text-xs">↺</span>
+              </>
+            ) : (
+              <>
+                <span className="text-white text-base">✦</span>
+                <div className="flex-1 text-left">
+                  <p className="text-white text-xs font-bold leading-none">Enriquecer Metadados</p>
+                  <p className="text-white/65 text-[10px] mt-0.5">Spotify · iTunes · Last.fm</p>
+                </div>
+                <span className="text-white/50 text-xs">›</span>
+              </>
             )}
           </div>
-        )}
+        </button>
       </div>
 
       {/* Actions */}

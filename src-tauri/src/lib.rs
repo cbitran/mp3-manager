@@ -1,3 +1,5 @@
+use base64::Engine;
+use id3::frame::{Picture, PictureType};
 use id3::TagLike;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -19,10 +21,11 @@ pub struct Track {
     pub track_number: Option<u32>,
     pub bpm: Option<String>,
     pub key: Option<String>,
-    pub rating: Option<u8>,        // 1–5 (lido de TXXX:RATING)
-    pub duration_secs: Option<f64>, // de TLEN (ms → s)
+    pub rating: Option<u8>,
+    pub duration_secs: Option<f64>,
     pub file_size_bytes: u64,
     pub has_cover: bool,
+    pub cover_version: u32,
     pub issues: Vec<String>,
 }
 
@@ -40,19 +43,30 @@ fn read_track(path: &Path) -> Option<Track> {
     let (title, artist, album, genre, year, track_number, bpm, key, rating, duration_secs, has_cover) =
         match &tag_result {
             Ok(tag) => {
-                let bpm = tag.frames()
+                let bpm = tag
+                    .frames()
                     .find(|f| f.id() == "TBPM")
                     .and_then(|f| {
-                        if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
+                        if let id3::Content::Text(t) = f.content() {
+                            Some(t.trim().to_string())
+                        } else {
+                            None
+                        }
                     });
 
-                let key = tag.frames()
+                let key = tag
+                    .frames()
                     .find(|f| f.id() == "TKEY")
                     .and_then(|f| {
-                        if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
+                        if let id3::Content::Text(t) = f.content() {
+                            Some(t.trim().to_string())
+                        } else {
+                            None
+                        }
                     });
 
-                let rating = tag.extended_texts()
+                let rating = tag
+                    .extended_texts()
                     .find(|e| e.description.eq_ignore_ascii_case("rating"))
                     .and_then(|e| e.value.trim().parse::<u8>().ok())
                     .filter(|&r| r >= 1 && r <= 5);
@@ -77,11 +91,21 @@ fn read_track(path: &Path) -> Option<Track> {
         };
 
     let mut issues = Vec::new();
-    if title.is_none()  { issues.push("sem título".to_string()); }
-    if artist.is_none() { issues.push("sem artista".to_string()); }
-    if genre.is_none()  { issues.push("sem gênero".to_string()); }
-    if !has_cover       { issues.push("sem capa".to_string()); }
-    if bpm.as_deref().unwrap_or("").is_empty() { issues.push("sem BPM".to_string()); }
+    if title.is_none() {
+        issues.push("sem título".to_string());
+    }
+    if artist.is_none() {
+        issues.push("sem artista".to_string());
+    }
+    if genre.is_none() {
+        issues.push("sem gênero".to_string());
+    }
+    if !has_cover {
+        issues.push("sem capa".to_string());
+    }
+    if bpm.as_deref().unwrap_or("").is_empty() {
+        issues.push("sem BPM".to_string());
+    }
 
     Some(Track {
         id,
@@ -99,6 +123,7 @@ fn read_track(path: &Path) -> Option<Track> {
         duration_secs,
         file_size_bytes,
         has_cover,
+        cover_version: 0,
         issues,
     })
 }
@@ -136,13 +161,24 @@ fn save_tags(
 ) -> Result<(), String> {
     let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
 
-    if let Some(v) = title        { tag.set_title(v); }
-    if let Some(v) = artist       { tag.set_artist(v); }
-    if let Some(v) = album        { tag.set_album(v); }
-    if let Some(v) = genre        { tag.set_genre(v); }
-    if let Some(v) = year         { tag.set_year(v as i32); }
-    if let Some(v) = track_number { tag.set_track(v); }
-
+    if let Some(v) = title {
+        tag.set_title(v);
+    }
+    if let Some(v) = artist {
+        tag.set_artist(v);
+    }
+    if let Some(v) = album {
+        tag.set_album(v);
+    }
+    if let Some(v) = genre {
+        tag.set_genre(v);
+    }
+    if let Some(v) = year {
+        tag.set_year(v as i32);
+    }
+    if let Some(v) = track_number {
+        tag.set_track(v);
+    }
     if let Some(v) = bpm {
         if !v.is_empty() {
             tag.add_frame(id3::Frame::text("TBPM", v));
@@ -154,7 +190,8 @@ fn save_tags(
         }
     }
     if let Some(r) = rating {
-        let existing = tag.extended_texts()
+        let existing = tag
+            .extended_texts()
             .find(|e| e.description.eq_ignore_ascii_case("rating"))
             .cloned();
         if existing.is_none() || existing.unwrap().value != r.to_string() {
@@ -170,6 +207,42 @@ fn save_tags(
         .map_err(|e| e.to_string())
 }
 
+/// Baixa uma imagem de cover_url e salva no frame APIC da faixa.
+#[tauri::command]
+async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
+    let response = reqwest::get(&cover_url)
+        .await
+        .map_err(|e| e.to_string())?;
+    let cover_data = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+    tag.remove("APIC");
+    tag.add_frame(Picture {
+        mime_type: "image/jpeg".to_string(),
+        picture_type: PictureType::CoverFront,
+        description: String::new(),
+        data: cover_data,
+    });
+    tag.write_to_path(&path, id3::Version::Id3v24)
+        .map_err(|e| e.to_string())
+}
+
+/// Lê o frame APIC e retorna os bytes como string base64, ou None se não houver capa.
+#[tauri::command]
+fn read_cover_base64(path: String) -> Option<String> {
+    let tag = id3::Tag::read_from_path(&path).ok()?;
+    let pic = tag
+        .pictures()
+        .find(|p| p.picture_type == PictureType::CoverFront)
+        .or_else(|| tag.pictures().next())?;
+    Some(base64::engine::general_purpose::STANDARD.encode(&pic.data))
+}
+
+#[tauri::command]
+fn trash_file(path: String) -> Result<(), String> {
+    trash::delete(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -177,7 +250,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .invoke_handler(tauri::generate_handler![scan_folder, save_tags])
+        .invoke_handler(tauri::generate_handler![
+            scan_folder,
+            save_tags,
+            save_cover,
+            read_cover_base64,
+            trash_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MP3 Manager",
-  "version": "0.1.0",
-  "identifier": "com.bitran.mp3-manager",
+  "productName": "TagWave",
+  "version": "0.2.0",
+  "identifier": "com.bitran.tagwave",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MP3 Manager",
+        "title": "TagWave",
         "width": 1200,
         "height": 800,
         "minWidth": 900,

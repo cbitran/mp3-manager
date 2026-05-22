@@ -16,13 +16,15 @@ export interface Track {
   duration_secs?: number;
   file_size_bytes: number;
   has_cover: boolean;
+  cover_version: number;   // incrementado após salvar capa — força reload no Inspector
   issues: string[];
 }
 
-export type FilterTab = "all" | "problems" | "ok";
+export type FilterTab = "all" | "favorites" | "problems" | "ok";
 
 const LAST_FOLDER_KEY = "mp3mgr_lastFolder";
 const FAVORITES_KEY   = "mp3mgr_favorites";
+const FAV_TRACKS_KEY  = "mp3mgr_favTracks";
 
 interface AppState {
   tracks: Track[];
@@ -32,6 +34,7 @@ interface AppState {
   isScanning: boolean;
   lastFolder: string | null;
   favoriteFolders: string[];
+  favoriteTrackPaths: Set<string>;
 
   setTracks: (tracks: Track[]) => void;
   updateTrack: (track: Track) => void;
@@ -43,6 +46,8 @@ interface AppState {
   setSearchQuery: (q: string) => void;
   setLastFolder: (path: string) => void;
   toggleFavorite: (path: string) => void;
+  toggleTrackFavorite: (path: string) => void;
+  isTrackFavorite: (path: string) => boolean;
 
   filteredTracks: () => Track[];
 }
@@ -55,8 +60,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   isScanning: false,
   lastFolder: localStorage.getItem(LAST_FOLDER_KEY),
   favoriteFolders: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]"),
+  favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
 
-  setTracks: (tracks) => set({ tracks, selectedIds: new Set() }),
+  setTracks: (tracks) =>
+    set({ tracks: tracks.map((t) => ({ ...t, cover_version: 0 })), selectedIds: new Set() }),
 
   updateTrack: (track) =>
     set((s) => ({ tracks: s.tracks.map((t) => (t.id === track.id ? track : t)) })),
@@ -65,7 +72,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSelect: (id) => {
     const next = new Set(get().selectedIds);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     set({ selectedIds: next });
   },
 
@@ -89,11 +97,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ favoriteFolders: next });
   },
 
+  toggleTrackFavorite: (path) => {
+    const next = new Set(get().favoriteTrackPaths);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    localStorage.setItem(FAV_TRACKS_KEY, JSON.stringify([...next]));
+    set({ favoriteTrackPaths: next });
+  },
+
+  isTrackFavorite: (path) => get().favoriteTrackPaths.has(path),
+
   filteredTracks: () => {
-    const { tracks, filterTab, searchQuery } = get();
+    const { tracks, filterTab, searchQuery, favoriteTrackPaths } = get();
     let result = tracks;
-    if (filterTab === "problems") result = result.filter((t) => t.issues.length > 0);
-    else if (filterTab === "ok")  result = result.filter((t) => t.issues.length === 0);
+    if (filterTab === "problems")
+      result = result.filter((t) => t.issues.length > 0);
+    else if (filterTab === "ok")
+      result = result.filter((t) => t.issues.length === 0);
+    else if (filterTab === "favorites")
+      result = result.filter((t) => favoriteTrackPaths.has(t.path));
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
