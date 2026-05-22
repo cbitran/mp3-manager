@@ -1,14 +1,11 @@
 import Foundation
 
-// API key gratuita em: https://www.last.fm/api/account/create
-// Após registro, cole aqui:
-private let kLastFMApiKey = ""
-
 final class LastFMService {
     static let shared = LastFMService()
     private init() {}
 
-    var isConfigured: Bool { !kLastFMApiKey.isEmpty }
+    private var apiKey: String { APIKeys.lastFMApiKey }
+    var isConfigured: Bool { !apiKey.isEmpty }
 
     private let session = URLSession.shared
     private let baseURL = "https://ws.audioscrobbler.com/2.0/"
@@ -20,7 +17,7 @@ final class LastFMService {
         var comps = URLComponents(string: baseURL)!
         comps.queryItems = [
             .init(name: "method",  value: "track.getTopTags"),
-            .init(name: "api_key", value: kLastFMApiKey),
+            .init(name: "api_key", value: apiKey),
             .init(name: "artist",  value: artist),
             .init(name: "track",   value: title),
             .init(name: "format",  value: "json"),

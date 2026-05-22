@@ -10,6 +10,7 @@ struct CreatePlaylistSheet: View {
     @State private var createM3U = true
     @State private var isCreating = false
     @State private var resultMessage: String?
+    @State private var resultIsSuccess = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -92,12 +93,12 @@ struct CreatePlaylistSheet: View {
             if let msg = resultMessage {
                 Text(msg)
                     .font(.callout)
-                    .foregroundStyle(msg.hasPrefix("✓") ? .green : .red)
+                    .foregroundStyle(resultIsSuccess ? .green : .red)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(msg.hasPrefix("✓") ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                            .fill(resultIsSuccess ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                     )
             }
 
@@ -141,31 +142,61 @@ struct CreatePlaylistSheet: View {
         guard !name.isEmpty else { return }
         isCreating = true
         resultMessage = nil
+        resultIsSuccess = false
 
         Task {
             do {
                 let fm = FileManager.default
                 let folderURL = baseURL.appendingPathComponent(name)
-                try fm.createDirectory(at: folderURL, withIntermediateDirectories: true)
+
+                // Cria a subpasta (sem erro se já existir)
+                if !fm.fileExists(atPath: folderURL.path) {
+                    try fm.createDirectory(at: folderURL, withIntermediateDirectories: true)
+                }
+
+                // Verifica que a pasta foi de fato criada
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: folderURL.path, isDirectory: &isDir), isDir.boolValue else {
+                    await MainActor.run {
+                        isCreating = false
+                        resultIsSuccess = false
+                        resultMessage = "✗ Não foi possível criar a pasta \"\(name)\""
+                    }
+                    return
+                }
 
                 var m3uLines = ["#EXTM3U", ""]
                 var successCount = 0
+                var firstError: String? = nil
 
                 for track in tracks {
+                    // Verifica que o arquivo fonte existe
+                    guard fm.fileExists(atPath: track.url.path) else {
+                        firstError = firstError ?? "Arquivo não encontrado: \(track.url.lastPathComponent)"
+                        continue
+                    }
+
                     let dest = folderURL.appendingPathComponent(track.url.lastPathComponent)
                     do {
+                        // Remove destino se já existe (suporte a re-execução)
+                        if fm.fileExists(atPath: dest.path) {
+                            try fm.removeItem(at: dest)
+                        }
+
                         if moveFiles {
-                            if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
                             try fm.moveItem(at: track.url, to: dest)
                         } else {
                             try fm.copyItem(at: track.url, to: dest)
                         }
+
                         let artistTitle = [track.artist, track.title]
                             .filter { !$0.isEmpty }.joined(separator: " - ")
                         m3uLines.append("#EXTINF:\(Int(track.duration)),\(artistTitle)")
                         m3uLines.append(track.url.lastPathComponent)
                         successCount += 1
-                    } catch { }
+                    } catch {
+                        firstError = firstError ?? error.localizedDescription
+                    }
                 }
 
                 if createM3U && successCount > 0 {
@@ -178,18 +209,26 @@ struct CreatePlaylistSheet: View {
                 await MainActor.run {
                     isCreating = false
                     if failed == 0 {
+                        resultIsSuccess = true
                         resultMessage = "✓ Playlist \"\(name)\" criada com \(successCount) faixa\(successCount == 1 ? "" : "s")"
                         Task {
                             try? await Task.sleep(for: .seconds(1.8))
                             await MainActor.run { dismiss() }
                         }
+                    } else if successCount > 0 {
+                        resultIsSuccess = true
+                        resultMessage = "✓ \(successCount) faixas copiadas · \(failed) falharam"
+                            + (firstError.map { " (\($0))" } ?? "")
                     } else {
-                        resultMessage = "✓ \(successCount) faixas copiadas · \(failed) não puderam ser copiadas"
+                        resultIsSuccess = false
+                        resultMessage = "✗ Nenhuma faixa foi copiada"
+                            + (firstError.map { ": \($0)" } ?? "")
                     }
                 }
             } catch {
                 await MainActor.run {
                     isCreating = false
+                    resultIsSuccess = false
                     resultMessage = "✗ Erro: \(error.localizedDescription)"
                 }
             }

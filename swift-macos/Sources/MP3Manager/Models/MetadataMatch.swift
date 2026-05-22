@@ -106,16 +106,22 @@ struct DJConsensus {
 // MARK: - API Keys + DJ Settings
 
 struct APIKeys {
-    static let discogsKey        = "apikey.discogs"
-    static let acoustIDKey       = "apikey.acoustid"
-    static let djPrimaryKey      = "dj.primarySoftware"
-    static let djAutoImportKey   = "dj.autoImport"
-    static let djShowAllKey      = "dj.showAllSources"
-    static let djUseRekordboxKey = "dj.useRekordbox"
-    static let djUseSeratoKey    = "dj.useSerato"
+    static let discogsKey           = "apikey.discogs"
+    static let acoustIDKey          = "apikey.acoustid"
+    static let spotifyClientIdKey   = "apikey.spotify.clientId"
+    static let spotifyClientSecKey  = "apikey.spotify.clientSecret"
+    static let lastFMApiKeyKey      = "apikey.lastfm"
+    static let djPrimaryKey         = "dj.primarySoftware"
+    static let djAutoImportKey      = "dj.autoImport"
+    static let djShowAllKey         = "dj.showAllSources"
+    static let djUseRekordboxKey    = "dj.useRekordbox"
+    static let djUseSeratoKey       = "dj.useSerato"
 
-    static var discogs: String  { UserDefaults.standard.string(forKey: discogsKey)  ?? "" }
-    static var acoustID: String { UserDefaults.standard.string(forKey: acoustIDKey) ?? "" }
+    static var discogs: String        { UserDefaults.standard.string(forKey: discogsKey)          ?? "" }
+    static var acoustID: String       { UserDefaults.standard.string(forKey: acoustIDKey)         ?? "" }
+    static var spotifyClientId: String     { UserDefaults.standard.string(forKey: spotifyClientIdKey)  ?? "" }
+    static var spotifyClientSecret: String { UserDefaults.standard.string(forKey: spotifyClientSecKey) ?? "" }
+    static var lastFMApiKey: String   { UserDefaults.standard.string(forKey: lastFMApiKeyKey)     ?? "" }
 
     static var djPrimary: DJSoftwarePreference {
         let raw = UserDefaults.standard.string(forKey: djPrimaryKey) ?? ""
@@ -137,6 +143,15 @@ struct APIKeys {
     static func save(discogs: String, acoustID: String) {
         UserDefaults.standard.set(discogs,  forKey: discogsKey)
         UserDefaults.standard.set(acoustID, forKey: acoustIDKey)
+    }
+
+    static func saveSpotify(clientId: String, clientSecret: String) {
+        UserDefaults.standard.set(clientId,     forKey: spotifyClientIdKey)
+        UserDefaults.standard.set(clientSecret, forKey: spotifyClientSecKey)
+    }
+
+    static func saveLastFM(apiKey: String) {
+        UserDefaults.standard.set(apiKey, forKey: lastFMApiKeyKey)
     }
 
     static func saveDJPrefs(primary: DJSoftwarePreference, autoImport: Bool, showAll: Bool) {
