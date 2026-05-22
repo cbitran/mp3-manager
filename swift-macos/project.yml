@@ -1,0 +1,30 @@
+name: MP3Manager
+options:
+  bundleIdPrefix: com.bitran
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16"
+
+targets:
+  MP3Manager:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/MP3Manager
+        excludes:
+          - "**/*.py"
+      - path: Sources/MP3Manager/Scripts
+        type: folder
+        name: Scripts
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bitran.mp3manager
+        PRODUCT_NAME: MP3 Manager
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        INFOPLIST_FILE: Sources/MP3Manager/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/MP3Manager/MP3Manager.entitlements

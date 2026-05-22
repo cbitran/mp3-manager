@@ -5,3 +5,6 @@ src-tauri/target/
 src-tauri/gen/
 *.env
 .env.local
+swift-macos/build/
+swift-macos/*.xcodeproj/xcuserdata/
+swift-macos/.build/

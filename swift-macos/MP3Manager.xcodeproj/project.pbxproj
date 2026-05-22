@@ -1,0 +1,548 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03EBEBAB02C4989EC1D50549 /* FilenameTagModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96471F605BA74D5C55B09C5 /* FilenameTagModels.swift */; };
+		061BDAA33493DF68068A021E /* Track.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8275E828071CBE1517DD3D /* Track.swift */; };
+		0BFAF1EF92A619A395294C83 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA9CEB8577A2018532803FB /* ProcessRunner.swift */; };
+		1257082AE86830454BC9CC0F /* DuplicateDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C26AB4FF4A3B310D6CD0CD5 /* DuplicateDetector.swift */; };
+		1C81799546AD2521EE16C6CB /* SpotifyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CBF3D7445FDD64714CCED9 /* SpotifyService.swift */; };
+		20BB4684D10FECB41D0F8972 /* iTunesSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB27D430D55713E14440D1E /* iTunesSearchService.swift */; };
+		21B5DAFF43DFCC92793036F8 /* BatchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C59D5ED5D5F4CDA7AB2D4F /* BatchResultsView.swift */; };
+		2236BAC8237B406EA53E8A03 /* AssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FA2BB4B6446AB3908E6C5F /* AssistantView.swift */; };
+		2261842258A01DC697F9C8F5 /* ReviewQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9FF7BA5EFCA0A13BD271F0 /* ReviewQueueView.swift */; };
+		22CF2C765746E3C740B96D39 /* DJImportProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BCA704423A156D524ADB4F /* DJImportProgressView.swift */; };
+		276EAC370D4415BE412B1810 /* MetadataMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44163F40EC07378CDBD1640A /* MetadataMatch.swift */; };
+		32E812476375BBEAB02985FB /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FDBDE2E2B64964A9CB7B97F /* AudioPlayerService.swift */; };
+		385AF21FF44AB4F86709C78B /* ValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94AA3A3969DC558A72117FB /* ValidationService.swift */; };
+		3F50534AB17F77D0B00A493E /* Scripts in Resources */ = {isa = PBXBuildFile; fileRef = D7B0FC5197E7555665944F80 /* Scripts */; };
+		490D3A9ED442266176F0B8FE /* FilenameParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A85A0F08FD30C37887842C /* FilenameParser.swift */; };
+		4C5C1BBEAAAC962F59DED3CE /* AutoFitTableHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E19BE7C2BF9422910FC60E9 /* AutoFitTableHelper.swift */; };
+		4E732827538AE704AD35C77A /* WaveformGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB8D45FA210214DEF22DBD5 /* WaveformGenerator.swift */; };
+		4F68C3C2A2858CB5A6AEEFEA /* MetadataPipelineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CE30FD43479CB8A9CB39E9 /* MetadataPipelineService.swift */; };
+		536AAE67357670E777EE226F /* DuplicatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBAC026A116C0F50A0465F86 /* DuplicatesView.swift */; };
+		5625766765C128121E1664F6 /* MusicBrainzService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3557ACE709FFA692202196 /* MusicBrainzService.swift */; };
+		6107CCD0340E6AA30A698EF6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEF5E7411F769E83EDD0734D /* ContentView.swift */; };
+		6287D6CD95B349EA8044476B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F082DC2B6B1B5210A24869E /* SettingsView.swift */; };
+		632A1E1C53CF463DF094FAA9 /* QuickSettingsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8978CFACC4C6AFECCCFF1895 /* QuickSettingsPopover.swift */; };
+		685D80953949FFAD025EB8D3 /* CreatePlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6FDF979DDBA0D099D2F78F /* CreatePlaylistSheet.swift */; };
+		69B0F01BC2BC493A735FB56C /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0375C630C180402264664BF7 /* SidebarView.swift */; };
+		7128240E21384668CC129BAE /* AIBPMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E890EEAC16E2ABCD70E3AC8 /* AIBPMService.swift */; };
+		756C3486A53C04FF1DDFC04D /* MetadataEnrichResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61CE4F06B9504EE5110AEA0 /* MetadataEnrichResultsView.swift */; };
+		7B51AF5251DAE5044EA9E83C /* AcoustIDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 939F6E5603E9BDCC8B57B38D /* AcoustIDService.swift */; };
+		8951BB12EDBA8212734A4736 /* FolderPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B02086C22D8AA0A38B7EFDD /* FolderPreviewSheet.swift */; };
+		8A7E64510FCEBF7FEC3092BF /* MissingMetaPromptSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70E285050444A191D39DD2F7 /* MissingMetaPromptSheet.swift */; };
+		941487C1E3B38568668E073D /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A169D9EC6CB8CF258EF93FCC /* InspectorView.swift */; };
+		9C93FE8226C04A41DB53D2EA /* ExportFolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B18739A96E31D6E102CCDF /* ExportFolderView.swift */; };
+		9DB946853C323958ECA5BB67 /* FilenameTagSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B99DD0B7C1314B011BCFB /* FilenameTagSheet.swift */; };
+		A10F8DF4F8A238EF14E05EF8 /* MusicSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D9A345F557EF9150834651 /* MusicSearchService.swift */; };
+		A989CBBE3C739B73824D7EA1 /* BatchFixService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF59239E4759171EDFD3DBF9 /* BatchFixService.swift */; };
+		AAFC74805445164D18711BFF /* TagService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB52A42C1DD04820339B5BDA /* TagService.swift */; };
+		AD7870F15769A527641B49A1 /* MetadataCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC56B5C3505D2279F10806EF /* MetadataCaptureView.swift */; };
+		B0BAE00EC2A40CD4AD3012D6 /* DJService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1769D7F90CFC7D1D0F14F4D /* DJService.swift */; };
+		C243E6835BA6EA2FDA98C37A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEBED3344BE5400CC9AB21F0 /* AppState.swift */; };
+		C571AC8863EDDBB5C9529822 /* BatchTagEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B7875FBCFA0F0EA23A3FBA /* BatchTagEditorView.swift */; };
+		C73F89083D0BAB11F04EEA83 /* BatchDJImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B41C2EEE517FA8637839BD /* BatchDJImportService.swift */; };
+		C818F56C33BC8E98CEF75E02 /* TagWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8780090E87E3A84D4B7B646A /* TagWriter.swift */; };
+		D32E3AC67F190C1EF43A74F4 /* FolderOrganizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6A117B53CA65F71DC3D922 /* FolderOrganizer.swift */; };
+		D3CA2C8A69A7A118A107E3D4 /* LastFMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BF8CCE1BFF4F70C2C5848FD /* LastFMService.swift */; };
+		DA475A2305F38835C2AD121A /* DJData.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5517CBACC8B7921DA36F8FD /* DJData.swift */; };
+		E5C260137F046A74BE63BE79 /* BatchBPMResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C523DD9B4F6776E61740516 /* BatchBPMResultsView.swift */; };
+		E7FFCB313F3D09CE13AC3782 /* DJValidationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0D891D998B7CB662C8F15B /* DJValidationSheet.swift */; };
+		E8284EA7F645FF64E2F4C5FC /* DJDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850BBE459AB1E02D779CC9FB /* DJDataView.swift */; };
+		EC9C777F0A8BE54014B9B661 /* TrackListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55DCD8683288A9372D62E423 /* TrackListView.swift */; };
+		ED16D0976E29345991462A3E /* DJImportSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277DFC45146D2B728C93CCE8 /* DJImportSummary.swift */; };
+		F174B1CB62A67D5F2A02B3C0 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F821F2C0978B6E3637A19E0 /* MiniPlayerView.swift */; };
+		F6AAE922093F1E18D63007F6 /* MP3ManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 801BC6482BD8AC59C073304B /* MP3ManagerApp.swift */; };
+		F89E1645313336095B8BBA5A /* AssistantMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A08587AAEB4BA024BD8D2BAF /* AssistantMessage.swift */; };
+		FDF212165845F0C983D7EA3F /* DiscogsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4787D0FE520FACD8F48D9D /* DiscogsService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0375C630C180402264664BF7 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		08CE30FD43479CB8A9CB39E9 /* MetadataPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataPipelineService.swift; sourceTree = "<group>"; };
+		0B4787D0FE520FACD8F48D9D /* DiscogsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscogsService.swift; sourceTree = "<group>"; };
+		1E890EEAC16E2ABCD70E3AC8 /* AIBPMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIBPMService.swift; sourceTree = "<group>"; };
+		1F821F2C0978B6E3637A19E0 /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
+		2557031272102CFF59CA23E6 /* MP3Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MP3Manager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		277DFC45146D2B728C93CCE8 /* DJImportSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJImportSummary.swift; sourceTree = "<group>"; };
+		2B02086C22D8AA0A38B7EFDD /* FolderPreviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPreviewSheet.swift; sourceTree = "<group>"; };
+		2EB27D430D55713E14440D1E /* iTunesSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iTunesSearchService.swift; sourceTree = "<group>"; };
+		2F3557ACE709FFA692202196 /* MusicBrainzService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicBrainzService.swift; sourceTree = "<group>"; };
+		33BCA704423A156D524ADB4F /* DJImportProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJImportProgressView.swift; sourceTree = "<group>"; };
+		37A85A0F08FD30C37887842C /* FilenameParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilenameParser.swift; sourceTree = "<group>"; };
+		3C26AB4FF4A3B310D6CD0CD5 /* DuplicateDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateDetector.swift; sourceTree = "<group>"; };
+		44163F40EC07378CDBD1640A /* MetadataMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataMatch.swift; sourceTree = "<group>"; };
+		451B99DD0B7C1314B011BCFB /* FilenameTagSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilenameTagSheet.swift; sourceTree = "<group>"; };
+		49B18739A96E31D6E102CCDF /* ExportFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportFolderView.swift; sourceTree = "<group>"; };
+		55DCD8683288A9372D62E423 /* TrackListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackListView.swift; sourceTree = "<group>"; };
+		5BF8CCE1BFF4F70C2C5848FD /* LastFMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LastFMService.swift; sourceTree = "<group>"; };
+		5F082DC2B6B1B5210A24869E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		63C59D5ED5D5F4CDA7AB2D4F /* BatchResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchResultsView.swift; sourceTree = "<group>"; };
+		6D6FDF979DDBA0D099D2F78F /* CreatePlaylistSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePlaylistSheet.swift; sourceTree = "<group>"; };
+		6F0D891D998B7CB662C8F15B /* DJValidationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJValidationSheet.swift; sourceTree = "<group>"; };
+		70E285050444A191D39DD2F7 /* MissingMetaPromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissingMetaPromptSheet.swift; sourceTree = "<group>"; };
+		7AB8D45FA210214DEF22DBD5 /* WaveformGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformGenerator.swift; sourceTree = "<group>"; };
+		7FDBDE2E2B64964A9CB7B97F /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
+		801BC6482BD8AC59C073304B /* MP3ManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MP3ManagerApp.swift; sourceTree = "<group>"; };
+		850BBE459AB1E02D779CC9FB /* DJDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJDataView.swift; sourceTree = "<group>"; };
+		8780090E87E3A84D4B7B646A /* TagWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagWriter.swift; sourceTree = "<group>"; };
+		8978CFACC4C6AFECCCFF1895 /* QuickSettingsPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSettingsPopover.swift; sourceTree = "<group>"; };
+		8C523DD9B4F6776E61740516 /* BatchBPMResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchBPMResultsView.swift; sourceTree = "<group>"; };
+		8C98B203D09AEEF0E9D93D35 /* MP3Manager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MP3Manager.entitlements; sourceTree = "<group>"; };
+		939F6E5603E9BDCC8B57B38D /* AcoustIDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcoustIDService.swift; sourceTree = "<group>"; };
+		98FA2BB4B6446AB3908E6C5F /* AssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantView.swift; sourceTree = "<group>"; };
+		9E19BE7C2BF9422910FC60E9 /* AutoFitTableHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFitTableHelper.swift; sourceTree = "<group>"; };
+		A08587AAEB4BA024BD8D2BAF /* AssistantMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantMessage.swift; sourceTree = "<group>"; };
+		A169D9EC6CB8CF258EF93FCC /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
+		A1769D7F90CFC7D1D0F14F4D /* DJService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJService.swift; sourceTree = "<group>"; };
+		A61CE4F06B9504EE5110AEA0 /* MetadataEnrichResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataEnrichResultsView.swift; sourceTree = "<group>"; };
+		A94AA3A3969DC558A72117FB /* ValidationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationService.swift; sourceTree = "<group>"; };
+		A96471F605BA74D5C55B09C5 /* FilenameTagModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilenameTagModels.swift; sourceTree = "<group>"; };
+		AF59239E4759171EDFD3DBF9 /* BatchFixService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchFixService.swift; sourceTree = "<group>"; };
+		B2CBF3D7445FDD64714CCED9 /* SpotifyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyService.swift; sourceTree = "<group>"; };
+		BFA9CEB8577A2018532803FB /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
+		C0B41C2EEE517FA8637839BD /* BatchDJImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchDJImportService.swift; sourceTree = "<group>"; };
+		C0D9A345F557EF9150834651 /* MusicSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchService.swift; sourceTree = "<group>"; };
+		CBAC026A116C0F50A0465F86 /* DuplicatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicatesView.swift; sourceTree = "<group>"; };
+		CE990395214295C02D7A422C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D5517CBACC8B7921DA36F8FD /* DJData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJData.swift; sourceTree = "<group>"; };
+		D7B0FC5197E7555665944F80 /* Scripts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Scripts; path = Sources/MP3Manager/Scripts; sourceTree = SOURCE_ROOT; };
+		DC56B5C3505D2279F10806EF /* MetadataCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataCaptureView.swift; sourceTree = "<group>"; };
+		DEBED3344BE5400CC9AB21F0 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		E3B7875FBCFA0F0EA23A3FBA /* BatchTagEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchTagEditorView.swift; sourceTree = "<group>"; };
+		EB52A42C1DD04820339B5BDA /* TagService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagService.swift; sourceTree = "<group>"; };
+		EE6A117B53CA65F71DC3D922 /* FolderOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderOrganizer.swift; sourceTree = "<group>"; };
+		FD8275E828071CBE1517DD3D /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
+		FD9FF7BA5EFCA0A13BD271F0 /* ReviewQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewQueueView.swift; sourceTree = "<group>"; };
+		FEF5E7411F769E83EDD0734D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		05922329EFCDF797823A2B54 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2557031272102CFF59CA23E6 /* MP3Manager.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1B2ED9989487CE56F343B200 = {
+			isa = PBXGroup;
+			children = (
+				D7B0FC5197E7555665944F80 /* Scripts */,
+				66AC74250AE945404281D871 /* MP3Manager */,
+				05922329EFCDF797823A2B54 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3EAD0555D3BEC9E57DFE68B5 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				DEBED3344BE5400CC9AB21F0 /* AppState.swift */,
+				A08587AAEB4BA024BD8D2BAF /* AssistantMessage.swift */,
+				D5517CBACC8B7921DA36F8FD /* DJData.swift */,
+				277DFC45146D2B728C93CCE8 /* DJImportSummary.swift */,
+				A96471F605BA74D5C55B09C5 /* FilenameTagModels.swift */,
+				44163F40EC07378CDBD1640A /* MetadataMatch.swift */,
+				FD8275E828071CBE1517DD3D /* Track.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		66AC74250AE945404281D871 /* MP3Manager */ = {
+			isa = PBXGroup;
+			children = (
+				CE990395214295C02D7A422C /* Info.plist */,
+				8C98B203D09AEEF0E9D93D35 /* MP3Manager.entitlements */,
+				801BC6482BD8AC59C073304B /* MP3ManagerApp.swift */,
+				3EAD0555D3BEC9E57DFE68B5 /* Models */,
+				D11E014DF40DACB3EC336AD1 /* Services */,
+				EA2B1E010A28E33F8ACB2579 /* Views */,
+			);
+			name = MP3Manager;
+			path = Sources/MP3Manager;
+			sourceTree = "<group>";
+		};
+		D11E014DF40DACB3EC336AD1 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				939F6E5603E9BDCC8B57B38D /* AcoustIDService.swift */,
+				1E890EEAC16E2ABCD70E3AC8 /* AIBPMService.swift */,
+				7FDBDE2E2B64964A9CB7B97F /* AudioPlayerService.swift */,
+				C0B41C2EEE517FA8637839BD /* BatchDJImportService.swift */,
+				AF59239E4759171EDFD3DBF9 /* BatchFixService.swift */,
+				0B4787D0FE520FACD8F48D9D /* DiscogsService.swift */,
+				A1769D7F90CFC7D1D0F14F4D /* DJService.swift */,
+				3C26AB4FF4A3B310D6CD0CD5 /* DuplicateDetector.swift */,
+				37A85A0F08FD30C37887842C /* FilenameParser.swift */,
+				EE6A117B53CA65F71DC3D922 /* FolderOrganizer.swift */,
+				2EB27D430D55713E14440D1E /* iTunesSearchService.swift */,
+				5BF8CCE1BFF4F70C2C5848FD /* LastFMService.swift */,
+				08CE30FD43479CB8A9CB39E9 /* MetadataPipelineService.swift */,
+				2F3557ACE709FFA692202196 /* MusicBrainzService.swift */,
+				C0D9A345F557EF9150834651 /* MusicSearchService.swift */,
+				BFA9CEB8577A2018532803FB /* ProcessRunner.swift */,
+				B2CBF3D7445FDD64714CCED9 /* SpotifyService.swift */,
+				EB52A42C1DD04820339B5BDA /* TagService.swift */,
+				8780090E87E3A84D4B7B646A /* TagWriter.swift */,
+				A94AA3A3969DC558A72117FB /* ValidationService.swift */,
+				7AB8D45FA210214DEF22DBD5 /* WaveformGenerator.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EA2B1E010A28E33F8ACB2579 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				98FA2BB4B6446AB3908E6C5F /* AssistantView.swift */,
+				9E19BE7C2BF9422910FC60E9 /* AutoFitTableHelper.swift */,
+				8C523DD9B4F6776E61740516 /* BatchBPMResultsView.swift */,
+				63C59D5ED5D5F4CDA7AB2D4F /* BatchResultsView.swift */,
+				E3B7875FBCFA0F0EA23A3FBA /* BatchTagEditorView.swift */,
+				FEF5E7411F769E83EDD0734D /* ContentView.swift */,
+				6D6FDF979DDBA0D099D2F78F /* CreatePlaylistSheet.swift */,
+				850BBE459AB1E02D779CC9FB /* DJDataView.swift */,
+				33BCA704423A156D524ADB4F /* DJImportProgressView.swift */,
+				6F0D891D998B7CB662C8F15B /* DJValidationSheet.swift */,
+				CBAC026A116C0F50A0465F86 /* DuplicatesView.swift */,
+				49B18739A96E31D6E102CCDF /* ExportFolderView.swift */,
+				451B99DD0B7C1314B011BCFB /* FilenameTagSheet.swift */,
+				2B02086C22D8AA0A38B7EFDD /* FolderPreviewSheet.swift */,
+				A169D9EC6CB8CF258EF93FCC /* InspectorView.swift */,
+				DC56B5C3505D2279F10806EF /* MetadataCaptureView.swift */,
+				A61CE4F06B9504EE5110AEA0 /* MetadataEnrichResultsView.swift */,
+				1F821F2C0978B6E3637A19E0 /* MiniPlayerView.swift */,
+				70E285050444A191D39DD2F7 /* MissingMetaPromptSheet.swift */,
+				8978CFACC4C6AFECCCFF1895 /* QuickSettingsPopover.swift */,
+				FD9FF7BA5EFCA0A13BD271F0 /* ReviewQueueView.swift */,
+				5F082DC2B6B1B5210A24869E /* SettingsView.swift */,
+				0375C630C180402264664BF7 /* SidebarView.swift */,
+				55DCD8683288A9372D62E423 /* TrackListView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		35DE4894351EE976F6F89AD9 /* MP3Manager */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 74896A2C9DD76E3FDA623FE1 /* Build configuration list for PBXNativeTarget "MP3Manager" */;
+			buildPhases = (
+				72EA2F92D2EAC914E07F529C /* Sources */,
+				16CBA824A2DEDAA3A780A500 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MP3Manager;
+			packageProductDependencies = (
+			);
+			productName = MP3Manager;
+			productReference = 2557031272102CFF59CA23E6 /* MP3Manager.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		977593AE9AAFD2BB65CFE518 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					35DE4894351EE976F6F89AD9 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 4A1A0C3FCFCE0F4CC62B3BF6 /* Build configuration list for PBXProject "MP3Manager" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1B2ED9989487CE56F343B200;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 05922329EFCDF797823A2B54 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				35DE4894351EE976F6F89AD9 /* MP3Manager */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		16CBA824A2DEDAA3A780A500 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F50534AB17F77D0B00A493E /* Scripts in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		72EA2F92D2EAC914E07F529C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7128240E21384668CC129BAE /* AIBPMService.swift in Sources */,
+				7B51AF5251DAE5044EA9E83C /* AcoustIDService.swift in Sources */,
+				C243E6835BA6EA2FDA98C37A /* AppState.swift in Sources */,
+				F89E1645313336095B8BBA5A /* AssistantMessage.swift in Sources */,
+				2236BAC8237B406EA53E8A03 /* AssistantView.swift in Sources */,
+				32E812476375BBEAB02985FB /* AudioPlayerService.swift in Sources */,
+				4C5C1BBEAAAC962F59DED3CE /* AutoFitTableHelper.swift in Sources */,
+				E5C260137F046A74BE63BE79 /* BatchBPMResultsView.swift in Sources */,
+				C73F89083D0BAB11F04EEA83 /* BatchDJImportService.swift in Sources */,
+				A989CBBE3C739B73824D7EA1 /* BatchFixService.swift in Sources */,
+				21B5DAFF43DFCC92793036F8 /* BatchResultsView.swift in Sources */,
+				C571AC8863EDDBB5C9529822 /* BatchTagEditorView.swift in Sources */,
+				6107CCD0340E6AA30A698EF6 /* ContentView.swift in Sources */,
+				685D80953949FFAD025EB8D3 /* CreatePlaylistSheet.swift in Sources */,
+				DA475A2305F38835C2AD121A /* DJData.swift in Sources */,
+				E8284EA7F645FF64E2F4C5FC /* DJDataView.swift in Sources */,
+				22CF2C765746E3C740B96D39 /* DJImportProgressView.swift in Sources */,
+				ED16D0976E29345991462A3E /* DJImportSummary.swift in Sources */,
+				B0BAE00EC2A40CD4AD3012D6 /* DJService.swift in Sources */,
+				E7FFCB313F3D09CE13AC3782 /* DJValidationSheet.swift in Sources */,
+				FDF212165845F0C983D7EA3F /* DiscogsService.swift in Sources */,
+				1257082AE86830454BC9CC0F /* DuplicateDetector.swift in Sources */,
+				536AAE67357670E777EE226F /* DuplicatesView.swift in Sources */,
+				9C93FE8226C04A41DB53D2EA /* ExportFolderView.swift in Sources */,
+				490D3A9ED442266176F0B8FE /* FilenameParser.swift in Sources */,
+				03EBEBAB02C4989EC1D50549 /* FilenameTagModels.swift in Sources */,
+				9DB946853C323958ECA5BB67 /* FilenameTagSheet.swift in Sources */,
+				D32E3AC67F190C1EF43A74F4 /* FolderOrganizer.swift in Sources */,
+				8951BB12EDBA8212734A4736 /* FolderPreviewSheet.swift in Sources */,
+				941487C1E3B38568668E073D /* InspectorView.swift in Sources */,
+				D3CA2C8A69A7A118A107E3D4 /* LastFMService.swift in Sources */,
+				F6AAE922093F1E18D63007F6 /* MP3ManagerApp.swift in Sources */,
+				AD7870F15769A527641B49A1 /* MetadataCaptureView.swift in Sources */,
+				756C3486A53C04FF1DDFC04D /* MetadataEnrichResultsView.swift in Sources */,
+				276EAC370D4415BE412B1810 /* MetadataMatch.swift in Sources */,
+				4F68C3C2A2858CB5A6AEEFEA /* MetadataPipelineService.swift in Sources */,
+				F174B1CB62A67D5F2A02B3C0 /* MiniPlayerView.swift in Sources */,
+				8A7E64510FCEBF7FEC3092BF /* MissingMetaPromptSheet.swift in Sources */,
+				5625766765C128121E1664F6 /* MusicBrainzService.swift in Sources */,
+				A10F8DF4F8A238EF14E05EF8 /* MusicSearchService.swift in Sources */,
+				0BFAF1EF92A619A395294C83 /* ProcessRunner.swift in Sources */,
+				632A1E1C53CF463DF094FAA9 /* QuickSettingsPopover.swift in Sources */,
+				2261842258A01DC697F9C8F5 /* ReviewQueueView.swift in Sources */,
+				6287D6CD95B349EA8044476B /* SettingsView.swift in Sources */,
+				69B0F01BC2BC493A735FB56C /* SidebarView.swift in Sources */,
+				1C81799546AD2521EE16C6CB /* SpotifyService.swift in Sources */,
+				AAFC74805445164D18711BFF /* TagService.swift in Sources */,
+				C818F56C33BC8E98CEF75E02 /* TagWriter.swift in Sources */,
+				061BDAA33493DF68068A021E /* Track.swift in Sources */,
+				EC9C777F0A8BE54014B9B661 /* TrackListView.swift in Sources */,
+				385AF21FF44AB4F86709C78B /* ValidationService.swift in Sources */,
+				4E732827538AE704AD35C77A /* WaveformGenerator.swift in Sources */,
+				20BB4684D10FECB41D0F8972 /* iTunesSearchService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A667D6827AFC357D6FDB3C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		743CC342F1541DF90DD263F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A0EB681867E110028FFFB19C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/MP3Manager/MP3Manager.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Sources/MP3Manager/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bitran.mp3manager;
+				PRODUCT_NAME = "MP3 Manager";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		A38D0D4CAFC23CAA249EA658 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Sources/MP3Manager/MP3Manager.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Sources/MP3Manager/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bitran.mp3manager;
+				PRODUCT_NAME = "MP3 Manager";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4A1A0C3FCFCE0F4CC62B3BF6 /* Build configuration list for PBXProject "MP3Manager" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A667D6827AFC357D6FDB3C1 /* Debug */,
+				743CC342F1541DF90DD263F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		74896A2C9DD76E3FDA623FE1 /* Build configuration list for PBXNativeTarget "MP3Manager" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0EB681867E110028FFFB19C /* Debug */,
+				A38D0D4CAFC23CAA249EA658 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 977593AE9AAFD2BB65CFE518 /* Project object */;
+}
