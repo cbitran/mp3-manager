@@ -148,13 +148,6 @@ struct ContentView: View {
 
             // Grupo 2: ações permanentes
             ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    state.isShowingAssistant = true
-                } label: {
-                    Image(systemName: "sparkles")
-                }
-                .help("Assistente — Encontre músicas por nome, artista, gênero...")
-
                 if state.reviewQueue.contains(where: { !$0.isResolved }) {
                     Button {
                         state.isShowingReviewQueue = true
@@ -229,9 +222,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $state.isShowingBatchBPMResults) {
             BatchBPMResultsView().environment(state)
-        }
-        .sheet(isPresented: $state.isShowingAssistant) {
-            AssistantView().environment(state)
         }
         .sheet(isPresented: $state.isShowingDuplicates) {
             DuplicatesView().environment(state)

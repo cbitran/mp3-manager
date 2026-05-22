@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TrackListView: View {
     @Environment(AppState.self) private var state
+    @StateObject private var deleteKeyBridge = DeleteKeyBridge()
     @State private var sortOrder = [KeyPathComparator(\Track.title)]
     @State private var filterMode: FilterMode = .all
     @AppStorage("trackTableColumnCustomization_v3")
@@ -144,11 +145,6 @@ struct TrackListView: View {
         @Bindable var state = state
 
         VStack(spacing: 0) {
-            Button("Excluir selecionadas") { requestDelete() }
-                .keyboardShortcut(.delete, modifiers: [])
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .disabled(state.selectedTrackIds.isEmpty)
 
             // Barra de controles só aparece quando há tracks carregados
             if !state.tracks.isEmpty || state.isScanning {
@@ -249,6 +245,11 @@ struct TrackListView: View {
         }
         .navigationTitle(state.selectedFolder?.lastPathComponent ?? "Músicas")
         .navigationSplitViewColumnWidth(min: 380, ideal: 600)
+        .onAppear  { deleteKeyBridge.start() }
+        .onDisappear { deleteKeyBridge.stop() }
+        .onReceive(deleteKeyBridge.triggered) {
+            if !state.selectedTrackIds.isEmpty { requestDelete() }
+        }
         .sheet(isPresented: $isShowingExport) {
             ExportFolderView(tracks: exportTracks)
                 .environment(state)
@@ -694,6 +695,7 @@ struct TrackListView: View {
         state.tracks.removeAll { ids.contains($0.id) }
         state.selectedTrackIds.subtract(ids)
         pendingDeleteTracks = []
+        if state.tracks.isEmpty { state.selectedFolder = nil }
     }
 
     private func performRemoveFromList() {
@@ -701,6 +703,7 @@ struct TrackListView: View {
         state.tracks.removeAll { ids.contains($0.id) }
         state.selectedTrackIds.subtract(ids)
         pendingDeleteTracks = []
+        if state.tracks.isEmpty { state.selectedFolder = nil }
     }
 
     // MARK: - BPM single analysis

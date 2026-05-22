@@ -12,6 +12,7 @@
 		0BFAF1EF92A619A395294C83 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA9CEB8577A2018532803FB /* ProcessRunner.swift */; };
 		1257082AE86830454BC9CC0F /* DuplicateDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C26AB4FF4A3B310D6CD0CD5 /* DuplicateDetector.swift */; };
 		1C81799546AD2521EE16C6CB /* SpotifyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CBF3D7445FDD64714CCED9 /* SpotifyService.swift */; };
+		1D01E1F919132EADE59E549B /* DeleteKeyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 981FBCC6A28C0A17F9C03162 /* DeleteKeyBridge.swift */; };
 		20BB4684D10FECB41D0F8972 /* iTunesSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB27D430D55713E14440D1E /* iTunesSearchService.swift */; };
 		21B5DAFF43DFCC92793036F8 /* BatchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C59D5ED5D5F4CDA7AB2D4F /* BatchResultsView.swift */; };
 		2236BAC8237B406EA53E8A03 /* AssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98FA2BB4B6446AB3908E6C5F /* AssistantView.swift */; };
@@ -96,6 +97,7 @@
 		8C523DD9B4F6776E61740516 /* BatchBPMResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchBPMResultsView.swift; sourceTree = "<group>"; };
 		8C98B203D09AEEF0E9D93D35 /* MP3Manager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MP3Manager.entitlements; sourceTree = "<group>"; };
 		939F6E5603E9BDCC8B57B38D /* AcoustIDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcoustIDService.swift; sourceTree = "<group>"; };
+		981FBCC6A28C0A17F9C03162 /* DeleteKeyBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteKeyBridge.swift; sourceTree = "<group>"; };
 		98FA2BB4B6446AB3908E6C5F /* AssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantView.swift; sourceTree = "<group>"; };
 		9E19BE7C2BF9422910FC60E9 /* AutoFitTableHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFitTableHelper.swift; sourceTree = "<group>"; };
 		A08587AAEB4BA024BD8D2BAF /* AssistantMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantMessage.swift; sourceTree = "<group>"; };
@@ -177,6 +179,7 @@
 				7FDBDE2E2B64964A9CB7B97F /* AudioPlayerService.swift */,
 				C0B41C2EEE517FA8637839BD /* BatchDJImportService.swift */,
 				AF59239E4759171EDFD3DBF9 /* BatchFixService.swift */,
+				981FBCC6A28C0A17F9C03162 /* DeleteKeyBridge.swift */,
 				0B4787D0FE520FACD8F48D9D /* DiscogsService.swift */,
 				A1769D7F90CFC7D1D0F14F4D /* DJService.swift */,
 				3C26AB4FF4A3B310D6CD0CD5 /* DuplicateDetector.swift */,
@@ -319,6 +322,7 @@
 				ED16D0976E29345991462A3E /* DJImportSummary.swift in Sources */,
 				B0BAE00EC2A40CD4AD3012D6 /* DJService.swift in Sources */,
 				E7FFCB313F3D09CE13AC3782 /* DJValidationSheet.swift in Sources */,
+				1D01E1F919132EADE59E549B /* DeleteKeyBridge.swift in Sources */,
 				FDF212165845F0C983D7EA3F /* DiscogsService.swift in Sources */,
 				1257082AE86830454BC9CC0F /* DuplicateDetector.swift in Sources */,
 				536AAE67357670E777EE226F /* DuplicatesView.swift in Sources */,
