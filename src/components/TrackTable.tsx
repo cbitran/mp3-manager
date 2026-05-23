@@ -96,7 +96,7 @@ export default function TrackTable({
     setColumnVisibility,
   } = useAppStore();
 
-  const anchorIdxRef = useRef<number | null>(null);
+  const anchorIdRef = useRef<string | null>(null);
 
   const [sorting, setSorting] = useState<SortingState>(() => {
     try {
@@ -518,20 +518,23 @@ export default function TrackTable({
       if ((e.target as HTMLElement).tagName === "INPUT") return;
       if ((e.target as HTMLElement).tagName === "BUTTON") return;
 
-      if (e.shiftKey && anchorIdxRef.current !== null) {
-        // Range select: seleciona todas as linhas entre o anchor e o clique atual
-        const lo = Math.min(anchorIdxRef.current, idx);
-        const hi = Math.max(anchorIdxRef.current, idx);
+      if (e.shiftKey && anchorIdRef.current !== null) {
+        // Range select: resolve o índice atual da faixa âncora pelo ID
+        const anchorIdx = tracks.findIndex((t) => t.id === anchorIdRef.current);
+        const from = anchorIdx >= 0 ? anchorIdx : idx;
+        const lo = Math.min(from, idx);
+        const hi = Math.max(from, idx);
         const rangeIds = tracks.slice(lo, hi + 1).map((t) => t.id);
         if (!e.metaKey) clearSelection();
         selectAll(rangeIds);
+        // âncora não muda no shift+click
       } else if (e.metaKey) {
         toggleSelect(id);
-        anchorIdxRef.current = idx;
+        anchorIdRef.current = id;
       } else {
         clearSelection();
         toggleSelect(id);
-        anchorIdxRef.current = idx;
+        anchorIdRef.current = id;
       }
     },
     [tracks, toggleSelect, selectAll, clearSelection]
