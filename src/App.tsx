@@ -387,6 +387,7 @@ export default function App() {
           if (target.closest('button, input, select, a, [role="button"]')) return;
           const isMac = navigator.platform.startsWith("Mac");
           if (isMac) {
+            e.preventDefault();
             getCurrentWindow().startDragging().catch(() => {});
           } else {
             // Windows/Linux: dead zone de 4px para não conflitar com botão fechar nativo
