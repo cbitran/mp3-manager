@@ -12,7 +12,9 @@ interface DeleteDialogState {
 }
 
 export default function Sidebar({ onFolderSelect }: SidebarProps) {
-  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, isScanning } = useAppStore();
+  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
+  const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
+  const clearSelection = useAppStore((s) => s.clearSelection);
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [subfolderMap, setSubfolderMap] = useState<Record<string, string[]>>({});
@@ -20,7 +22,12 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   const clearFolderTracks = (path: string) => {
-    if (path === lastFolder) setTracks([]);
+    if (path === lastFolder) {
+      setTracks([]);
+      setPlayerTrack(null);
+      clearSelection();
+      setLastFolder(null);
+    }
   };
 
   const isFavorite = (path: string) => favoriteFolders.includes(path);
@@ -71,7 +78,7 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
 
   return (
     <div
-      className="w-52 shrink-0 flex flex-col border-r border-white/[0.05] bg-[#0E0D0C] overflow-y-auto"
+      className="w-52 shrink-0 flex flex-col border-r border-white/[0.05] bg-[#0E0D0C] overflow-y-auto no-scrollbar"
       onClick={closeContextMenu}
     >
       {/* Pasta atual */}
@@ -83,7 +90,7 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-[#a09890] truncate flex-1 flex items-center gap-1.5" title={lastFolder}>
               <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
-              {lastFolder.split("/").pop()}
+              {lastFolder.split(/[\\/]/).filter(Boolean).pop()}
             </span>
             <button
               onClick={() => toggleFavorite(lastFolder)}
@@ -187,7 +194,7 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
             onClick={() => {
-              const name = contextMenu.path.split("/").pop() ?? contextMenu.path;
+              const name = contextMenu.path.split(/[\\/]/).filter(Boolean).pop() ?? contextMenu.path;
               setDeleteDialog({ path: contextMenu.path, name });
               closeContextMenu();
             }}
@@ -260,7 +267,7 @@ function FolderRow({
   path, isSelected, isExpanded, subfolders,
   onOpen, onToggleExpand, onContextMenu, onFolderSelect, lastFolder
 }: FolderRowProps) {
-  const name = path.split("/").pop() ?? path;
+  const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const hasSubs = subfolders === null || subfolders.length > 0;
 
   return (
@@ -310,7 +317,7 @@ function FolderRow({
               title={sub}
             >
               <svg width="10" height="10" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-40"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
-              {sub.split("/").pop()}
+              {sub.split(/[\\/]/).filter(Boolean).pop()}
             </button>
           ))}
         </div>

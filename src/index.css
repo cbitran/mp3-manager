@@ -203,3 +203,7 @@ input[type="checkbox"]:disabled {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
+
+/* ─── Esconder scrollbar ─────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }

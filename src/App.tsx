@@ -385,7 +385,25 @@ export default function App() {
         onMouseDown={(e) => {
           const target = e.target as HTMLElement;
           if (target.closest('button, input, select, a, [role="button"]')) return;
-          getCurrentWindow().startDragging().catch(() => {});
+          const isMac = navigator.platform.startsWith("Mac");
+          if (isMac) {
+            getCurrentWindow().startDragging().catch(() => {});
+          } else {
+            // Windows/Linux: dead zone de 4px para não conflitar com botão fechar nativo
+            const startX = e.clientX, startY = e.clientY;
+            const onMove = (mv: MouseEvent) => {
+              if (Math.abs(mv.clientX - startX) > 4 || Math.abs(mv.clientY - startY) > 4) {
+                cleanup();
+                getCurrentWindow().startDragging().catch(() => {});
+              }
+            };
+            const cleanup = () => {
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", cleanup);
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", cleanup);
+          }
         }}
       >
         {/* Espaço para os traffic lights do macOS */}

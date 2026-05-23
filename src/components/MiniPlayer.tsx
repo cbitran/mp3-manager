@@ -123,7 +123,15 @@ export default function MiniPlayer() {
 
   // ── Load track ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!activeTrack || !audioRef.current) return;
+    if (!audioRef.current) return;
+    if (!activeTrack) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      loadedPath.current = null;
+      setIsPlaying(false);
+      stopLiveAnim();
+      return;
+    }
     const shouldAutoPlay = consumeAutoPlay();
 
     if (loadedPath.current === activeTrack.path) {

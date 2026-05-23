@@ -76,7 +76,7 @@ interface AppState {
   setFilterTab: (tab: FilterTab) => void;
   setSearchQuery: (q: string) => void;
   setGenreFilter: (genre: string | null) => void;
-  setLastFolder: (path: string) => void;
+  setLastFolder: (path: string | null) => void;
   toggleFavorite: (path: string) => void;
   removeRecentFolder: (path: string) => void;
   toggleTrackFavorite: (path: string) => void;
@@ -222,6 +222,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGenreFilter: (genreFilter) => set({ genreFilter }),
 
   setLastFolder: (path) => {
+    if (path === null) {
+      localStorage.removeItem(LAST_FOLDER_KEY);
+      set({ lastFolder: null });
+      return;
+    }
     localStorage.setItem(LAST_FOLDER_KEY, path);
     const recents = get().recentFolders;
     const next = [path, ...recents.filter((r) => r !== path)].slice(0, 10);

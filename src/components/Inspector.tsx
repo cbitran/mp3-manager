@@ -194,7 +194,7 @@ export default function Inspector() {
   if (!first) return null;
 
   return (
-    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto">
+    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto no-scrollbar">
 
       {/* NOW SELECTED header */}
       <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
