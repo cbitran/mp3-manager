@@ -17,8 +17,8 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
 
   const subtitle =
     tracks.length === 1
-      ? "Escolha se quer apagar o arquivo do disco ou apenas removê-lo desta lista."
-      : `Escolha se quer apagar os ${tracks.length} arquivos do disco ou apenas removê-los desta lista.`;
+      ? "O arquivo será movido para a Lixeira ou removido apenas desta lista."
+      : `Os ${tracks.length} arquivos serão movidos para a Lixeira ou removidos apenas desta lista.`;
 
   async function handleTrash() {
     for (const t of tracks) {
@@ -36,32 +36,37 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-[#2a2a32] border border-white/10 rounded-xl shadow-2xl w-96 p-6 flex flex-col gap-4">
-        <div>
-          <h2 className="text-sm font-semibold text-white">{title}</h2>
-          <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+      <div className="bg-[#23201E] border border-white/[0.07] rounded-xl shadow-2xl w-96 overflow-hidden">
+
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-white/[0.05]">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] shrink-0" />
+            <h2 className="text-[13px] font-semibold text-[#F5F5F4]">{title}</h2>
+          </div>
+          <p className="text-xs text-[#605A55] leading-relaxed pl-3.5">{subtitle}</p>
         </div>
 
-        <div className="flex flex-col gap-2">
+        {/* Actions */}
+        <div className="flex flex-col gap-2 p-4">
           <button
             onClick={handleTrash}
-            className="w-full py-2.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-sm font-semibold transition-colors"
+            className="w-full py-2.5 rounded-lg bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white text-[13px] font-semibold transition-colors uppercase tracking-wide"
           >
-            🗑 Mover para a Lixeira
+            Mover para a Lixeira
           </button>
           <button
             onClick={removeFromState}
-            className="w-full py-2.5 rounded-lg bg-white/8 hover:bg-white/12 text-gray-200 text-sm font-medium transition-colors border border-white/10"
+            className="w-full py-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[#C2BEBC] text-[13px] font-medium transition-colors border border-white/[0.07]"
           >
             Remover da Lista
           </button>
           <button
             onClick={onClose}
-            className="w-full py-2 text-gray-500 hover:text-gray-300 text-sm transition-colors"
+            className="w-full py-2 text-[#373331] hover:text-[#605A55] text-[12px] transition-colors"
           >
             Cancelar
           </button>

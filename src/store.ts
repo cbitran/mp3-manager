@@ -16,55 +16,127 @@ export interface Track {
   duration_secs?: number;
   file_size_bytes: number;
   has_cover: boolean;
-  cover_version: number;   // incrementado após salvar capa — força reload no Inspector
+  cover_version: number;
   issues: string[];
+  format: string;
+  bitrate_kbps?: number;
+  sample_rate_hz?: number;
+  modified_at?: number;
 }
 
-export type FilterTab = "all" | "favorites" | "problems" | "ok";
+export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
 
-const LAST_FOLDER_KEY = "mp3mgr_lastFolder";
-const FAVORITES_KEY   = "mp3mgr_favorites";
-const FAV_TRACKS_KEY  = "mp3mgr_favTracks";
-const RECENT_KEY      = "mp3mgr_recentFolders";
+const LAST_FOLDER_KEY    = "mp3mgr_lastFolder";
+const FAVORITES_KEY      = "mp3mgr_favorites";
+const FAV_TRACKS_KEY     = "mp3mgr_favTracks";
+const RECENT_KEY         = "mp3mgr_recentFolders";
+
+const TRIAL_DAYS         = 14;
+const TRIAL_START_KEY    = "tagwave_trialStartDate";
+const TRACKS_ANALYZED_KEY= "tagwave_tracksAnalyzed";
+const TAGS_ENRICHED_KEY  = "tagwave_tagsEnriched";
+const LICENSE_KEY_STORE  = "tagwave_licenseKey";
+
+function initTrialStart(): Date {
+  const stored = localStorage.getItem(TRIAL_START_KEY);
+  if (stored) return new Date(stored);
+  const now = new Date();
+  localStorage.setItem(TRIAL_START_KEY, now.toISOString());
+  return now;
+}
 
 interface AppState {
   tracks: Track[];
   selectedIds: Set<string>;
   filterTab: FilterTab;
   searchQuery: string;
+  genreFilter: string | null;
   isScanning: boolean;
   lastFolder: string | null;
   favoriteFolders: string[];
   recentFolders: string[];
   favoriteTrackPaths: Set<string>;
 
+  // Trial
+  trialStartDate: Date;
+  tracksAnalyzed: number;
+  tagsEnriched: number;
+  licenseKey: string;
+
   setTracks: (tracks: Track[]) => void;
   updateTrack: (track: Track) => void;
   setScanning: (v: boolean) => void;
   toggleSelect: (id: string) => void;
   selectOnly: (id: string) => void;
+  selectAll: (ids: string[]) => void;
   clearSelection: () => void;
   setFilterTab: (tab: FilterTab) => void;
   setSearchQuery: (q: string) => void;
+  setGenreFilter: (genre: string | null) => void;
   setLastFolder: (path: string) => void;
   toggleFavorite: (path: string) => void;
   removeRecentFolder: (path: string) => void;
   toggleTrackFavorite: (path: string) => void;
   isTrackFavorite: (path: string) => boolean;
-
   filteredTracks: () => Track[];
+
+  // Column visibility (persisted)
+  columnVisibility: Record<string, boolean>;
+  setColumnVisibility: (v: Record<string, boolean>) => void;
+
+  // API keys
+  lastFmApiKey: string;
+  setLastFmApiKey: (key: string) => void;
+
+  // Trial actions
+  // Player
+  playerTrackId: string | null;
+  setPlayerTrack: (id: string | null) => void;
+
+  isTrialActivated: () => boolean;
+  isTrialExpired: () => boolean;
+  daysElapsed: () => number;
+  daysRemaining: () => number;
+  estimatedTimeSaved: () => string;
+  recordScan: (count: number) => void;
+  recordEnrichment: (count: number) => void;
+  activateLicense: (key: string) => void;
+  extendForBeta: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   tracks: [],
   selectedIds: new Set(),
+  playerTrackId: null,
+  setPlayerTrack: (id) => set({ playerTrackId: id }),
   filterTab: "all",
+  genreFilter: null,
   searchQuery: "",
   isScanning: false,
   lastFolder: localStorage.getItem(LAST_FOLDER_KEY),
   favoriteFolders: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]"),
   recentFolders: JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"),
   favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
+
+  // Trial state
+  trialStartDate: initTrialStart(),
+  tracksAnalyzed: parseInt(localStorage.getItem(TRACKS_ANALYZED_KEY) ?? "0", 10),
+  tagsEnriched:   parseInt(localStorage.getItem(TAGS_ENRICHED_KEY)   ?? "0", 10),
+  licenseKey:     localStorage.getItem(LICENSE_KEY_STORE) ?? "",
+
+  // Column visibility
+  columnVisibility: JSON.parse(localStorage.getItem("tagwave_col_vis") ?? "{}"),
+  setColumnVisibility: (v) => {
+    localStorage.setItem("tagwave_col_vis", JSON.stringify(v));
+    set({ columnVisibility: v });
+  },
+
+  // API keys
+  lastFmApiKey: localStorage.getItem("tagwave_lastfm_key") ?? "",
+  setLastFmApiKey: (key) => {
+    localStorage.setItem("tagwave_lastfm_key", key);
+    set({ lastFmApiKey: key });
+  },
 
   setTracks: (tracks) =>
     set({ tracks: tracks.map((t) => ({ ...t, cover_version: 0 })), selectedIds: new Set() }),
@@ -83,11 +155,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectOnly: (id) => set({ selectedIds: new Set([id]) }),
 
+  selectAll: (ids) => set({ selectedIds: new Set(ids) }),
+
   clearSelection: () => set({ selectedIds: new Set() }),
 
   setFilterTab: (filterTab) => set({ filterTab }),
 
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  setGenreFilter: (genreFilter) => set({ genreFilter }),
 
   setLastFolder: (path) => {
     localStorage.setItem(LAST_FOLDER_KEY, path);
@@ -120,15 +196,66 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   isTrackFavorite: (path) => get().favoriteTrackPaths.has(path),
 
+  // Trial computed
+  isTrialActivated: () => get().licenseKey.length > 0,
+  isTrialExpired: () => {
+    const s = get();
+    if (s.licenseKey.length > 0) return false;
+    const ms = Date.now() - s.trialStartDate.getTime();
+    return Math.floor(ms / 86_400_000) >= TRIAL_DAYS;
+  },
+  daysElapsed: () => {
+    const ms = Date.now() - get().trialStartDate.getTime();
+    return Math.max(0, Math.floor(ms / 86_400_000));
+  },
+  daysRemaining: () => {
+    const ms = Date.now() - get().trialStartDate.getTime();
+    return Math.max(0, TRIAL_DAYS - Math.floor(ms / 86_400_000));
+  },
+  estimatedTimeSaved: () => {
+    const mins = get().tracksAnalyzed * 2;
+    if (mins === 0) return "—";
+    if (mins < 60) return `${mins} min`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m === 0 ? `≈ ${h}h` : `≈ ${h}h ${m}min`;
+  },
+  recordScan: (count) => {
+    if (count <= 0) return;
+    const next = get().tracksAnalyzed + count;
+    localStorage.setItem(TRACKS_ANALYZED_KEY, String(next));
+    set({ tracksAnalyzed: next });
+  },
+  recordEnrichment: (count) => {
+    if (count <= 0) return;
+    const next = get().tagsEnriched + count;
+    localStorage.setItem(TAGS_ENRICHED_KEY, String(next));
+    set({ tagsEnriched: next });
+  },
+  activateLicense: (key) => {
+    localStorage.setItem(LICENSE_KEY_STORE, key);
+    set({ licenseKey: key });
+  },
+  extendForBeta: () => {
+    const yesterday = new Date(Date.now() - 86_400_000);
+    localStorage.setItem(TRIAL_START_KEY, yesterday.toISOString());
+    set({ trialStartDate: yesterday });
+  },
+
   filteredTracks: () => {
-    const { tracks, filterTab, searchQuery, favoriteTrackPaths } = get();
+    const { tracks, filterTab, searchQuery, favoriteTrackPaths, genreFilter } = get();
     let result = tracks;
+    if (genreFilter) result = result.filter((t) => t.genre === genreFilter);
     if (filterTab === "problems")
       result = result.filter((t) => t.issues.length > 0);
     else if (filterTab === "ok")
       result = result.filter((t) => t.issues.length === 0);
     else if (filterTab === "favorites")
       result = result.filter((t) => favoriteTrackPaths.has(t.path));
+    else if (filterTab === "recent") {
+      const cutoff = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+      result = result.filter((t) => (t.modified_at ?? 0) >= cutoff);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(

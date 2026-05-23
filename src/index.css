@@ -1,1 +1,126 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
+
+/* ─── DS TagWave — Color Primitives ─────────────────────────────── */
+:root {
+  /* Coral (accent principal) */
+  --coral-50:  #FCF3F2;
+  --coral-100: #F5D3CE;
+  --coral-200: #EEB3AB;
+  --coral-300: #E79387;
+  --coral-400: #E07364;
+  --coral-500: #D95340;
+  --coral-600: #B34435;
+  --coral-700: #8D3629;
+  --coral-800: #66271E;
+  --coral-900: #401913;
+  --coral-950: #1A0A08;
+
+  /* Neutral (textos + fundos quentes) */
+  --neutral-50:  #F5F5F4;
+  --neutral-100: #DCDAD8;
+  --neutral-200: #C2BEBC;
+  --neutral-300: #A8A3A0;
+  --neutral-400: #8F8883;
+  --neutral-500: #756D67;
+  --neutral-600: #605A55;
+  --neutral-700: #4C4743;
+  --neutral-800: #373331;
+  --neutral-900: #23201E;
+  --neutral-950: #0E0D0C;
+
+  /* Ink (fundos cool/neutros) */
+  --ink-50:  #EEEEEE;
+  --ink-100: #D8D8D7;
+  --ink-200: #C2C1C1;
+  --ink-300: #ACABAA;
+  --ink-400: #969493;
+  --ink-500: #807E7C;
+  --ink-600: #6A6766;
+  --ink-700: #54514F;
+  --ink-800: #3E3A38;
+  --ink-900: #282422;
+  --ink-950: #120D0B;
+
+  /* Crimson (accent secundário) */
+  --crimson-500: #AA6374;
+  --crimson-600: #9A465B;
+  --crimson-700: #8B2A42;
+
+  /* Green (Camelot — compatibilidade harmônica DJ) */
+  --green-300: #98C394;
+  --green-400: #7AB275;
+  --green-500: #5BA055;
+  --green-600: #4B8846;
+  --green-700: #3B6837;
+  --green-800: #2B4C28;
+
+  /* ─── Tokens semânticos ─────────────────────────────────────── */
+
+  /* Backgrounds */
+  --bg-base:     var(--neutral-950); /* janela / mais escuro     */
+  --bg-surface:  var(--neutral-900); /* painéis, sidebar         */
+  --bg-elevated: var(--neutral-800); /* cards, inspector         */
+
+  /* Texto */
+  --text-primary:   var(--neutral-50);  /* títulos, labels           */
+  --text-secondary: var(--neutral-400); /* subtítulos, artista — 5.53:1 AA */
+  --text-muted:     var(--neutral-400); /* placeholders, hints — 5.53:1 AA */
+  --text-faint:     var(--neutral-600); /* quase invisível           */
+  --text-ghost:     var(--neutral-700); /* separadores tipográficos  */
+
+  /* Accent coral */
+  --accent:        var(--coral-500); /* #D95340 */
+  --accent-hover:  var(--coral-400); /* #E07364 */
+  --accent-active: var(--coral-600); /* #B34435 */
+  --accent-subtle: color-mix(in srgb, var(--coral-500) 12%, transparent);
+  --accent-border: color-mix(in srgb, var(--coral-500) 25%, transparent);
+
+  /* Divisores */
+  --divider:       color-mix(in srgb, white 6%, transparent);
+  --divider-faint: color-mix(in srgb, white 3%, transparent);
+
+  /* Especiais */
+  --camelot: var(--green-500);        /* #5BA055 — compatibilidade harmônica */
+  --success:  var(--green-800);        /* #2B4C28 — save/ok */
+}
+
+/* ─── Reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: 'Geist', 'Helvetica Neue', Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--neutral-950);
+}
+
+input[type="range"] { accent-color: var(--accent); }
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes eq-bar {
+  from { transform: scaleY(0.4); }
+  to   { transform: scaleY(1.0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

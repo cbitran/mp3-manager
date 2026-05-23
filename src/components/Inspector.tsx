@@ -16,7 +16,7 @@ interface FieldProps {
 function Field({ label, value, onChange, disabled, placeholder, mono }: FieldProps) {
   return (
     <div>
-      <label className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest block mb-1">
+      <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
         {label}
       </label>
       <input
@@ -24,7 +24,7 @@ function Field({ label, value, onChange, disabled, placeholder, mono }: FieldPro
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder ?? ""}
-        className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-gray-200 placeholder-gray-700 focus:outline-none focus:border-blue-500 focus:bg-white/8 disabled:opacity-30 transition-colors ${mono ? "font-mono" : ""}`}
+        className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 disabled:opacity-30 transition-colors ${mono ? "font-mono" : ""}`}
       />
     </div>
   );
@@ -44,6 +44,7 @@ export default function Inspector() {
   const [trackNumber, setTrackNumber] = useState(first?.track_number?.toString() ?? "");
   const [bpm, setBpm]               = useState(first?.bpm ?? "");
   const [key, setKey]               = useState(first?.key ?? "");
+  const [rating, setRating]         = useState(first?.rating ?? 0);
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
   const [enriching, setEnriching]   = useState(false);
@@ -60,6 +61,7 @@ export default function Inspector() {
     setTrackNumber(first.track_number?.toString() ?? "");
     setBpm(first.bpm ?? "");
     setKey(first.key ?? "");
+    setRating(first.rating ?? 0);
     setSaved(false);
     setEnrichSummary(null);
   }, [first?.id]);
@@ -138,7 +140,7 @@ export default function Inspector() {
           trackNumber: trackNumber ? parseInt(trackNumber) : null,
           bpm: bpm || null,
           key: key || null,
-          rating: null,
+          rating: rating > 0 ? rating : null,
         });
         const newIssues: string[] = [];
         if (!title)  newIssues.push("sem título");
@@ -169,59 +171,125 @@ export default function Inspector() {
   if (!first) return null;
 
   return (
-    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.06] bg-[#17171c] overflow-y-auto">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-white/[0.06]">
-        <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">
-          {isBatch ? `${selectedArr.length} faixas selecionadas` : "Inspector"}
+    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto">
+
+      {/* NOW SELECTED header */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
+        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-2">
+          {isBatch ? `${selectedArr.length} selecionadas` : "Selecionado"}
         </p>
         {!isBatch && (
-          <p className="text-xs text-gray-500 mt-1 truncate leading-tight">{first.filename}</p>
+          <>
+            <p className="text-sm font-semibold text-[#F5F5F4] leading-snug truncate">
+              {first.title ?? first.filename}
+            </p>
+            {first.artist && (
+              <p className="text-[11px] text-[#8F8883] mt-0.5 truncate">{first.artist}</p>
+            )}
+          </>
         )}
       </div>
 
-      {/* Cover art thumbnail */}
+      {/* Cover art */}
       {!isBatch && coverDataUrl && (
         <div className="mx-3 mt-3">
-          <img
-            src={coverDataUrl}
-            alt="Cover"
-            className="w-full rounded-lg object-cover"
-            style={{ maxHeight: 180 }}
-          />
+          <img src={coverDataUrl} alt="Cover" className="w-full rounded-md object-cover" style={{ maxHeight: 164 }} />
+        </div>
+      )}
+      {!isBatch && !coverDataUrl && (
+        <div className="mx-3 mt-3 h-14 rounded-md bg-white/[0.02] border border-white/[0.04] flex items-center justify-center">
+          <span className="text-[#4C4743] text-[10px] uppercase tracking-widest">sem capa</span>
         </div>
       )}
 
-      {/* Cover placeholder */}
-      {!isBatch && !coverDataUrl && (
-        <div className="mx-3 mt-3 h-16 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-          <span className="text-gray-700 text-xs">sem capa</span>
+      {/* BPM + Tom destacados */}
+      {!isBatch && (first.bpm || first.key) && (
+        <div className="mx-3 mt-3 flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/[0.02] border border-white/[0.04]">
+          {first.bpm && (
+            <div className="flex-1">
+              <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">BPM</p>
+              <p className="text-base font-mono font-bold text-[#F5F5F4] tabular-nums leading-none">
+                {parseFloat(first.bpm).toFixed(2)}
+              </p>
+            </div>
+          )}
+          {first.key && (
+            <div>
+              <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">TOM</p>
+              <span
+                className="inline-block px-2 py-0.5 rounded-sm text-sm font-mono font-bold text-white"
+                style={{ backgroundColor: `hsl(${((["Abm","G#m","B","Ebm","D#m","Gb","F#","Bbm","A#m","Db","C#","Fm","Ab","G#","Cm","Eb","D#","Gm","Bb","A#","Dm","F","Am","C","Em","G","Bm","D","F#m","Gbm","A","Dbm","C#m","E"].indexOf(first.key)+1)%12)*30}, 60%, 44%)` }}
+              >
+                {first.key}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Formato / Bitrate */}
+      {!isBatch && (
+        <div className="mx-3 mt-2 flex items-center gap-2 flex-wrap">
+          {first.format && (
+            <span className="px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-white/[0.04] text-[#605A55]">
+              {first.format}
+            </span>
+          )}
+          {first.bitrate_kbps && (
+            <span className="text-[10px] font-mono text-[#8F8883]">
+              {first.bitrate_kbps} kbps
+            </span>
+          )}
+          {first.sample_rate_hz && (
+            <span className="text-[10px] font-mono text-[#8F8883]">
+              {(first.sample_rate_hz / 1000).toFixed(1)} kHz
+            </span>
+          )}
+          {first.file_size_bytes > 0 && (
+            <span className="text-[10px] font-mono text-[#8F8883]">
+              {(first.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
+            </span>
+          )}
         </div>
       )}
 
       {/* Issues */}
       {!isBatch && first.issues.length > 0 && (
-        <div className="mx-3 mt-3 p-2.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-          <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-1">
-            Problemas
+        <div className="mx-3 mt-3 px-3 py-2 rounded-md border border-[#D95340]/20 bg-[#D95340]/8">
+          <p className="text-[9px] font-bold text-[#D95340] uppercase tracking-widest mb-1.5">
+            Precisa de atenção
           </p>
           {first.issues.map((issue) => (
-            <p key={issue} className="text-xs text-amber-300/80">
-              • {issue}
+            <p key={issue} className="text-[11px] text-[#C99BA6] leading-tight">
+              · {issue}
             </p>
           ))}
         </div>
       )}
 
+      {/* Rating */}
+      {!isBatch && (
+        <div className="mx-3 mt-2 flex items-center gap-1.5">
+          <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest w-10">Rating</span>
+          <div className="flex gap-0.5">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => setRating(rating === n ? 0 : n)}
+                className={`text-base transition-colors leading-none ${
+                  n <= rating ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#8F8883]"
+                }`}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Fields */}
-      <div className="flex flex-col gap-3 px-3 py-4">
-        <Field
-          label="Título"
-          value={title}
-          onChange={setTitle}
-          disabled={isBatch}
-          placeholder={isBatch ? "(múltiplos)" : ""}
-        />
+      <div className="flex flex-col gap-2.5 px-3 py-4">
+        <Field label="Título" value={title} onChange={setTitle} disabled={isBatch} placeholder={isBatch ? "(múltiplos)" : ""} />
         <Field label="Artista" value={artist} onChange={setArtist} />
         <Field label="Álbum" value={album} onChange={setAlbum} />
         <Field label="Gênero" value={genre} onChange={setGenre} />
@@ -234,58 +302,56 @@ export default function Inspector() {
           <Field label="Tom" value={key} onChange={setKey} mono />
         </div>
 
-        {/* Enriquecer Metadados */}
+        {/* Enriquecer */}
         <button
           onClick={enrichAll}
           disabled={enriching}
-          className="w-full rounded-xl disabled:opacity-60 overflow-hidden"
+          className="w-full rounded-lg disabled:opacity-60 overflow-hidden mt-1"
           style={{
             background: enriching
-              ? "rgba(99,102,241,0.3)"
+              ? "rgba(220,85,71,0.15)"
               : enrichSummary
-              ? "rgba(22,163,74,0.2)"
-              : "linear-gradient(to right, #1e9e66, #2e6bd4)",
+              ? "rgba(220,85,71,0.12)"
+              : "linear-gradient(135deg, #8B3E38, #D95340)",
           }}
         >
           <div className="flex items-center gap-2.5 px-3.5 py-2.5">
             {enriching ? (
               <>
                 <span className="animate-spin text-white text-base">⟳</span>
-                <span className="text-white text-xs font-semibold">Buscando metadados…</span>
+                <span className="text-white text-xs font-semibold">Buscando…</span>
               </>
             ) : enrichSummary ? (
               <>
-                <span className="text-white text-sm">
-                  {enrichSummary.startsWith("✓") ? "✓" : "✗"}
-                </span>
+                <span className="text-white text-sm">{enrichSummary.startsWith("✓") ? "✓" : "✗"}</span>
                 <span className="text-white/90 text-[11px] font-medium flex-1 text-left leading-tight">
                   {enrichSummary.replace(/^[✓✗]\s*/, "")}
                 </span>
-                <span className="text-white/60 text-xs">↺</span>
+                <span className="text-white/50 text-xs">↺</span>
               </>
             ) : (
               <>
-                <span className="text-white text-base">✦</span>
+                <span className="text-white text-sm">✦</span>
                 <div className="flex-1 text-left">
                   <p className="text-white text-xs font-bold leading-none">Enriquecer Metadados</p>
-                  <p className="text-white/65 text-[10px] mt-0.5">Spotify · iTunes · Last.fm</p>
+                  <p className="text-white/55 text-[10px] mt-0.5">Spotify · iTunes</p>
                 </div>
-                <span className="text-white/50 text-xs">›</span>
+                <span className="text-white/40 text-xs">›</span>
               </>
             )}
           </div>
         </button>
       </div>
 
-      {/* Actions */}
-      <div className="px-3 pb-4 mt-auto flex flex-col gap-2">
+      {/* Save */}
+      <div className="px-3 pb-4 mt-auto">
         <button
           onClick={handleSave}
           disabled={saving}
-          className={`w-full py-2 rounded-md text-xs font-semibold transition-colors ${
+          className={`w-full py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${
             saved
-              ? "bg-emerald-600 text-white"
-              : "bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white"
+              ? "bg-[#2B4C28]/90 text-white"
+              : "bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white"
           } disabled:opacity-50`}
         >
           {saving ? "Salvando…" : saved ? "✓ Salvo" : "Salvar Tags"}
