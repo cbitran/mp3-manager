@@ -48,11 +48,7 @@
         "silent": true
       },
       "nsis": {
-        "installMode": "currentUser",
-        "shortcutName": "TagWave",
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true,
-        "launchAfterInstall": true
+        "installMode": "currentUser"
       }
     }
   }

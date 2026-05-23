@@ -294,6 +294,7 @@ export default function TrackTable({
             <span className="text-[#605A55] text-xs">—</span>
           ),
         size: 160,
+        minSize: 140,
       }),
 
       // GÊNERO
@@ -620,7 +621,7 @@ export default function TrackTable({
   return (
     <>
     <div className="flex-1 overflow-auto select-none">
-      <table className="w-full text-sm border-collapse">
+      <table className="w-full text-sm border-collapse table-fixed">
         <thead className="sticky top-0 z-10 bg-[#0E0D0C]">
           <tr>
             {/* Row number header */}
