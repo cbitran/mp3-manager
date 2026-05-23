@@ -274,13 +274,25 @@ export default function MiniPlayer() {
     setProgress(t);
   }, [duration]);
 
-  // Vertical volume slider
-  const handleVerticalVolume = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // Vertical volume slider — drag com document listeners para não perder o mouse
+  const handleVolumeMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
     e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
-    setVolume(v);
-    if (audioRef.current) audioRef.current.volume = v;
+    const trackEl = e.currentTarget;
+    const applyVolume = (clientY: number) => {
+      const rect = trackEl.getBoundingClientRect();
+      const v = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
+      setVolume(v);
+      if (audioRef.current) audioRef.current.volume = v;
+    };
+    applyVolume(e.clientY);
+    const onMove = (mv: MouseEvent) => applyVolume(mv.clientY);
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   }, []);
 
   function fmt(s: number) {
@@ -367,7 +379,7 @@ export default function MiniPlayer() {
         {/* ── ZONA 2: Controles de transporte ──────────────────── */}
         <div className="flex items-center gap-3.5 px-5 shrink-0">
           <button onClick={() => skipTrack(-1)} disabled={!activeTrack}
-            className="text-[#4C4743] hover:text-[#756D67] disabled:opacity-25 transition-colors">
+            className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
               <rect x="1" y="1" width="1.5" height="10" rx="0.5"/>
               <path d="M10.5 1.5L4 6l6.5 4.5V1.5z"/>
@@ -395,7 +407,7 @@ export default function MiniPlayer() {
           </button>
 
           <button onClick={() => skipTrack(1)} disabled={!activeTrack}
-            className="text-[#4C4743] hover:text-[#756D67] disabled:opacity-25 transition-colors">
+            className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
               <rect x="9.5" y="1" width="1.5" height="10" rx="0.5"/>
               <path d="M1.5 1.5L8 6 1.5 10.5V1.5z"/>
@@ -408,7 +420,7 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 3: Waveform seekável ─────────────────────────── */}
         <div className="flex items-center gap-3 flex-1 min-w-0 px-5">
-          <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7 text-right">
+          <span className="text-[9px] text-[#756D67] font-mono tabular-nums shrink-0 w-7 text-right">
             {fmt(progress)}
           </span>
 
@@ -480,7 +492,7 @@ export default function MiniPlayer() {
             )}
           </div>
 
-          <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7">
+          <span className="text-[9px] text-[#756D67] font-mono tabular-nums shrink-0 w-7">
             {fmt(duration)}
           </span>
         </div>
@@ -508,7 +520,7 @@ export default function MiniPlayer() {
           <div className="relative" ref={volumePopupRef}>
             <button
               onClick={() => setShowVolume((v) => !v)}
-              className={`transition-colors ${showVolume ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#756D67]"}`}
+              className={`transition-colors ${showVolume ? "text-[#D95340]" : "text-[#756D67] hover:text-[#A8A3A0]"}`}
               title={`Volume: ${Math.round(volume * 100)}%`}
             >
               {volIcon}
@@ -528,11 +540,7 @@ export default function MiniPlayer() {
                 <div
                   className="relative w-3 cursor-pointer"
                   style={{ height: 80 }}
-                  onClick={handleVerticalVolume}
-                  onMouseMove={(e) => {
-                    if (e.buttons !== 1) return;
-                    handleVerticalVolume(e);
-                  }}
+                  onMouseDown={handleVolumeMouseDown}
                 >
                   {/* Track background */}
                   <div className="absolute inset-x-[5px] inset-y-0 rounded-full bg-[#23201E]" />

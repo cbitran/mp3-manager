@@ -825,7 +825,7 @@ export default function TrackTable({
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
-                    className={`px-3 ${rowH} max-w-0 overflow-hidden align-top`}
+                    className={`px-3 ${rowH} max-w-0 overflow-hidden align-middle`}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>

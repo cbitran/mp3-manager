@@ -18,6 +18,7 @@ const DJ_LABELS: Record<string, string> = {
   rekordbox: "rekordbox",
   traktor:   "Traktor Pro 3",
   vdj:       "Virtual DJ",
+  djay:      "djay Pro",
 };
 
 const DJ_ICONS: Record<string, string> = {
@@ -25,6 +26,7 @@ const DJ_ICONS: Record<string, string> = {
   rekordbox: "R",
   traktor:   "T",
   vdj:       "V",
+  djay:      "D",
 };
 
 export default function CreatePlaylistModal({ tracks, onClose }: Props) {

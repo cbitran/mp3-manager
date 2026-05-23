@@ -27,30 +27,20 @@ const DJ_OPTIONS = [
   { id: "rekordbox", label: "rekordbox" },
   { id: "traktor",   label: "Traktor Pro" },
   { id: "vdj",       label: "Virtual DJ" },
+  { id: "djay",      label: "djay Pro" },
 ];
 
 export default function Settings({ onClose }: { onClose: () => void }) {
   const {
     columnVisibility, setColumnVisibility,
     theme, setTheme,
-    spotifyClientId, spotifyClientSecret, setSpotifyCredentials,
-    lastFmApiKey, setLastFmApiKey,
-    discogsToken, setDiscogsToken,
-    acoustidKey, setAcoustidKey,
     djPrimary, djAutoImport, djShowAll, setDjPrefs,
     activateLicense, isTrialActivated,
     daysElapsed, daysRemaining, tracksAnalyzed, tagsEnriched, estimatedTimeSaved,
   } = useAppStore();
 
   const [tab, setTab] = useState<Tab>("appearance");
-
-  // Serviços drafts
-  const [spotifyId,     setSpotifyId]     = useState(spotifyClientId);
-  const [spotifySecret, setSpotifySecret] = useState(spotifyClientSecret);
-  const [lastfmKey,     setLastfmKey]     = useState(lastFmApiKey);
-  const [discogs,       setDiscogs]       = useState(discogsToken);
-  const [acoustid,      setAcoustid]      = useState(acoustidKey);
-  const [saved,         setSaved]         = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
 
   // DJ drafts
   const [djP, setDjP] = useState(djPrimary);
@@ -137,7 +127,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             <div className="space-y-5">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "#8F8883" }}>Tema</p>
-                <p className="text-[12px] mb-3" style={{ color: "#605A55" }}>Escolha entre tema escuro, claro ou siga o sistema.</p>
+                <p className="text-[12px] mb-3" style={{ color: "#605A55" }}>Siga o sistema, use o tema claro ou o visual exclusivo do TagWave.</p>
                 <div className="flex gap-2">
                   {(["auto", "light", "dark"] as const).map((t) => (
                     <button
@@ -150,13 +140,13 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                         color: theme === t ? "#D95340" : "#8F8883",
                       }}
                     >
-                      {t === "auto" ? "Automático" : t === "light" ? "Claro" : "Escuro"}
+                      {t === "auto" ? "Automático" : t === "light" ? "Claro" : "Skin"}
                     </button>
                   ))}
                 </div>
                 {theme !== "dark" && (
                   <p className="text-[10px] mt-2" style={{ color: "#605A55" }}>
-                    Nota: o TagWave está otimizado para tema escuro. Suporte completo a tema claro em breve.
+                    Nota: o TagWave está otimizado para o tema Skin. Suporte completo ao tema claro em breve.
                   </p>
                 )}
               </div>
@@ -166,98 +156,27 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           {/* ── SERVIÇOS ── */}
           {tab === "services" && (
             <div className="space-y-6">
-              {/* Spotify */}
+              {/* Enriquecimento automático */}
               <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#8F8883" }}>Spotify</p>
-                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>
-                  Usado para BPM, Tom, Álbum e Ano. Crie um app em{" "}
-                  <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#8F8883" }}>developer.spotify.com</a>.
-                </p>
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-[10px] mb-1" style={{ color: "#605A55" }}>Client ID</p>
-                    <input type="text" value={spotifyId} onChange={(e) => setSpotifyId(e.target.value)}
-                      placeholder="Cole o Client ID aqui" className={inputCls} style={inputStyle}
-                      onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-                      onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-[10px] mb-1" style={{ color: "#605A55" }}>Client Secret</p>
-                    <input type="password" value={spotifySecret} onChange={(e) => setSpotifySecret(e.target.value)}
-                      placeholder="Cole o Client Secret aqui" className={inputCls} style={inputStyle}
-                      onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-                      onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => { setSpotifyCredentials(spotifyId.trim(), spotifySecret.trim()); showSaved("Spotify"); }}
-                    className="px-4 py-1.5 rounded-md text-[12px] font-bold uppercase tracking-wide text-white transition-colors"
-                    style={{ backgroundColor: saved === "Spotify" ? "#5BA055" : "#D95340" }}
-                  >{saved === "Spotify" ? "✓ Salvo" : "Salvar"}</button>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#8F8883" }}>Enriquecimento de Metadados</p>
+                <div className="rounded-lg px-4 py-3 space-y-2" style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  {[
+                    { icon: "♪", label: "iTunes / Apple Music", desc: "Gênero, Álbum, Ano e Capa — automático, sem login" },
+                    { icon: "◎", label: "MusicBrainz", desc: "Identificação por fingerprint de áudio" },
+                    { icon: "≋", label: "Análise local", desc: "BPM e Tom calculados diretamente no arquivo" },
+                  ].map(({ icon, label, desc }) => (
+                    <div key={label} className="flex items-start gap-3">
+                      <span className="text-[14px] mt-0.5 w-5 text-center shrink-0" style={{ color: "#D95340" }}>{icon}</span>
+                      <div>
+                        <p className="text-[12px] font-semibold" style={{ color: "#C2BEBC" }}>{label}</p>
+                        <p className="text-[11px]" style={{ color: "#605A55" }}>{desc}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </section>
-
-              {/* Last.fm */}
-              <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#8F8883" }}>Last.fm</p>
-                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>
-                  Usado para gênero e popularidade. Chave gratuita em{" "}
-                  <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#8F8883" }}>last.fm/api</a>.
+                <p className="text-[10px] mt-2" style={{ color: "#4C4743" }}>
+                  Nenhuma conta ou chave de API é necessária. O TagWave cuida de tudo automaticamente.
                 </p>
-                <div className="space-y-2">
-                  <input type="text" value={lastfmKey} onChange={(e) => setLastfmKey(e.target.value)}
-                    placeholder="API Key" className={inputCls} style={inputStyle}
-                    onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-                    onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
-                  />
-                  <button
-                    onClick={() => { setLastFmApiKey(lastfmKey.trim()); showSaved("LastFM"); }}
-                    className="px-4 py-1.5 rounded-md text-[12px] font-bold uppercase tracking-wide text-white transition-colors"
-                    style={{ backgroundColor: saved === "LastFM" ? "#5BA055" : "#D95340" }}
-                  >{saved === "LastFM" ? "✓ Salvo" : "Salvar"}</button>
-                </div>
-              </section>
-
-              {/* Discogs */}
-              <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#8F8883" }}>Discogs</p>
-                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>
-                  Token pessoal: discogs.com → Configurações → Desenvolvedores.
-                </p>
-                <div className="space-y-2">
-                  <input type="password" value={discogs} onChange={(e) => setDiscogs(e.target.value)}
-                    placeholder="Personal Token" className={inputCls} style={inputStyle}
-                    onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-                    onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
-                  />
-                  <button
-                    onClick={() => { setDiscogsToken(discogs.trim()); showSaved("Discogs"); }}
-                    className="px-4 py-1.5 rounded-md text-[12px] font-bold uppercase tracking-wide text-white transition-colors"
-                    style={{ backgroundColor: saved === "Discogs" ? "#5BA055" : "#D95340" }}
-                  >{saved === "Discogs" ? "✓ Salvo" : "Salvar"}</button>
-                </div>
-              </section>
-
-              {/* AcoustID */}
-              <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#8F8883" }}>AcoustID</p>
-                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>
-                  Fingerprint de áudio para identificação de faixas. Registre em{" "}
-                  <a href="https://acoustid.org/login" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#8F8883" }}>acoustid.org</a>.
-                </p>
-                <div className="space-y-2">
-                  <input type="password" value={acoustid} onChange={(e) => setAcoustid(e.target.value)}
-                    placeholder="Client Key" className={inputCls} style={inputStyle}
-                    onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-                    onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
-                  />
-                  <button
-                    onClick={() => { setAcoustidKey(acoustid.trim()); showSaved("AcoustID"); }}
-                    className="px-4 py-1.5 rounded-md text-[12px] font-bold uppercase tracking-wide text-white transition-colors"
-                    style={{ backgroundColor: saved === "AcoustID" ? "#5BA055" : "#D95340" }}
-                  >{saved === "AcoustID" ? "✓ Salvo" : "Salvar"}</button>
-                </div>
               </section>
 
               {/* DJ Software */}

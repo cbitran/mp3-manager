@@ -219,6 +219,8 @@ export default function Inspector() {
           className="mx-3 mt-3 relative group"
           style={{ aspectRatio: "1/1" }}
         >
+          {/* Wrapper com folga para o disco não cortar nas bordas */}
+          <div className="absolute" style={{ inset: "6px" }}>
           {/* Disco — gira apenas quando tocando */}
           <div
             className="absolute inset-0 rounded-full overflow-hidden"
@@ -299,6 +301,8 @@ export default function Inspector() {
               style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
             />
           )}
+
+          </div>{/* fim wrapper inset */}
 
           {/* Botão alterar capa */}
           <button

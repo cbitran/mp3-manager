@@ -783,10 +783,34 @@ struct DjSoftwareInfo {
 #[tauri::command]
 fn detect_dj_software() -> Vec<DjSoftwareInfo> {
     let candidates: &[(&str, &str, &[&str])] = &[
-        ("serato",    "Serato DJ Pro",  &["/Applications/Serato DJ Pro.app"]),
-        ("rekordbox", "rekordbox",       &["/Applications/rekordbox.app", "/Applications/rekordbox 6.app"]),
-        ("traktor",   "Traktor Pro 3",  &["/Applications/Traktor Pro 3.app", "/Applications/Traktor Pro 2.app"]),
-        ("vdj",       "Virtual DJ",     &["/Applications/VirtualDJ.app", "/Applications/VirtualDJ 2023.app", "/Applications/VirtualDJ 2024.app"]),
+        ("serato", "Serato DJ Pro", &[
+            "/Applications/Serato DJ Pro.app",
+            "/Applications/Serato DJ Lite.app",
+        ]),
+        ("rekordbox", "rekordbox", &[
+            "/Applications/rekordbox.app",
+            "/Applications/rekordbox 6.app",
+            "/Applications/rekordbox 6/rekordbox.app",
+            "/Applications/rekordbox 7/rekordbox.app",
+            "/Applications/rekordbox 8/rekordbox.app",
+        ]),
+        ("traktor", "Traktor Pro 3", &[
+            "/Applications/Traktor Pro 3.app",
+            "/Applications/Traktor Pro 2.app",
+            "/Applications/Traktor Pro.app",
+            "/Applications/Native Instruments/Traktor Pro 3.app",
+        ]),
+        ("vdj", "Virtual DJ", &[
+            "/Applications/VirtualDJ.app",
+            "/Applications/VirtualDJ 2023.app",
+            "/Applications/VirtualDJ 2024.app",
+            "/Applications/VirtualDJ 2025.app",
+        ]),
+        ("djay", "djay Pro", &[
+            "/Applications/djay Pro.app",
+            "/Applications/djay Pro AI.app",
+            "/Applications/djay.app",
+        ]),
     ];
     candidates.iter().map(|(id, name, paths)| {
         let installed = paths.iter().any(|p| Path::new(p).exists());
@@ -955,25 +979,59 @@ fn export_playlist_to_dj(
             export_m3u(tracks, path.to_string_lossy().to_string())?;
             Ok(path.to_string_lossy().to_string())
         }
+        "djay" => {
+            let dir = home.join("Music").join("djay").join("Playlists");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{}.m3u", safe_name));
+            export_m3u(tracks, path.to_string_lossy().to_string())?;
+            Ok(path.to_string_lossy().to_string())
+        }
         _ => Err(format!("Software desconhecido: {}", software_id)),
     }
 }
 
 #[tauri::command]
 fn open_dj_app(software_id: String) -> Result<(), String> {
-    let bundle_ids: &[(&str, &str)] = &[
-        ("serato",    "com.serato.dj.pro"),
-        ("rekordbox", "com.pioneerdj.rekordbox"),
-        ("traktor",   "com.native-instruments.Traktor-Pro-3"),
-        ("vdj",       "com.atomixproductions.virtualdj"),
+    let app_paths: &[(&str, &[&str])] = &[
+        ("serato", &[
+            "/Applications/Serato DJ Pro.app",
+            "/Applications/Serato DJ Lite.app",
+        ]),
+        ("rekordbox", &[
+            "/Applications/rekordbox 7/rekordbox.app",
+            "/Applications/rekordbox 6/rekordbox.app",
+            "/Applications/rekordbox.app",
+            "/Applications/rekordbox 6.app",
+        ]),
+        ("traktor", &[
+            "/Applications/Traktor Pro 3.app",
+            "/Applications/Traktor Pro 2.app",
+            "/Applications/Traktor Pro.app",
+            "/Applications/Native Instruments/Traktor Pro 3.app",
+        ]),
+        ("vdj", &[
+            "/Applications/VirtualDJ.app",
+            "/Applications/VirtualDJ 2025.app",
+            "/Applications/VirtualDJ 2024.app",
+            "/Applications/VirtualDJ 2023.app",
+        ]),
+        ("djay", &[
+            "/Applications/djay Pro.app",
+            "/Applications/djay Pro AI.app",
+            "/Applications/djay.app",
+        ]),
     ];
-    let bundle_id = bundle_ids.iter()
+    let paths = app_paths.iter()
         .find(|(id, _)| *id == software_id.as_str())
-        .map(|(_, bid)| bid.to_string())
+        .map(|(_, p)| p)
         .ok_or_else(|| format!("Software desconhecido: {}", software_id))?;
 
+    let app_path = paths.iter()
+        .find(|p| Path::new(p).exists())
+        .ok_or_else(|| "Software não encontrado ou não instalado".to_string())?;
+
     std::process::Command::new("open")
-        .args(["-b", &bundle_id])
+        .arg(app_path)
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())

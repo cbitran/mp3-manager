@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open, save, confirm } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
@@ -123,6 +123,24 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Limpa issues quando todas as faixas são removidas; filtra grupos órfãos quando algumas são removidas
+  useEffect(() => {
+    if (allTracks.length === 0) {
+      setFilenameIssues([]);
+      setParenIssues([]);
+      setDuplicateGroups([]);
+      return;
+    }
+    const paths = new Set(allTracks.map((t) => t.path));
+    setFilenameIssues((prev) => prev.filter((i) => paths.has(i.path)));
+    setParenIssues((prev) => prev.filter((i) => paths.has(i.path)));
+    setDuplicateGroups((prev) =>
+      prev
+        .map((g) => ({ ...g, paths: g.paths.filter((p) => paths.has(p)) }))
+        .filter((g) => g.paths.length > 1)
+    );
+  }, [allTracks]);
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     getCurrentWebview().onDragDropEvent((event) => {
@@ -156,21 +174,7 @@ export default function App() {
   // Sync busy state to ref for window close handler
   useEffect(() => { isBusyRef.current = isScanning || normalizing || exporting || enriching; }, [isScanning, normalizing, exporting, enriching]);
 
-  // Window close confirmation when a process is active
-  useEffect(() => {
-    const appWindow = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-    // Synchronous handler — event.preventDefault() MUST be called synchronously
-    appWindow.onCloseRequested((event) => {
-      if (!isBusyRef.current) return; // allow close immediately
-      event.preventDefault();
-      confirm(
-        "Um processo está em andamento. Deseja fechar mesmo assim?",
-        { title: "Fechar TagWave", kind: "warning" }
-      ).then((confirmed) => { if (confirmed) appWindow.destroy(); });
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
-  }, []);
+  // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
 
   async function normalizeTags() {
     if (allTracks.length === 0) return;
@@ -379,10 +383,8 @@ export default function App() {
         className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05] bg-[#23201E]"
         style={{ cursor: "default" }}
         onMouseDown={(e) => {
-          // Inicia drag da janela quando clica no fundo da toolbar (não em botões/inputs)
           const target = e.target as HTMLElement;
           if (target.closest('button, input, select, a, [role="button"]')) return;
-          e.preventDefault();
           getCurrentWindow().startDragging().catch(() => {});
         }}
       >
@@ -422,9 +424,9 @@ export default function App() {
           {cleanupCount > 0 && (
             <button
               onClick={autoSelectCleanup}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold border border-[#D95340]/30 text-[#D95340] hover:bg-[#D95340]/10 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold border border-[#D95340]/30 text-[#D95340] hover:bg-[#D95340]/10 transition-colors whitespace-nowrap shrink-0"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] inline-block" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] inline-block shrink-0" />
               {cleanupCount} precisam de limpeza
             </button>
           )}
@@ -432,7 +434,7 @@ export default function App() {
             <button
               onClick={batchEnrich}
               disabled={enriching || isScanning}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
               title="Enriquecer metadados faltantes via iTunes"
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -450,7 +452,7 @@ export default function App() {
             <button
               onClick={normalizeTags}
               disabled={normalizing}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1 3h9M3 5.5h5M4.5 8h2"/>
@@ -615,7 +617,7 @@ export default function App() {
                       placeholder="min"
                       value={advFilter.bpmMin}
                       onChange={(e) => setAdvFilter((f) => ({ ...f, bpmMin: e.target.value }))}
-                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 font-mono"
                     />
                     <span className="text-[#4C4743] text-xs">—</span>
                     <input
@@ -623,7 +625,7 @@ export default function App() {
                       placeholder="max"
                       value={advFilter.bpmMax}
                       onChange={(e) => setAdvFilter((f) => ({ ...f, bpmMax: e.target.value }))}
-                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 font-mono"
                     />
                   </div>
                 </div>
@@ -637,7 +639,7 @@ export default function App() {
                       placeholder="min"
                       value={advFilter.yearMin}
                       onChange={(e) => setAdvFilter((f) => ({ ...f, yearMin: e.target.value }))}
-                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 font-mono"
                     />
                     <span className="text-[#4C4743] text-xs">—</span>
                     <input
@@ -645,7 +647,7 @@ export default function App() {
                       placeholder="max"
                       value={advFilter.yearMax}
                       onChange={(e) => setAdvFilter((f) => ({ ...f, yearMax: e.target.value }))}
-                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 font-mono"
                     />
                   </div>
                 </div>
@@ -676,12 +678,18 @@ export default function App() {
             )}
           </div>
 
-          <input
-            className="w-52 px-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
-            placeholder="⌕  buscar…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <div className="relative flex items-center">
+            <svg className="absolute left-2.5 pointer-events-none shrink-0" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#605A55" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="5.5" cy="5.5" r="4"/>
+              <line x1="8.7" y1="8.7" x2="12" y2="12"/>
+            </svg>
+            <input
+              className="w-52 pl-8 pr-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
+              placeholder="buscar…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
