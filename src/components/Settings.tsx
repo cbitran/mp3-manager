@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { useAppStore } from "../store";
 import { type VisibilityState } from "@tanstack/react-table";
 
@@ -41,6 +42,11 @@ export default function Settings({ onClose }: { onClose: () => void }) {
 
   const [tab, setTab] = useState<Tab>("appearance");
   const [saved, setSaved] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   // DJ drafts
   const [djP, setDjP] = useState(djPrimary);
@@ -316,6 +322,14 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           )}
 
         </div>
+
+        {/* Footer — versão */}
+        <div className="px-5 py-3 flex justify-end" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <span className="text-[10px] font-mono" style={{ color: "#4C4743" }}>
+            TagWave v{appVersion}
+          </span>
+        </div>
+
       </div>
     </div>
   );
