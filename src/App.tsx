@@ -41,6 +41,7 @@ export default function App() {
   } = useAppStore();
 
   const allTracks = useAppStore((s) => s.tracks);
+  const playerTrackId = useAppStore((s) => s.playerTrackId);
   const baseFiltered = filteredTracks();
 
   // ── Advanced filter state ────────────────────────────────────────
@@ -732,7 +733,11 @@ export default function App() {
         </div>
       </div>
 
-      <MiniPlayer />
+      {(selectedIds.size > 0 || !!playerTrackId) && (
+        <div style={{ animation: 'slide-up-player 0.18s ease-out' }}>
+          <MiniPlayer />
+        </div>
+      )}
 
       {deleteTargets.length > 0 && (
         <DeleteConfirmDialog

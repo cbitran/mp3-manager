@@ -7,11 +7,13 @@ import {
   type SortingState,
   type VisibilityState,
   type ColumnSizingState,
+  type ColumnOrderState,
 } from "@tanstack/react-table";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Track } from "../store";
+import { setAutoPlayOnLoad } from "../store";
 import WaveformCell from "./WaveformCell";
 
 const col = createColumnHelper<Track>();
@@ -97,6 +99,7 @@ export default function TrackTable({
   } = useAppStore();
 
   const anchorIdRef = useRef<string | null>(null);
+  const sortedRowsRef = useRef<Array<{id: string}>>([]);
 
   const [sorting, setSorting] = useState<SortingState>(() => {
     try {
@@ -109,6 +112,15 @@ export default function TrackTable({
     try { return JSON.parse(localStorage.getItem("tagwave_col_sizes") ?? "{}"); }
     catch { return {}; }
   });
+
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+    try {
+      const saved = localStorage.getItem("tagwave_col_order");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const dragColIdRef = useRef<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null);
 
   const DEFAULT_VISIBILITY: VisibilityState = {
     tipo: false,
@@ -484,7 +496,7 @@ export default function TrackTable({
   const table = useReactTable({
     data: tracks,
     columns,
-    state: { sorting, rowSelection, columnVisibility: mergedVisibility, columnSizing },
+    state: { sorting, rowSelection, columnVisibility: mergedVisibility, columnSizing, columnOrder },
     getRowId: (row) => row.id,
     columnResizeMode: 'onChange' as const,
     enableColumnResizing: true,
@@ -509,25 +521,32 @@ export default function TrackTable({
       const next = typeof updater === "function" ? updater(mergedVisibility) : updater;
       setColumnVisibility(next);
     },
+    onColumnOrderChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(columnOrder) : updater;
+      setColumnOrder(next);
+      localStorage.setItem("tagwave_col_order", JSON.stringify(next));
+    },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
+
+  sortedRowsRef.current = table.getRowModel().rows;
 
   const handleRowClick = useCallback(
     (id: string, idx: number, e: React.MouseEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
       if ((e.target as HTMLElement).tagName === "BUTTON") return;
 
+      const rows = sortedRowsRef.current;
+
       if (e.shiftKey && anchorIdRef.current !== null) {
-        // Range select: resolve o índice atual da faixa âncora pelo ID
-        const anchorIdx = tracks.findIndex((t) => t.id === anchorIdRef.current);
+        const anchorIdx = rows.findIndex((r) => r.id === anchorIdRef.current);
         const from = anchorIdx >= 0 ? anchorIdx : idx;
         const lo = Math.min(from, idx);
         const hi = Math.max(from, idx);
-        const rangeIds = tracks.slice(lo, hi + 1).map((t) => t.id);
+        const rangeIds = rows.slice(lo, hi + 1).map((r) => r.id);
         if (!e.metaKey) clearSelection();
         selectAll(rangeIds);
-        // âncora não muda no shift+click
       } else if (e.metaKey) {
         toggleSelect(id);
         anchorIdRef.current = id;
@@ -537,11 +556,14 @@ export default function TrackTable({
         anchorIdRef.current = id;
       }
     },
-    [tracks, toggleSelect, selectAll, clearSelection]
+    [toggleSelect, selectAll, clearSelection]
   );
 
   const handleRowDoubleClick = useCallback(
-    (id: string) => { setPlayerTrack(id); },
+    (id: string) => {
+      setAutoPlayOnLoad();
+      setPlayerTrack(id);
+    },
     [setPlayerTrack]
   );
 
@@ -603,9 +625,41 @@ export default function TrackTable({
             {table.getHeaderGroups()[0]?.headers.map((header) => (
               <th
                 key={header.id}
+                draggable
                 style={{ width: header.getSize(), position: 'relative' }}
-                className="px-3 py-2.5 text-left text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] cursor-pointer select-none whitespace-nowrap"
+                className={`px-3 py-2.5 text-left text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] cursor-pointer select-none whitespace-nowrap transition-colors ${
+                  dragOverColId === header.id ? 'border-l-2 border-l-[#D95340] bg-white/[0.02]' : ''
+                }`}
                 onClick={header.column.getToggleSortingHandler()}
+                onDragStart={(e) => {
+                  dragColIdRef.current = header.id;
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverColId !== header.id) setDragOverColId(header.id);
+                }}
+                onDragLeave={() => setDragOverColId(null)}
+                onDragEnd={() => { setDragOverColId(null); dragColIdRef.current = null; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const from = dragColIdRef.current;
+                  const to = header.id;
+                  setDragOverColId(null);
+                  dragColIdRef.current = null;
+                  if (!from || from === to) return;
+                  const allIds = table.getAllLeafColumns().map((c) => c.id);
+                  const current = columnOrder.length > 0 ? columnOrder : allIds;
+                  const fi = current.indexOf(from);
+                  const ti = current.indexOf(to);
+                  if (fi < 0 || ti < 0) return;
+                  const next = [...current];
+                  next.splice(fi, 1);
+                  next.splice(ti, 0, from);
+                  setColumnOrder(next);
+                  localStorage.setItem("tagwave_col_order", JSON.stringify(next));
+                }}
               >
                 <span className="flex items-center gap-1">
                   {flexRender(header.column.columnDef.header, header.getContext())}

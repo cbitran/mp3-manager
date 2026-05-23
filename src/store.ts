@@ -318,3 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return result;
   },
 }));
+
+let _autoPlayOnLoad = false;
+export function setAutoPlayOnLoad() { _autoPlayOnLoad = true; }
+export function consumeAutoPlay() { const v = _autoPlayOnLoad; _autoPlayOnLoad = false; return v; }

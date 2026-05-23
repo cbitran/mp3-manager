@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "../store";
+import { useAppStore, consumeAutoPlay } from "../store";
 
 const PLAYER_BARS = 130;
 const waveCache = new Map<string, number[]>();
@@ -33,15 +33,90 @@ export default function MiniPlayer() {
   const [hoverPct, setHoverPct]     = useState<number | null>(null);
   const audioRef   = useRef<HTMLAudioElement | null>(null);
   const loadedPath = useRef<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const selectedArr = [...selectedIds];
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
   const activeTrack = tracks.find((t) => t.id === activeId) ?? null;
 
+  // ── Audio Context helpers ─────────────────────────────────────────
+  function setupAudioCtx() {
+    if (audioCtxRef.current || !audioRef.current) return;
+    try {
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.78;
+      const src = ctx.createMediaElementSource(audioRef.current);
+      src.connect(analyser);
+      analyser.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      analyserRef.current = analyser;
+    } catch { /* silent */ }
+  }
+
+  function startLiveAnim() {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    const fftBins = analyser.frequencyBinCount;
+    const freqData = new Uint8Array(fftBins);
+    const step = fftBins / PLAYER_BARS;
+    function tick() {
+      analyser!.getByteFrequencyData(freqData);
+      const canvas = liveCanvasRef.current;
+      if (canvas) {
+        const c = canvas.getContext('2d');
+        if (c) {
+          c.clearRect(0, 0, canvas.width, canvas.height);
+          const W = canvas.width; const H = canvas.height;
+          const bw = W / PLAYER_BARS;
+          for (let i = 0; i < PLAYER_BARS; i++) {
+            const s = Math.floor(i * step), e2 = Math.floor((i + 1) * step);
+            let sum = 0;
+            for (let j = s; j < e2; j++) sum += freqData[j];
+            const amp = sum / Math.max(1, e2 - s) / 255;
+            if (amp < 0.015) continue;
+            const bh = amp * H * 0.88;
+            const x = i * bw + bw * 0.12;
+            const y = (H - bh) / 2;
+            const w2 = bw * 0.76;
+            c.fillStyle = `rgba(255, 148, 128, ${0.18 + amp * 0.65})`;
+            c.beginPath();
+            if (c.roundRect) c.roundRect(x, y, w2, bh, 1);
+            else c.rect(x, y, w2, bh);
+            c.fill();
+          }
+        }
+      }
+      animFrameRef.current = requestAnimationFrame(tick);
+    }
+    cancelAnimationFrame(animFrameRef.current);
+    tick();
+  }
+
+  function stopLiveAnim() {
+    cancelAnimationFrame(animFrameRef.current);
+    const c = liveCanvasRef.current?.getContext('2d');
+    if (c && liveCanvasRef.current) c.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height);
+  }
+
   // ── Load track ────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeTrack || !audioRef.current) return;
-    if (loadedPath.current === activeTrack.path) return;
+    const shouldAutoPlay = consumeAutoPlay();
+    if (loadedPath.current === activeTrack.path) {
+      if (shouldAutoPlay) {
+        setupAudioCtx();
+        if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
+        audioRef.current.play().catch(console.error);
+        setIsPlaying(true);
+        startLiveAnim();
+      }
+      return;
+    }
     loadedPath.current = activeTrack.path;
     const src = convertFileSrc(activeTrack.path);
     audioRef.current.src = src;
@@ -49,7 +124,13 @@ export default function MiniPlayer() {
     audioRef.current.load();
     setProgress(0);
     setDuration(0);
-    if (isPlaying) audioRef.current.play().catch(console.error);
+    if (isPlaying || shouldAutoPlay) {
+      setupAudioCtx();
+      if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
+      audioRef.current.play().catch(console.error);
+      setIsPlaying(true);
+      startLiveAnim();
+    }
 
     if (activeTrack.has_cover) {
       invoke<string | null>("read_cover_base64", { path: activeTrack.path })
@@ -80,6 +161,7 @@ export default function MiniPlayer() {
     const onDur  = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
     const onEnd  = () => {
       setProgress(0);
+      stopLiveAnim();
       const { tracks: all, playerTrackId: cur } = useAppStore.getState();
       if (cur) {
         const idx = all.findIndex((t) => t.id === cur);
@@ -114,8 +196,17 @@ export default function MiniPlayer() {
   function togglePlay() {
     if (!audioRef.current || !activeTrack) return;
     if (!playerTrackId && selectedArr[0]) setPlayerTrack(selectedArr[0]);
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else           { audioRef.current.play().catch(console.error); setIsPlaying(true); }
+    setupAudioCtx();
+    if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      stopLiveAnim();
+    } else {
+      audioRef.current.play().catch(console.error);
+      setIsPlaying(true);
+      startLiveAnim();
+    }
   }
 
   function skipTrack(dir: 1 | -1) {
@@ -144,6 +235,14 @@ export default function MiniPlayer() {
     if (!isFinite(s) || s < 0) return "0:00";
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   }
+
+  // ── Cleanup AudioContext on unmount ───────────────────────────────
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      audioCtxRef.current?.close().catch(() => {});
+    };
+  }, []);
 
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
   const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
@@ -288,6 +387,14 @@ export default function MiniPlayer() {
                 );
               })}
             </svg>
+
+            {/* Live beat canvas */}
+            <canvas
+              ref={liveCanvasRef}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              width={PLAYER_BARS * 5}
+              height={36}
+            />
 
             {/* Playhead vertical */}
             {pct > 0 && (
