@@ -6,6 +6,7 @@ import {
   createColumnHelper,
   type SortingState,
   type VisibilityState,
+  type ColumnSizingState,
 } from "@tanstack/react-table";
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
@@ -56,6 +57,22 @@ function formatBPM(bpm: string): string {
 
 // ---------------------------------------------------------------------------
 
+function CoverCell({ path, hasCover }: { path: string; hasCover: boolean }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hasCover) { setSrc(null); return; }
+    invoke<string | null>("read_cover_base64", { path })
+      .then((b64) => setSrc(b64 ? `data:image/jpeg;base64,${b64}` : null))
+      .catch(() => setSrc(null));
+  }, [path, hasCover]);
+  if (!src) return (
+    <div className="w-7 h-7 rounded-sm bg-white/[0.04] border border-white/[0.05] flex items-center justify-center">
+      <svg width="9" height="9" viewBox="0 0 11 11" fill="currentColor" className="text-[#373331]"><path d="M1 2.5A1.5 1.5 0 012.5 1h6A1.5 1.5 0 0110 2.5v6A1.5 1.5 0 018.5 10h-6A1.5 1.5 0 011 8.5v-6zM4 4a1 1 0 100-2 1 1 0 000 2zm-2 4l2-2 1 1 2-3 2 4H2z"/></svg>
+    </div>
+  );
+  return <img src={src} alt="" className="w-7 h-7 rounded-sm object-cover shrink-0" />;
+}
+
 export default function TrackTable({
   tracks,
   compact = false,
@@ -88,7 +105,15 @@ export default function TrackTable({
     } catch { return []; }
   });
 
-  const DEFAULT_VISIBILITY: VisibilityState = {};
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
+    try { return JSON.parse(localStorage.getItem("tagwave_col_sizes") ?? "{}"); }
+    catch { return {}; }
+  });
+
+  const DEFAULT_VISIBILITY: VisibilityState = {
+    tipo: false,
+    adicionada: false,
+  };
 
   const mergedVisibility: VisibilityState = { ...DEFAULT_VISIBILITY, ...columnVisibility };
 
@@ -194,6 +219,15 @@ export default function TrackTable({
           />
         ),
         size: 32,
+      }),
+
+      // CAPA
+      col.display({
+        id: "capa",
+        header: () => <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Capa</span>,
+        cell: ({ row }) => <CoverCell path={row.original.path} hasCover={row.original.has_cover} />,
+        size: 44,
+        enableResizing: false,
       }),
 
       // TÍTULO / ARTISTA (stacked com cleanup badge inline)
@@ -404,6 +438,29 @@ export default function TrackTable({
         },
         size: 60,
       }),
+
+      // TIPO (formato do arquivo)
+      col.accessor("format", {
+        id: "tipo",
+        header: "Tipo",
+        cell: (i) => i.getValue()
+          ? <span className="px-1 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-white/[0.04] text-[#605A55]">{i.getValue()}</span>
+          : <span className="text-[#605A55] text-xs">—</span>,
+        size: 56,
+      }),
+
+      // ADICIONADA (data de modificação)
+      col.accessor("modified_at", {
+        id: "adicionada",
+        header: "Adicionada",
+        cell: (i) => {
+          const ts = i.getValue();
+          if (!ts) return <span className="text-[#605A55] text-xs">—</span>;
+          const d = new Date(ts * 1000);
+          return <span className="text-[11px] font-mono text-[#8F8883]">{d.toLocaleDateString("pt-BR")}</span>;
+        },
+        size: 90,
+      }),
     ],
     [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite]
   );
@@ -413,8 +470,15 @@ export default function TrackTable({
   const table = useReactTable({
     data: tracks,
     columns,
-    state: { sorting, rowSelection, columnVisibility: mergedVisibility },
+    state: { sorting, rowSelection, columnVisibility: mergedVisibility, columnSizing },
     getRowId: (row) => row.id,
+    columnResizeMode: 'onChange' as const,
+    enableColumnResizing: true,
+    onColumnSizingChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(columnSizing) : updater;
+      setColumnSizing(next);
+      localStorage.setItem("tagwave_col_sizes", JSON.stringify(next));
+    },
     onSortingChange: (updater) => {
       const next = typeof updater === "function" ? updater(sorting) : updater;
       setSorting(next);
@@ -522,7 +586,7 @@ export default function TrackTable({
             {table.getHeaderGroups()[0]?.headers.map((header) => (
               <th
                 key={header.id}
-                style={{ width: header.getSize() }}
+                style={{ width: header.getSize(), position: 'relative' }}
                 className="px-3 py-2.5 text-left text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] cursor-pointer select-none whitespace-nowrap"
                 onClick={header.column.getToggleSortingHandler()}
               >
@@ -535,6 +599,15 @@ export default function TrackTable({
                     <span className="text-[#D95340]">↓</span>
                   )}
                 </span>
+                {header.column.getCanResize() && (
+                  <div
+                    onMouseDown={header.getResizeHandler()}
+                    onTouchStart={header.getResizeHandler()}
+                    className={`absolute top-0 right-0 h-full w-[3px] cursor-col-resize select-none touch-none transition-colors ${
+                      header.column.getIsResizing() ? 'bg-[#D95340]' : 'hover:bg-white/[0.15]'
+                    }`}
+                  />
+                )}
               </th>
             ))}
             {/* Column picker button */}
@@ -585,6 +658,9 @@ export default function TrackTable({
                               : col.id === "year_col" ? "Ano"
                               : col.id === "status" ? "Status"
                               : col.id === "file_size" ? "Tamanho"
+                              : col.id === "capa" ? "Capa"
+                              : col.id === "tipo" ? "Tipo"
+                              : col.id === "adicionada" ? "Adicionada"
                               : col.id}
                           </span>
                         </label>

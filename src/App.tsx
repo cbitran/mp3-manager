@@ -247,6 +247,10 @@ export default function App() {
         e.preventDefault();
         useAppStore.getState().selectAll(tracks.map((t) => t.id));
       }
+      if ((e.key === "," || e.key === "،") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setShowSettings((v) => !v);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -482,13 +486,14 @@ export default function App() {
         <button
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           onClick={() => setShowSettings(true)}
-          title="Configurações"
-          className="p-1.5 rounded-md text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04] transition-colors"
+          title="Configurações (⌘,)"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors border border-white/[0.06]"
         >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="6.5" cy="6.5" r="2"/>
             <path d="M6.5 1v1.5M6.5 10.5V12M1 6.5h1.5M10.5 6.5H12M2.57 2.57l1.06 1.06M9.37 9.37l1.06 1.06M9.37 3.63L8.31 4.69M3.63 9.37L2.57 10.43"/>
           </svg>
+          Configurações
         </button>
 
         <TrialBanner />

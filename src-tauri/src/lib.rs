@@ -219,6 +219,25 @@ async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> {
+    let cover_data = fs::read(&image_path).map_err(|e| e.to_string())?;
+    let mime = if image_path.to_lowercase().ends_with(".png") {
+        "image/png".to_string()
+    } else {
+        "image/jpeg".to_string()
+    };
+    let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+    tag.remove("APIC");
+    tag.add_frame(Picture {
+        mime_type: mime,
+        picture_type: PictureType::CoverFront,
+        description: String::new(),
+        data: cover_data,
+    });
+    tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn read_cover_base64(path: String) -> Option<String> {
     let tagged = Probe::open(&path).ok()?.read().ok()?;
     let tag = tagged.primary_tag().or_else(|| tagged.first_tag())?;
@@ -738,6 +757,7 @@ pub fn run() {
             scan_folder,
             save_tags,
             save_cover,
+            save_cover_from_file,
             read_cover_base64,
             trash_file,
             trash_folder,

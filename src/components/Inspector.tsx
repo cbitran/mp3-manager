@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../store";
 import { enrichTrackFull } from "../services/SpotifyService";
 import { searchTrack as iTunesSearch } from "../services/iTunesService";
@@ -31,7 +32,7 @@ function Field({ label, value, onChange, disabled, placeholder, mono }: FieldPro
 }
 
 export default function Inspector() {
-  const { selectedIds, tracks, updateTrack } = useAppStore();
+  const { selectedIds, tracks, updateTrack, setPlayerTrack, playerTrackId } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
@@ -190,15 +191,53 @@ export default function Inspector() {
         )}
       </div>
 
-      {/* Cover art */}
-      {!isBatch && coverDataUrl && (
+      {/* Cover + Alterar Capa */}
+      {!isBatch && (
         <div className="mx-3 mt-3">
-          <img src={coverDataUrl} alt="Cover" className="w-full rounded-md object-cover" style={{ maxHeight: 164 }} />
+          {coverDataUrl ? (
+            <div className="relative group">
+              <img src={coverDataUrl} alt="Cover" className="w-full rounded-md object-cover" style={{ maxHeight: 180 }} />
+              <button
+                onClick={async () => {
+                  const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+                  if (!file || typeof file !== "string") return;
+                  try {
+                    await invoke("save_cover_from_file", { path: first.path, imagePath: file });
+                    updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
+                  } catch { /* silent */ }
+                }}
+                className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                Alterar Capa
+              </button>
+            </div>
+          ) : (
+            <div className="h-16 rounded-md bg-white/[0.02] border border-white/[0.04] flex items-center justify-center">
+              <span className="text-[#4C4743] text-[10px] uppercase tracking-widest">sem capa</span>
+            </div>
+          )}
         </div>
       )}
-      {!isBatch && !coverDataUrl && (
-        <div className="mx-3 mt-3 h-14 rounded-md bg-white/[0.02] border border-white/[0.04] flex items-center justify-center">
-          <span className="text-[#4C4743] text-[10px] uppercase tracking-widest">sem capa</span>
+
+      {/* Player controls inline */}
+      {!isBatch && (
+        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
+          <button
+            onClick={() => setPlayerTrack(playerTrackId === first.id ? null : first.id)}
+            className="w-6 h-6 rounded-full flex items-center justify-center transition-colors bg-[#D95340] hover:bg-[#E07364] shrink-0"
+          >
+            {playerTrackId === first.id ? (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><rect x="1" y="1" width="2" height="6" rx="0.5"/><rect x="5" y="1" width="2" height="6" rx="0.5"/></svg>
+            ) : (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><path d="M2 1.5l5 2.5-5 2.5V1.5z"/></svg>
+            )}
+          </button>
+          <div className="flex-1 text-[10px] font-mono text-[#605A55]">
+            {playerTrackId === first.id ? "tocando…" : first.duration_secs
+              ? `${Math.floor(first.duration_secs / 60)}:${String(Math.floor(first.duration_secs % 60)).padStart(2, "0")}`
+              : "—"
+            }
+          </div>
         </div>
       )}
 
@@ -253,6 +292,15 @@ export default function Inspector() {
         </div>
       )}
 
+      {/* Arquivo */}
+      {!isBatch && (
+        <div className="mx-3 mt-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
+          <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-1">Arquivo</p>
+          <p className="text-[11px] text-[#C2BEBC] leading-tight break-all">{first.filename}</p>
+          <p className="text-[10px] text-[#605A55] mt-0.5 leading-tight break-all font-mono">{first.path.replace(first.filename, "")}</p>
+        </div>
+      )}
+
       {/* Issues */}
       {!isBatch && first.issues.length > 0 && (
         <div className="mx-3 mt-3 px-3 py-2 rounded-md border border-[#D95340]/20 bg-[#D95340]/8">
@@ -286,6 +334,11 @@ export default function Inspector() {
           </div>
         </div>
       )}
+
+      {/* Tags ID3 header */}
+      <div className="px-3 pt-2 pb-0">
+        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Tags ID3</p>
+      </div>
 
       {/* Fields */}
       <div className="flex flex-col gap-2.5 px-3 py-4">
