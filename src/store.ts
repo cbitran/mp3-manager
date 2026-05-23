@@ -22,6 +22,8 @@ export interface Track {
   bitrate_kbps?: number;
   sample_rate_hz?: number;
   modified_at?: number;
+  comment?: string;
+  total_tracks?: number;
 }
 
 export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";

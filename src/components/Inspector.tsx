@@ -12,21 +12,33 @@ interface FieldProps {
   disabled?: boolean;
   placeholder?: string;
   mono?: boolean;
+  multiline?: boolean;
 }
 
-function Field({ label, value, onChange, disabled, placeholder, mono }: FieldProps) {
+function Field({ label, value, onChange, disabled, placeholder, mono, multiline }: FieldProps) {
   return (
     <div>
       <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
         {label}
       </label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        placeholder={placeholder ?? ""}
-        className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 disabled:opacity-30 transition-colors ${mono ? "font-mono" : ""}`}
-      />
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          placeholder={placeholder ?? ""}
+          rows={2}
+          className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 disabled:opacity-30 transition-colors resize-none ${mono ? "font-mono" : ""}`}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          placeholder={placeholder ?? ""}
+          className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 disabled:opacity-30 transition-colors ${mono ? "font-mono" : ""}`}
+        />
+      )}
     </div>
   );
 }
@@ -37,20 +49,24 @@ export default function Inspector() {
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
 
-  const [title, setTitle]           = useState(first?.title ?? "");
-  const [artist, setArtist]         = useState(first?.artist ?? "");
-  const [album, setAlbum]           = useState(first?.album ?? "");
-  const [genre, setGenre]           = useState(first?.genre ?? "");
-  const [year, setYear]             = useState(first?.year?.toString() ?? "");
-  const [trackNumber, setTrackNumber] = useState(first?.track_number?.toString() ?? "");
-  const [bpm, setBpm]               = useState(first?.bpm ?? "");
-  const [key, setKey]               = useState(first?.key ?? "");
-  const [rating, setRating]         = useState(first?.rating ?? 0);
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [enriching, setEnriching]   = useState(false);
+  const [title, setTitle]               = useState(first?.title ?? "");
+  const [artist, setArtist]             = useState(first?.artist ?? "");
+  const [album, setAlbum]               = useState(first?.album ?? "");
+  const [genre, setGenre]               = useState(first?.genre ?? "");
+  const [year, setYear]                 = useState(first?.year?.toString() ?? "");
+  const [trackNumber, setTrackNumber]   = useState(first?.track_number?.toString() ?? "");
+  const [totalTracks, setTotalTracks]   = useState(first?.total_tracks?.toString() ?? "");
+  const [bpm, setBpm]                   = useState(first?.bpm ?? "");
+  const [key, setKey]                   = useState(first?.key ?? "");
+  const [rating, setRating]             = useState(first?.rating ?? 0);
+  const [comment, setComment]           = useState(first?.comment ?? "");
+  const [saving, setSaving]             = useState(false);
+  const [saved, setSaved]               = useState(false);
+  const [enriching, setEnriching]       = useState(false);
   const [enrichSummary, setEnrichSummary] = useState<string | null>(null);
   const [coverDataUrl, setCoverDataUrl]   = useState<string | null>(null);
+
+  const isPlaying = playerTrackId === first?.id;
 
   useEffect(() => {
     if (!first) return;
@@ -60,9 +76,11 @@ export default function Inspector() {
     setGenre(first.genre ?? "");
     setYear(first.year?.toString() ?? "");
     setTrackNumber(first.track_number?.toString() ?? "");
+    setTotalTracks(first.total_tracks?.toString() ?? "");
     setBpm(first.bpm ?? "");
     setKey(first.key ?? "");
     setRating(first.rating ?? 0);
+    setComment(first.comment ?? "");
     setSaved(false);
     setEnrichSummary(null);
   }, [first?.id]);
@@ -139,9 +157,11 @@ export default function Inspector() {
           genre: genre || null,
           year: year ? parseInt(year) : null,
           trackNumber: trackNumber ? parseInt(trackNumber) : null,
+          totalTracks: totalTracks ? parseInt(totalTracks) : null,
           bpm: bpm || null,
           key: key || null,
           rating: rating > 0 ? rating : null,
+          comment: comment || null,
         });
         const newIssues: string[] = [];
         if (!title)  newIssues.push("sem título");
@@ -157,8 +177,10 @@ export default function Inspector() {
           genre: genre || undefined,
           year: year ? parseInt(year) : undefined,
           track_number: trackNumber ? parseInt(trackNumber) : undefined,
+          total_tracks: totalTracks ? parseInt(totalTracks) : undefined,
           bpm: bpm || undefined,
           key: key || undefined,
+          comment: comment || undefined,
           issues: newIssues,
         });
       }
@@ -191,12 +213,27 @@ export default function Inspector() {
         )}
       </div>
 
-      {/* Cover + Alterar Capa */}
+      {/* Cover + animação vinil */}
       {!isBatch && (
         <div className="mx-3 mt-3">
           {coverDataUrl ? (
             <div className="relative group">
-              <img src={coverDataUrl} alt="Cover" className="w-full rounded-md object-cover" style={{ maxHeight: 180 }} />
+              {/* Vinyl ring when playing */}
+              {isPlaying && (
+                <div
+                  className="absolute inset-0 rounded-full z-10 pointer-events-none"
+                  style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
+                />
+              )}
+              <div
+                className={`overflow-hidden transition-all duration-700 ${isPlaying ? "rounded-full shadow-lg shadow-[#D95340]/20" : "rounded-md"}`}
+                style={{
+                  animation: isPlaying ? "vinyl-spin 4s linear infinite" : undefined,
+                  aspectRatio: "1 / 1",
+                }}
+              >
+                <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
+              </div>
               <button
                 onClick={async () => {
                   const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
@@ -206,14 +243,25 @@ export default function Inspector() {
                     updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
                   } catch { /* silent */ }
                 }}
-                className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
+                className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100 z-20"
               >
                 Alterar Capa
               </button>
             </div>
           ) : (
-            <div className="h-16 rounded-md bg-white/[0.02] border border-white/[0.04] flex items-center justify-center">
+            <div
+              className="h-16 rounded-md bg-white/[0.02] border border-white/[0.04] flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-white/[0.04] transition-colors"
+              onClick={async () => {
+                const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+                if (!file || typeof file !== "string") return;
+                try {
+                  await invoke("save_cover_from_file", { path: first.path, imagePath: file });
+                  updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
+                } catch { /* silent */ }
+              }}
+            >
               <span className="text-[#4C4743] text-[10px] uppercase tracking-widest">sem capa</span>
+              <span className="text-[#4C4743] text-[9px]">clique para adicionar</span>
             </div>
           )}
         </div>
@@ -223,21 +271,24 @@ export default function Inspector() {
       {!isBatch && (
         <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
           <button
-            onClick={() => setPlayerTrack(playerTrackId === first.id ? null : first.id)}
+            onClick={() => setPlayerTrack(isPlaying ? null : first.id)}
             className="w-6 h-6 rounded-full flex items-center justify-center transition-colors bg-[#D95340] hover:bg-[#E07364] shrink-0"
           >
-            {playerTrackId === first.id ? (
+            {isPlaying ? (
               <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><rect x="1" y="1" width="2" height="6" rx="0.5"/><rect x="5" y="1" width="2" height="6" rx="0.5"/></svg>
             ) : (
               <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><path d="M2 1.5l5 2.5-5 2.5V1.5z"/></svg>
             )}
           </button>
           <div className="flex-1 text-[10px] font-mono text-[#605A55]">
-            {playerTrackId === first.id ? "tocando…" : first.duration_secs
+            {isPlaying ? "tocando…" : first.duration_secs
               ? `${Math.floor(first.duration_secs / 60)}:${String(Math.floor(first.duration_secs % 60)).padStart(2, "0")}`
               : "—"
             }
           </div>
+          {first.rating != null && first.rating > 0 && (
+            <span className="text-[10px] font-mono text-[#605A55]">{first.rating}/5</span>
+          )}
         </div>
       )}
 
@@ -332,28 +383,52 @@ export default function Inspector() {
               </button>
             ))}
           </div>
+          {rating > 0 && (
+            <span className="text-[10px] font-mono text-[#605A55] ml-0.5">({rating}/5)</span>
+          )}
         </div>
       )}
 
       {/* Tags ID3 header */}
-      <div className="px-3 pt-2 pb-0">
+      <div className="px-3 pt-3 pb-0">
         <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Tags ID3</p>
       </div>
 
       {/* Fields */}
-      <div className="flex flex-col gap-2.5 px-3 py-4">
+      <div className="flex flex-col gap-2.5 px-3 py-3">
         <Field label="Título" value={title} onChange={setTitle} disabled={isBatch} placeholder={isBatch ? "(múltiplos)" : ""} />
         <Field label="Artista" value={artist} onChange={setArtist} />
         <Field label="Álbum" value={album} onChange={setAlbum} />
         <Field label="Gênero" value={genre} onChange={setGenre} />
         <div className="grid grid-cols-2 gap-2">
           <Field label="Ano" value={year} onChange={setYear} />
-          <Field label="Faixa #" value={trackNumber} onChange={setTrackNumber} />
+          <div>
+            <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
+              Faixa #
+            </label>
+            <div className="flex items-center gap-1">
+              <input
+                value={trackNumber}
+                onChange={(e) => setTrackNumber(e.target.value)}
+                placeholder="—"
+                className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
+              />
+              <span className="text-[#4C4743] text-xs">/</span>
+              <input
+                value={totalTracks}
+                onChange={(e) => setTotalTracks(e.target.value)}
+                placeholder="—"
+                title="Total de faixas"
+                className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
+              />
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="BPM" value={bpm} onChange={setBpm} mono />
           <Field label="Tom" value={key} onChange={setKey} mono />
         </div>
+        <Field label="Comentário" value={comment} onChange={setComment} placeholder="—" multiline />
 
         {/* Enriquecer */}
         <button

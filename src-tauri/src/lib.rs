@@ -1,6 +1,6 @@
 use base64::Engine;
 use urlencoding;
-use id3::frame::{Picture, PictureType};
+use id3::frame::{Comment as Id3Comment, Picture, PictureType};
 use id3::TagLike;
 use lofty::prelude::*;
 use lofty::probe::Probe;
@@ -40,6 +40,8 @@ pub struct Track {
     pub bitrate_kbps: Option<u32>,
     pub sample_rate_hz: Option<u32>,
     pub modified_at: Option<i64>,
+    pub comment: Option<String>,
+    pub total_tracks: Option<u32>,
 }
 
 const AUDIO_EXTENSIONS: &[&str] = &[
@@ -83,8 +85,8 @@ fn read_track(path: &Path) -> Option<Track> {
     let track_number = tag.and_then(|t| t.track());
     let has_cover    = tag.map(|t| !t.pictures().is_empty()).unwrap_or(false);
 
-    // BPM and KEY are stored in ID3 frames — read via id3 crate for MP3
-    let (bpm, key, rating) = if format == "MP3" || format == "AIFF" || format == "AIF" {
+    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS — read via id3 crate for MP3/AIFF
+    let (bpm, key, rating, comment, total_tracks) = if format == "MP3" || format == "AIFF" || format == "AIF" {
         if let Ok(id3tag) = id3::Tag::read_from_path(path) {
             let bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
                 if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
@@ -96,9 +98,15 @@ fn read_track(path: &Path) -> Option<Track> {
                 .find(|e| e.description.eq_ignore_ascii_case("rating"))
                 .and_then(|e| e.value.trim().parse::<u8>().ok())
                 .filter(|&r| r >= 1 && r <= 5);
-            (bpm, key, rating)
+            let comment = id3tag.comments().next().map(|c| c.text.clone()).filter(|s| !s.is_empty());
+            let total_tracks = id3tag.frames().find(|f| f.id() == "TRCK").and_then(|f| {
+                if let id3::Content::Text(t) = f.content() {
+                    t.split('/').nth(1).and_then(|s| s.trim().parse::<u32>().ok())
+                } else { None }
+            });
+            (bpm, key, rating, comment, total_tracks)
         } else {
-            (None, None, None)
+            (None, None, None, None, None)
         }
     } else {
         // For FLAC/OGG: BPM and KEY in Vorbis comments
@@ -106,7 +114,10 @@ fn read_track(path: &Path) -> Option<Track> {
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
         let key = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::InitialKey))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
-        (bpm, key, None)
+        let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
+            .map(|s| s.to_string()).filter(|s| !s.is_empty());
+        let total_tracks = tag.and_then(|t| t.track_total());
+        (bpm, key, None, comment, total_tracks)
     };
 
     let mut issues = Vec::new();
@@ -120,7 +131,7 @@ fn read_track(path: &Path) -> Option<Track> {
         id, path: path.to_string_lossy().to_string(), filename, format,
         title, artist, album, genre, year, track_number, bpm, key, rating,
         duration_secs, file_size_bytes, has_cover, cover_version: 0, issues,
-        bitrate_kbps, sample_rate_hz, modified_at,
+        bitrate_kbps, sample_rate_hz, modified_at, comment, total_tracks,
     })
 }
 
@@ -170,7 +181,7 @@ fn save_tags(
     path: String, title: Option<String>, artist: Option<String>,
     album: Option<String>, genre: Option<String>, year: Option<u32>,
     track_number: Option<u32>, bpm: Option<String>, key: Option<String>,
-    rating: Option<u8>,
+    rating: Option<u8>, comment: Option<String>, total_tracks: Option<u32>,
 ) -> Result<(), String> {
     let fmt = file_format(Path::new(&path));
     if fmt == "FLAC" || fmt == "OGG" || fmt == "OPUS" {
@@ -183,6 +194,7 @@ fn save_tags(
         if let Some(v) = genre        { tag.set_genre(v.into()); }
         if let Some(v) = year         { tag.set_year(v); }
         if let Some(v) = track_number { tag.set_track(v); }
+        if let Some(v) = total_tracks { tag.set_track_total(v); }
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     } else {
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
@@ -191,12 +203,27 @@ fn save_tags(
         if let Some(v) = album        { tag.set_album(v); }
         if let Some(v) = genre        { tag.set_genre(v); }
         if let Some(v) = year         { tag.set_year(v as i32); }
-        if let Some(v) = track_number { tag.set_track(v); }
+        // TRCK frame: handle track_number and total_tracks together
+        match (track_number, total_tracks) {
+            (Some(tn), Some(tt)) => { tag.add_frame(id3::Frame::text("TRCK", format!("{}/{}", tn, tt))); }
+            (Some(tn), None)     => { tag.set_track(tn); }
+            (None, Some(tt))     => {
+                let existing = tag.track().unwrap_or(0);
+                tag.add_frame(id3::Frame::text("TRCK", format!("{}/{}", existing, tt)));
+            }
+            (None, None) => {}
+        }
         if let Some(v) = bpm  { if !v.is_empty() { tag.add_frame(id3::Frame::text("TBPM", v)); } }
         if let Some(v) = key  { if !v.is_empty() { tag.add_frame(id3::Frame::text("TKEY", v)); } }
         if let Some(r) = rating {
             tag.remove_extended_text(None, Some("RATING"));
             tag.add_frame(id3::frame::ExtendedText { description: "RATING".to_string(), value: r.to_string() });
+        }
+        if let Some(v) = comment {
+            tag.remove("COMM");
+            if !v.is_empty() {
+                tag.add_frame(Id3Comment { lang: "por".to_string(), description: String::new(), text: v });
+            }
         }
         tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
     }

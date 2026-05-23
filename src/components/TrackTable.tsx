@@ -113,6 +113,7 @@ export default function TrackTable({
   const DEFAULT_VISIBILITY: VisibilityState = {
     tipo: false,
     adicionada: false,
+    comment: false,
   };
 
   const mergedVisibility: VisibilityState = { ...DEFAULT_VISIBILITY, ...columnVisibility };
@@ -461,6 +462,19 @@ export default function TrackTable({
         },
         size: 90,
       }),
+
+      // COMENTÁRIO
+      col.accessor("comment", {
+        id: "comment",
+        header: "Comentário",
+        cell: (i) =>
+          i.getValue() ? (
+            <span className="text-[11px] text-[#8F8883] truncate">{i.getValue()}</span>
+          ) : (
+            <span className="text-[#605A55] text-xs">—</span>
+          ),
+        size: 160,
+      }),
     ],
     [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite]
   );
@@ -661,6 +675,7 @@ export default function TrackTable({
                               : col.id === "capa" ? "Capa"
                               : col.id === "tipo" ? "Tipo"
                               : col.id === "adicionada" ? "Adicionada"
+                              : col.id === "comment" ? "Comentário"
                               : col.id}
                           </span>
                         </label>

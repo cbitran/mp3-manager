@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save, confirm } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
 import Inspector from "./components/Inspector";
@@ -41,7 +41,56 @@ export default function App() {
   } = useAppStore();
 
   const allTracks = useAppStore((s) => s.tracks);
-  const tracks = filteredTracks();
+  const baseFiltered = filteredTracks();
+
+  // ── Advanced filter state ────────────────────────────────────────
+  const [showAdvFilter, setShowAdvFilter] = useState(false);
+  const advFilterRef = useRef<HTMLDivElement>(null);
+  const [advFilter, setAdvFilter] = useState({
+    bpmMin: "", bpmMax: "", yearMin: "", yearMax: "", key: "",
+  });
+  const isAdvFilterActive = advFilter.bpmMin || advFilter.bpmMax || advFilter.yearMin || advFilter.yearMax || advFilter.key;
+
+  const availableKeys = useMemo(() => {
+    const ks = new Set(allTracks.map((t) => t.key).filter(Boolean) as string[]);
+    return [...ks].sort();
+  }, [allTracks]);
+
+  const tracks = useMemo(() => {
+    if (!isAdvFilterActive) return baseFiltered;
+    return baseFiltered.filter((t) => {
+      if (advFilter.bpmMin) {
+        const min = parseFloat(advFilter.bpmMin);
+        if (!isNaN(min) && (!t.bpm || parseFloat(t.bpm) < min)) return false;
+      }
+      if (advFilter.bpmMax) {
+        const max = parseFloat(advFilter.bpmMax);
+        if (!isNaN(max) && (!t.bpm || parseFloat(t.bpm) > max)) return false;
+      }
+      if (advFilter.yearMin) {
+        const min = parseInt(advFilter.yearMin);
+        if (!isNaN(min) && (!t.year || t.year < min)) return false;
+      }
+      if (advFilter.yearMax) {
+        const max = parseInt(advFilter.yearMax);
+        if (!isNaN(max) && (!t.year || t.year > max)) return false;
+      }
+      if (advFilter.key && t.key !== advFilter.key) return false;
+      return true;
+    });
+  }, [baseFiltered, advFilter, isAdvFilterActive]);
+
+  useEffect(() => {
+    if (!showAdvFilter) return;
+    const handler = (e: MouseEvent) => {
+      if (advFilterRef.current && !advFilterRef.current.contains(e.target as Node)) {
+        setShowAdvFilter(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAdvFilter]);
+
   const problemCount  = allTracks.filter((t) => t.issues.length > 0).length;
   const favoriteCount = allTracks.filter((t) => favoriteTrackPaths.has(t.path)).length;
   const recentCutoff  = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
@@ -510,14 +559,121 @@ export default function App() {
           {compact ? "▤" : "▣"}
         </button>
 
-        {/* Search */}
-        <input
+        {/* Advanced filter + Search */}
+        <div
+          className="flex items-center gap-1"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          className="w-52 px-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
-          placeholder="⌕  buscar…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        >
+          {/* Filter popover */}
+          <div className="relative" ref={advFilterRef}>
+            <button
+              onClick={() => setShowAdvFilter((v) => !v)}
+              title="Filtro avançado"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-colors border ${
+                isAdvFilterActive
+                  ? "bg-[#D95340]/15 border-[#D95340]/35 text-[#D95340]"
+                  : showAdvFilter
+                  ? "bg-white/[0.06] border-white/[0.08] text-[#C2BEBC]"
+                  : "border-white/[0.06] text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
+              }`}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <path d="M1 2.5h9M2.5 5.5h6M4 8.5h3"/>
+              </svg>
+              {isAdvFilterActive && <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] inline-block" />}
+            </button>
+
+            {showAdvFilter && (
+              <div className="absolute right-0 top-full mt-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl z-[200] w-64 p-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Filtro Avançado</p>
+                  {isAdvFilterActive && (
+                    <button
+                      onClick={() => setAdvFilter({ bpmMin: "", bpmMax: "", yearMin: "", yearMax: "", key: "" })}
+                      className="text-[10px] text-[#D95340] hover:text-[#E07364] transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+
+                {/* BPM Range */}
+                <div className="mb-2.5">
+                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">BPM</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      placeholder="min"
+                      value={advFilter.bpmMin}
+                      onChange={(e) => setAdvFilter((f) => ({ ...f, bpmMin: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                    />
+                    <span className="text-[#4C4743] text-xs">—</span>
+                    <input
+                      type="number"
+                      placeholder="max"
+                      value={advFilter.bpmMax}
+                      onChange={(e) => setAdvFilter((f) => ({ ...f, bpmMax: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Year Range */}
+                <div className="mb-2.5">
+                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">Ano</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      placeholder="min"
+                      value={advFilter.yearMin}
+                      onChange={(e) => setAdvFilter((f) => ({ ...f, yearMin: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                    />
+                    <span className="text-[#4C4743] text-xs">—</span>
+                    <input
+                      type="number"
+                      placeholder="max"
+                      value={advFilter.yearMax}
+                      onChange={(e) => setAdvFilter((f) => ({ ...f, yearMax: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Key filter */}
+                {availableKeys.length > 0 && (
+                  <div>
+                    <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">Tom</label>
+                    <select
+                      value={advFilter.key}
+                      onChange={(e) => setAdvFilter((f) => ({ ...f, key: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-md bg-[#120D0B] border border-white/[0.08] text-xs text-[#C2BEBC] focus:outline-none focus:border-[#D95340]/50 font-mono"
+                    >
+                      <option value="">Todos</option>
+                      {availableKeys.map((k) => (
+                        <option key={k} value={k}>{k}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {isAdvFilterActive && (
+                  <p className="mt-2 text-[9px] text-[#8F8883] text-center">
+                    {tracks.length} de {baseFiltered.length} faixas
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <input
+            className="w-52 px-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
+            placeholder="⌕  buscar…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Body */}
