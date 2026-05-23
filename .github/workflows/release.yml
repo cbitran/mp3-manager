@@ -68,6 +68,6 @@ jobs:
 
             ---
             Esta é uma versão de teste. Reporte problemas em Issues.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
