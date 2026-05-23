@@ -100,6 +100,7 @@ export default function App() {
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [showSettings, setShowSettings]     = useState(false);
   const [compact, setCompact]               = useState(false);
+  const [showSidebar, setShowSidebar]       = useState(true);
   const [missingMeta, setMissingMeta]       = useState<{
     missingGenre: number; missingYear: number; missingAlbum: number;
   } | null>(null);
@@ -387,6 +388,28 @@ export default function App() {
         {/* Espaço para os traffic lights do macOS */}
         {/^Mac/.test(navigator.platform) && <div className="w-20 shrink-0" />}
 
+        {/* Logo — abre Configurações */}
+        <button
+          onClick={() => setShowSettings(true)}
+          title="Configurações (⌘,)"
+          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md hover:bg-white/[0.06] transition-colors"
+        >
+          <img src="/tagwave-logo.png" alt="TagWave" className="w-5 h-5 rounded-sm" />
+        </button>
+
+        {/* Toggle sidebar */}
+        <button
+          onClick={() => setShowSidebar((v) => !v)}
+          title={showSidebar ? "Esconder pastas" : "Mostrar pastas"}
+          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <rect x="1" y="1" width="11" height="11" rx="1.5"/>
+            <path d="M4.5 1v11"/>
+            {!showSidebar && <path d="M7 5l2 1.5L7 8"/>}
+          </svg>
+        </button>
+
         {/* Abrir pasta */}
         <button
           onClick={pickFolder}
@@ -538,19 +561,6 @@ export default function App() {
 
         <div className="flex-1" />
 
-        {/* Settings */}
-        <button
-         
-          onClick={() => setShowSettings(true)}
-          title="Configurações (⌘,)"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors border border-white/[0.06]"
-        >
-          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="6.5" cy="6.5" r="2"/>
-            <path d="M6.5 1v1.5M6.5 10.5V12M1 6.5h1.5M10.5 6.5H12M2.57 2.57l1.06 1.06M9.37 9.37l1.06 1.06M9.37 3.63L8.31 4.69M3.63 9.37L2.57 10.43"/>
-          </svg>
-          Configurações
-        </button>
 
         <TrialBanner />
 
@@ -721,7 +731,7 @@ export default function App() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar onFolderSelect={scanFolder} />
+        {showSidebar && <Sidebar onFolderSelect={scanFolder} />}
 
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Filename cleanup prompt */}
