@@ -2,13 +2,35 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
 
+const PLAYER_BARS = 130;
+const waveCache = new Map<string, number[]>();
+
+function strHash(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return Math.abs(h);
+}
+
+function makeFallback(path: string): number[] {
+  const seed = strHash(path);
+  return Array.from({ length: PLAYER_BARS }, (_, i) => {
+    const t = i / PLAYER_BARS;
+    const a = 0.3 + 0.4 * Math.abs(Math.sin((seed % 100) * 0.07 + t * 6.28));
+    const b = 0.1 + 0.3 * Math.abs(Math.sin((seed % 77) * 0.13 + t * 12.1));
+    const c = 0.05 * Math.abs(Math.sin(t * 31 + seed % 17));
+    return Math.min(1, a + b + c);
+  });
+}
+
 export default function MiniPlayer() {
   const { tracks, selectedIds, playerTrackId, setPlayerTrack } = useAppStore();
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress]   = useState(0);
-  const [duration, setDuration]   = useState(0);
-  const [volume, setVolume]       = useState(0.8);
-  const [coverUrl, setCoverUrl]   = useState<string | null>(null);
+  const [isPlaying, setIsPlaying]   = useState(false);
+  const [progress, setProgress]     = useState(0);
+  const [duration, setDuration]     = useState(0);
+  const [volume, setVolume]         = useState(0.8);
+  const [coverUrl, setCoverUrl]     = useState<string | null>(null);
+  const [waveBars, setWaveBars]     = useState<number[] | null>(null);
+  const [hoverPct, setHoverPct]     = useState<number | null>(null);
   const audioRef   = useRef<HTMLAudioElement | null>(null);
   const loadedPath = useRef<string | null>(null);
 
@@ -16,6 +38,7 @@ export default function MiniPlayer() {
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
   const activeTrack = tracks.find((t) => t.id === activeId) ?? null;
 
+  // ── Load track ────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeTrack || !audioRef.current) return;
     if (loadedPath.current === activeTrack.path) return;
@@ -27,6 +50,7 @@ export default function MiniPlayer() {
     setProgress(0);
     setDuration(0);
     if (isPlaying) audioRef.current.play().catch(console.error);
+
     if (activeTrack.has_cover) {
       invoke<string | null>("read_cover_base64", { path: activeTrack.path })
         .then((b64) => setCoverUrl(b64 ? `data:image/jpeg;base64,${b64}` : null))
@@ -34,8 +58,21 @@ export default function MiniPlayer() {
     } else {
       setCoverUrl(null);
     }
+
+    // Waveform
+    const cached = waveCache.get(activeTrack.path);
+    if (cached) { setWaveBars(cached); return; }
+    setWaveBars(null);
+    invoke<number[]>("generate_waveform", { path: activeTrack.path, bars: PLAYER_BARS })
+      .then((data) => { waveCache.set(activeTrack.path, data); setWaveBars(data); })
+      .catch(() => {
+        const fb = makeFallback(activeTrack.path);
+        waveCache.set(activeTrack.path, fb);
+        setWaveBars(fb);
+      });
   }, [activeTrack?.id]);
 
+  // ── Audio event listeners ─────────────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -61,6 +98,7 @@ export default function MiniPlayer() {
     };
   }, []);
 
+  // ── Keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;
@@ -108,6 +146,14 @@ export default function MiniPlayer() {
   }
 
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
+  const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
+
+  // Bars viewBox dimensions
+  const BAR_W = 1.5;
+  const BAR_GAP = 0.8;
+  const BAR_STRIDE = BAR_W + BAR_GAP;
+  const VB_W = PLAYER_BARS * BAR_STRIDE;
+  const VB_H = 32;
 
   return (
     <div className="bg-[#0E0D0C] select-none">
@@ -122,12 +168,10 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 1: Capa + Info ───────────────────────────────── */}
         <div className="flex items-center gap-3 w-56 shrink-0 min-w-0 pr-5">
-          {/* Indicador coral (● estilo do DS) */}
           <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${
             isPlaying ? "bg-[#D95340]" : "bg-[#373331]"
           }`} />
 
-          {/* Capa miniatura */}
           <div className="shrink-0 w-7 h-7 rounded overflow-hidden bg-[#23201E] border border-white/[0.05] flex items-center justify-center">
             {coverUrl
               ? <img src={coverUrl} alt="" className="w-full h-full object-cover" />
@@ -137,7 +181,6 @@ export default function MiniPlayer() {
             }
           </div>
 
-          {/* Título + Artista */}
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold text-[#DCDAD8] truncate leading-tight tracking-[-0.01em]">
               {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#373331] font-normal italic">sem faixa</span>}
@@ -153,7 +196,6 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 2: Controles de transporte ──────────────────── */}
         <div className="flex items-center gap-3.5 px-5 shrink-0">
-          {/* Anterior */}
           <button onClick={() => skipTrack(-1)} disabled={!activeTrack}
             className="text-[#4C4743] hover:text-[#756D67] disabled:opacity-25 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -162,7 +204,6 @@ export default function MiniPlayer() {
             </svg>
           </button>
 
-          {/* Play / Pause — botão principal com coral */}
           <button
             onClick={togglePlay}
             disabled={!activeTrack}
@@ -183,7 +224,6 @@ export default function MiniPlayer() {
             }
           </button>
 
-          {/* Próximo */}
           <button onClick={() => skipTrack(1)} disabled={!activeTrack}
             className="text-[#4C4743] hover:text-[#756D67] disabled:opacity-25 transition-colors">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -196,26 +236,79 @@ export default function MiniPlayer() {
         {/* Separador */}
         <div className="w-px h-6 bg-[#23201E] shrink-0" />
 
-        {/* ── ZONA 3: Progresso — linha fina no estilo DS ──────── */}
+        {/* ── ZONA 3: Waveform seekável ─────────────────────────── */}
         <div className="flex items-center gap-3 flex-1 min-w-0 px-5">
+          {/* Tempo decorrido */}
           <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7 text-right">
             {fmt(progress)}
           </span>
 
-          <div onClick={handleSeek}
-            className="relative flex-1 h-5 flex items-center cursor-pointer group">
-            {/* Trilha */}
-            <div className="absolute inset-x-0 h-px bg-[#23201E] rounded-full" />
-            {/* Progresso coral */}
-            <div className="absolute left-0 h-px bg-[#D95340]/80 rounded-full"
-              style={{ width: `${pct}%` }} />
-            {/* Thumb — aparece no hover */}
-            <div
-              className="absolute w-[5px] h-[5px] rounded-full bg-[#D95340] -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ left: `${pct}%` }}
-            />
+          {/* Waveform */}
+          <div
+            className="relative flex-1 h-9 cursor-pointer group"
+            onClick={handleSeek}
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setHoverPct((e.clientX - rect.left) / rect.width);
+            }}
+            onMouseLeave={() => setHoverPct(null)}
+          >
+            <svg
+              width="100%"
+              height="100%"
+              viewBox={`0 0 ${VB_W} ${VB_H}`}
+              preserveAspectRatio="none"
+              className="absolute inset-0"
+            >
+              {displayBars.map((amp, i) => {
+                const barH  = Math.max(1.5, amp * (VB_H - 2));
+                const y     = (VB_H - barH) / 2;
+                const barPct = i / PLAYER_BARS;
+                const played = pct > 0 && barPct < pct / 100;
+                const hovered = hoverPct !== null && barPct < hoverPct && !played;
+                return (
+                  <rect
+                    key={i}
+                    x={i * BAR_STRIDE}
+                    y={y}
+                    width={BAR_W}
+                    height={barH}
+                    rx={0.5}
+                    fill={
+                      played  ? "#D95340" :
+                      hovered ? "#605A55" :
+                      "#2A2623"
+                    }
+                    opacity={
+                      played  ? 0.35 + amp * 0.65 :
+                      hovered ? 0.5 + amp * 0.5 :
+                      0.25 + amp * 0.4
+                    }
+                  />
+                );
+              })}
+            </svg>
+
+            {/* Playhead vertical */}
+            {pct > 0 && (
+              <div
+                className="absolute top-1 bottom-1 w-px bg-white/30 pointer-events-none"
+                style={{ left: `${pct}%` }}
+              />
+            )}
+
+            {/* Hover time tooltip */}
+            {hoverPct !== null && duration > 0 && (
+              <div
+                className="absolute bottom-full mb-1 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#1c1715] border border-white/[0.08] text-[9px] font-mono text-[#C2BEBC] pointer-events-none whitespace-nowrap z-10"
+                style={{ left: `${hoverPct * 100}%` }}
+              >
+                {fmt(hoverPct * duration)}
+              </div>
+            )}
           </div>
 
+          {/* Duração total */}
           <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7">
             {fmt(duration)}
           </span>
@@ -224,9 +317,24 @@ export default function MiniPlayer() {
         {/* Separador */}
         <div className="w-px h-6 bg-[#23201E] shrink-0" />
 
-        {/* ── ZONA 4: Volume ───────────────────────────────────── */}
-        <div className="flex items-center gap-2.5 pl-5 shrink-0">
-          {/* Ícone de speaker */}
+        {/* ── ZONA 4: BPM · Tom · Volume ───────────────────────── */}
+        <div className="flex items-center gap-3 pl-5 shrink-0">
+          {/* BPM + Tom (quando disponíveis) */}
+          {activeTrack?.bpm && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-mono tabular-nums text-[#4C4743]">
+                {parseFloat(activeTrack.bpm).toFixed(0)}
+              </span>
+              <span className="text-[8px] text-[#373331] uppercase tracking-widest">bpm</span>
+            </div>
+          )}
+          {activeTrack?.key && (
+            <span className="text-[9px] font-mono font-bold text-[#605A55]">
+              {activeTrack.key}
+            </span>
+          )}
+
+          {/* Volume */}
           <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
             <path d="M1 3h1.6L5 1v7L2.6 6H1V3z" fill="#4C4743"/>
             <path d="M6.5 2.5a2.5 2.5 0 010 4" stroke="#4C4743" strokeWidth="0.8" strokeLinecap="round" fill="none"/>
