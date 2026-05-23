@@ -1,14 +1,24 @@
 import { fetch as tFetch } from "@tauri-apps/plugin-http";
 
-const CLIENT_ID = "b1c574848d0b491eb75f94f515e9c7de";
-const CLIENT_SECRET = "e5593f4ca9644a4c8ea03ec0b3178913";
+const DEFAULT_CLIENT_ID = "b1c574848d0b491eb75f94f515e9c7de";
+const DEFAULT_CLIENT_SECRET = "e5593f4ca9644a4c8ea03ec0b3178913";
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
+let cachedCredKey = "";
+
+function getSpotifyCreds() {
+  const id = localStorage.getItem("tagwave_spotify_id") || DEFAULT_CLIENT_ID;
+  const secret = localStorage.getItem("tagwave_spotify_secret") || DEFAULT_CLIENT_SECRET;
+  return { id, secret };
+}
 
 async function getToken(): Promise<string> {
+  const { id, secret } = getSpotifyCreds();
+  const credKey = id + ":" + secret;
+  if (credKey !== cachedCredKey) { cachedToken = null; tokenExpiry = 0; cachedCredKey = credKey; }
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken!;
-  const creds = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
+  const creds = btoa(credKey);
   const res = await tFetch("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },

@@ -87,6 +87,19 @@ interface AppState {
   // API keys
   lastFmApiKey: string;
   setLastFmApiKey: (key: string) => void;
+  spotifyClientId: string;
+  spotifyClientSecret: string;
+  setSpotifyCredentials: (id: string, secret: string) => void;
+  discogsToken: string;
+  setDiscogsToken: (token: string) => void;
+  acoustidKey: string;
+  setAcoustidKey: (key: string) => void;
+  theme: "auto" | "light" | "dark";
+  setTheme: (theme: "auto" | "light" | "dark") => void;
+  djPrimary: string;
+  djAutoImport: boolean;
+  djShowAll: boolean;
+  setDjPrefs: (primary: string, autoImport: boolean, showAll: boolean) => void;
 
   // Trial actions
   // Player
@@ -136,6 +149,37 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLastFmApiKey: (key) => {
     localStorage.setItem("tagwave_lastfm_key", key);
     set({ lastFmApiKey: key });
+  },
+  spotifyClientId: localStorage.getItem("tagwave_spotify_id") ?? "",
+  spotifyClientSecret: localStorage.getItem("tagwave_spotify_secret") ?? "",
+  setSpotifyCredentials: (id, secret) => {
+    localStorage.setItem("tagwave_spotify_id", id);
+    localStorage.setItem("tagwave_spotify_secret", secret);
+    set({ spotifyClientId: id, spotifyClientSecret: secret });
+  },
+  discogsToken: localStorage.getItem("tagwave_discogs_token") ?? "",
+  setDiscogsToken: (token) => {
+    localStorage.setItem("tagwave_discogs_token", token);
+    set({ discogsToken: token });
+  },
+  acoustidKey: localStorage.getItem("tagwave_acoustid_key") ?? "",
+  setAcoustidKey: (key) => {
+    localStorage.setItem("tagwave_acoustid_key", key);
+    set({ acoustidKey: key });
+  },
+  theme: (localStorage.getItem("tagwave_theme") as "auto" | "light" | "dark") ?? "auto",
+  setTheme: (theme) => {
+    localStorage.setItem("tagwave_theme", theme);
+    set({ theme });
+  },
+  djPrimary: localStorage.getItem("tagwave_dj_primary") ?? "none",
+  djAutoImport: localStorage.getItem("tagwave_dj_autoimport") === "true",
+  djShowAll: localStorage.getItem("tagwave_dj_showall") === "true",
+  setDjPrefs: (primary, autoImport, showAll) => {
+    localStorage.setItem("tagwave_dj_primary", primary);
+    localStorage.setItem("tagwave_dj_autoimport", String(autoImport));
+    localStorage.setItem("tagwave_dj_showall", String(showAll));
+    set({ djPrimary: primary, djAutoImport: autoImport, djShowAll: showAll });
   },
 
   setTracks: (tracks) =>

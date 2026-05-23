@@ -88,12 +88,7 @@ export default function TrackTable({
     } catch { return []; }
   });
 
-  const DEFAULT_VISIBILITY: VisibilityState = {
-    artist: false,
-    year_col: false,
-    status: false,
-    file_size: false,
-  };
+  const DEFAULT_VISIBILITY: VisibilityState = {};
 
   const mergedVisibility: VisibilityState = { ...DEFAULT_VISIBILITY, ...columnVisibility };
 
