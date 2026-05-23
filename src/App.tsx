@@ -378,7 +378,8 @@ export default function App() {
         className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05] bg-[#23201E]"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="w-20 shrink-0" />
+        {/* Espaço para os traffic lights do macOS — deve ser no-drag */}
+        <div className="w-20 shrink-0" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties} />
 
         {/* Abrir pasta */}
         <button

@@ -16,7 +16,12 @@
         "width": 1200,
         "height": 800,
         "minWidth": 1024,
-        "minHeight": 600
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "minimizable": true,
+        "maximizable": true,
+        "closable": true
       }
     ],
     "security": {
