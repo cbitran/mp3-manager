@@ -16,6 +16,7 @@ import { useAppStore, type Track } from "../store";
 import { setAutoPlayOnLoad } from "../store";
 import WaveformCell from "./WaveformCell";
 import CreatePlaylistModal from "./CreatePlaylistModal";
+import { queuedInvoke } from "../lib/ipcQueue";
 
 const col = createColumnHelper<Track>();
 
@@ -64,7 +65,7 @@ function CoverCell({ path, hasCover }: { path: string; hasCover: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!hasCover) { setSrc(null); return; }
-    invoke<string | null>("read_cover_base64", { path })
+    queuedInvoke<string | null>(() => invoke("read_cover_base64", { path }))
       .then((b64) => setSrc(b64 ? `data:image/jpeg;base64,${b64}` : null))
       .catch(() => setSrc(null));
   }, [path, hasCover]);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { queuedInvoke } from "../lib/ipcQueue";
 
 const cache = new Map<string, number[]>();
 const BARS = 52;
@@ -28,7 +29,7 @@ export default function WaveformCell({ path }: { path: string }) {
   useEffect(() => {
     if (bars !== null) return;
     let cancelled = false;
-    invoke<number[]>("generate_waveform", { path, bars: BARS })
+    queuedInvoke<number[]>(() => invoke("generate_waveform", { path, bars: BARS }))
       .then((data) => {
         if (cancelled) return;
         cache.set(path, data);
