@@ -380,32 +380,9 @@ export default function App() {
     <div className="flex flex-col h-screen bg-[#0E0D0C] text-[#F5F5F4] font-sans overflow-hidden">
       {/* Toolbar */}
       <div
+        data-tauri-drag-region
         className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05] bg-[#23201E]"
         style={{ cursor: "default" }}
-        onMouseDown={(e) => {
-          const target = e.target as HTMLElement;
-          if (target.closest('button, input, select, a, [role="button"]')) return;
-          const isMac = navigator.platform.startsWith("Mac");
-          if (isMac) {
-            e.preventDefault();
-            getCurrentWindow().startDragging().catch(() => {});
-          } else {
-            // Windows/Linux: dead zone de 4px para não conflitar com botão fechar nativo
-            const startX = e.clientX, startY = e.clientY;
-            const onMove = (mv: MouseEvent) => {
-              if (Math.abs(mv.clientX - startX) > 4 || Math.abs(mv.clientY - startY) > 4) {
-                cleanup();
-                getCurrentWindow().startDragging().catch(() => {});
-              }
-            };
-            const cleanup = () => {
-              document.removeEventListener("mousemove", onMove);
-              document.removeEventListener("mouseup", cleanup);
-            };
-            document.addEventListener("mousemove", onMove);
-            document.addEventListener("mouseup", cleanup);
-          }
-        }}
       >
         {/* Espaço para os traffic lights do macOS */}
         {/^Mac/.test(navigator.platform) && <div className="w-20 shrink-0" />}
