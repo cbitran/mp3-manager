@@ -25,6 +25,7 @@ export type FilterTab = "all" | "favorites" | "problems" | "ok";
 const LAST_FOLDER_KEY = "mp3mgr_lastFolder";
 const FAVORITES_KEY   = "mp3mgr_favorites";
 const FAV_TRACKS_KEY  = "mp3mgr_favTracks";
+const RECENT_KEY      = "mp3mgr_recentFolders";
 
 interface AppState {
   tracks: Track[];
@@ -34,6 +35,7 @@ interface AppState {
   isScanning: boolean;
   lastFolder: string | null;
   favoriteFolders: string[];
+  recentFolders: string[];
   favoriteTrackPaths: Set<string>;
 
   setTracks: (tracks: Track[]) => void;
@@ -46,6 +48,7 @@ interface AppState {
   setSearchQuery: (q: string) => void;
   setLastFolder: (path: string) => void;
   toggleFavorite: (path: string) => void;
+  removeRecentFolder: (path: string) => void;
   toggleTrackFavorite: (path: string) => void;
   isTrackFavorite: (path: string) => boolean;
 
@@ -60,6 +63,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isScanning: false,
   lastFolder: localStorage.getItem(LAST_FOLDER_KEY),
   favoriteFolders: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]"),
+  recentFolders: JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"),
   favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
 
   setTracks: (tracks) =>
@@ -87,7 +91,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setLastFolder: (path) => {
     localStorage.setItem(LAST_FOLDER_KEY, path);
-    set({ lastFolder: path });
+    const recents = get().recentFolders;
+    const next = [path, ...recents.filter((r) => r !== path)].slice(0, 10);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    set({ lastFolder: path, recentFolders: next });
   },
 
   toggleFavorite: (path) => {
@@ -95,6 +102,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = favs.includes(path) ? favs.filter((f) => f !== path) : [path, ...favs];
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
     set({ favoriteFolders: next });
+  },
+
+  removeRecentFolder: (path) => {
+    const next = get().recentFolders.filter((r) => r !== path);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    set({ recentFolders: next });
   },
 
   toggleTrackFavorite: (path) => {

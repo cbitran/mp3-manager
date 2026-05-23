@@ -243,6 +243,28 @@ fn trash_file(path: String) -> Result<(), String> {
     trash::delete(&path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn trash_folder(path: String) -> Result<(), String> {
+    trash::delete(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_subfolders(path: String) -> Result<Vec<String>, String> {
+    let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
+    let mut subs: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .map(|e| e.path().to_string_lossy().to_string())
+        .collect();
+    subs.sort_by(|a, b| {
+        let na = std::path::Path::new(a).file_name().unwrap_or_default().to_string_lossy();
+        let nb = std::path::Path::new(b).file_name().unwrap_or_default().to_string_lossy();
+        na.to_lowercase().cmp(&nb.to_lowercase())
+    });
+    Ok(subs)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -255,7 +277,9 @@ pub fn run() {
             save_tags,
             save_cover,
             read_cover_base64,
-            trash_file
+            trash_file,
+            trash_folder,
+            list_subfolders
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
