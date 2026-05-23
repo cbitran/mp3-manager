@@ -56,7 +56,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'MP3 Manager ${{ github.ref_name }}'
+          releaseName: 'TagWave ${{ github.ref_name }}'
           releaseBody: |
             ## Como instalar
 
