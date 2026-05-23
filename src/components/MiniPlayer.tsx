@@ -57,10 +57,14 @@ export default function MiniPlayer() {
   }, [isPlaying, setIsPlayingGlobal]);
 
   // ── Audio Context helpers ─────────────────────────────────────────
-  function setupAudioCtx() {
+  async function setupAudioCtx() {
     if (audioCtxRef.current || !audioRef.current) return;
     try {
       const ctx = new AudioContext();
+      // Await resume BEFORE connecting media element: prevents audio capture
+      // inside a suspended context (silent audio bug on Windows/WebView2)
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (ctx.state !== 'running') { ctx.close().catch(() => {}); return; }
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.78;
@@ -137,11 +141,11 @@ export default function MiniPlayer() {
     if (loadedPath.current === activeTrack.path) {
       // Same track: only start playing if autoPlay requested and not already playing
       if (shouldAutoPlay && !isPlayingRef.current) {
-        setupAudioCtx();
-        if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
-        audioRef.current.play().catch(console.error);
-        setIsPlaying(true);
-        startLiveAnim();
+        setupAudioCtx().then(() => {
+          audioRef.current?.play().catch(console.error);
+          setIsPlaying(true);
+          startLiveAnim();
+        });
       }
       return;
     }
@@ -158,20 +162,20 @@ export default function MiniPlayer() {
     setDuration(0);
 
     if (isPlayingRef.current || shouldAutoPlay) {
-      setupAudioCtx();
-      if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
-      // Try to play immediately; fall back to canplay on AbortError (WKWebView quirk)
       const startPlayback = () => {
         setIsPlaying(true);
         startLiveAnim();
       };
-      audioRef.current.play()
-        .then(startPlayback)
-        .catch(() => {
-          audioRef.current?.addEventListener('canplay', () => {
-            audioRef.current?.play().then(startPlayback).catch(console.error);
-          }, { once: true });
-        });
+      // Await AudioContext resume BEFORE play to prevent silent audio on Windows
+      setupAudioCtx().then(() => {
+        audioRef.current!.play()
+          .then(startPlayback)
+          .catch(() => {
+            audioRef.current?.addEventListener('canplay', () => {
+              audioRef.current?.play().then(startPlayback).catch(console.error);
+            }, { once: true });
+          });
+      });
     } else {
       setIsPlaying(false);
     }
@@ -197,7 +201,8 @@ export default function MiniPlayer() {
         waveBarsRef.current = fb;
         setWaveBars(fb);
       });
-  }, [activeTrack?.id]);
+  // playerTrackId added so double-click on already-selected track re-triggers play
+  }, [activeTrack?.id, playerTrackId]);
 
   // ── Audio event listeners ─────────────────────────────────────────
   useEffect(() => {
@@ -251,16 +256,15 @@ export default function MiniPlayer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeTrack, isPlaying]);
 
-  function togglePlay() {
+  async function togglePlay() {
     if (!audioRef.current || !activeTrack) return;
     if (!playerTrackId && selectedArr[0]) setPlayerTrack(selectedArr[0]);
-    setupAudioCtx();
-    if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
       stopLiveAnim();
     } else {
+      await setupAudioCtx();
       audioRef.current.play().catch(console.error);
       setIsPlaying(true);
       startLiveAnim();

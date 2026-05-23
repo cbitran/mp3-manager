@@ -407,7 +407,7 @@ export default function App() {
         }}
       >
         {/* Espaço para os traffic lights do macOS */}
-        <div className="w-20 shrink-0" />
+        {/^Mac/.test(navigator.platform) && <div className="w-20 shrink-0" />}
 
         {/* Abrir pasta */}
         <button
@@ -445,7 +445,7 @@ export default function App() {
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold border border-[#D95340]/30 text-[#D95340] hover:bg-[#D95340]/10 transition-colors whitespace-nowrap shrink-0"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] inline-block shrink-0" />
-              {cleanupCount} precisam de limpeza
+              {cleanupCount} precisam de enriquecimento
             </button>
           )}
           {allTracks.length > 0 && (
@@ -709,6 +709,36 @@ export default function App() {
             />
           </div>
         </div>
+
+        {/* Controles de janela — Windows (macOS usa traffic lights nativos) */}
+        {!/^Mac/.test(navigator.platform) && (
+          <div className="flex items-center shrink-0 ml-1">
+            <button
+              onClick={() => getCurrentWindow().minimize()}
+              className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors rounded"
+              title="Minimizar"
+            >
+              <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5" rx="0.5"/></svg>
+            </button>
+            <button
+              onClick={async () => {
+                const w = getCurrentWindow();
+                if (await w.isMaximized()) w.unmaximize(); else w.maximize();
+              }}
+              className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors rounded"
+              title="Maximizar"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="0.7" y="0.7" width="7.6" height="7.6" rx="1"/></svg>
+            </button>
+            <button
+              onClick={() => getCurrentWindow().close()}
+              className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-white hover:bg-[#D95340] transition-colors rounded"
+              title="Fechar"
+            >
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/></svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Body */}

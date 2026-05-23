@@ -268,7 +268,7 @@ export default function TrackTable({
                 </span>
                 {hasIssues && (
                   <span className="shrink-0 mt-px px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-[#D95340]/20 text-[#D95340] leading-tight">
-                    limpar
+                    enriquecer
                   </span>
                 )}
               </div>
