@@ -67,6 +67,7 @@ interface AppState {
 
   setTracks: (tracks: Track[]) => void;
   updateTrack: (track: Track) => void;
+  removeTracks: (ids: string[]) => void;
   setScanning: (v: boolean) => void;
   toggleSelect: (id: string) => void;
   selectOnly: (id: string) => void;
@@ -103,10 +104,11 @@ interface AppState {
   djShowAll: boolean;
   setDjPrefs: (primary: string, autoImport: boolean, showAll: boolean) => void;
 
-  // Trial actions
   // Player
   playerTrackId: string | null;
   setPlayerTrack: (id: string | null) => void;
+  isPlayingGlobal: boolean;
+  setIsPlayingGlobal: (playing: boolean) => void;
 
   isTrialActivated: () => boolean;
   isTrialExpired: () => boolean;
@@ -124,6 +126,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedIds: new Set(),
   playerTrackId: null,
   setPlayerTrack: (id) => set({ playerTrackId: id }),
+  isPlayingGlobal: false,
+  setIsPlayingGlobal: (isPlayingGlobal) => set({ isPlayingGlobal }),
   filterTab: "all",
   genreFilter: null,
   searchQuery: "",
@@ -189,6 +193,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateTrack: (track) =>
     set((s) => ({ tracks: s.tracks.map((t) => (t.id === track.id ? track : t)) })),
+
+  removeTracks: (ids) =>
+    set((s) => ({
+      tracks: s.tracks.filter((t) => !ids.includes(t.id)),
+      selectedIds: new Set([...s.selectedIds].filter((id) => !ids.includes(id))),
+    })),
 
   setScanning: (isScanning) => set({ isScanning }),
 

@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Track } from "../store";
 import { setAutoPlayOnLoad } from "../store";
 import WaveformCell from "./WaveformCell";
+import CreatePlaylistModal from "./CreatePlaylistModal";
 
 const col = createColumnHelper<Track>();
 
@@ -96,6 +97,7 @@ export default function TrackTable({
     playerTrackId,
     columnVisibility,
     setColumnVisibility,
+    removeTracks,
   } = useAppStore();
 
   const anchorIdRef = useRef<string | null>(null);
@@ -134,6 +136,8 @@ export default function TrackTable({
   const colPickerRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; track: Track } | null>(null);
   const contextRef = useRef<HTMLDivElement>(null);
+  const [playlistTracks, setPlaylistTracks] = useState<Track[] | null>(null);
+  const [removeDialog, setRemoveDialog] = useState<{ targets: Track[] } | null>(null);
 
   const compatIds = useMemo(() => {
     if (selectedIds.size !== 1) return { bpm: new Set<string>(), key: new Set<string>() };
@@ -625,40 +629,62 @@ export default function TrackTable({
             {table.getHeaderGroups()[0]?.headers.map((header) => (
               <th
                 key={header.id}
-                draggable
+                data-col-id={header.id}
                 style={{ width: header.getSize(), position: 'relative' }}
                 className={`px-3 py-2.5 text-left text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] cursor-pointer select-none whitespace-nowrap transition-colors ${
                   dragOverColId === header.id ? 'border-l-2 border-l-[#D95340] bg-white/[0.02]' : ''
                 }`}
                 onClick={header.column.getToggleSortingHandler()}
-                onDragStart={(e) => {
-                  dragColIdRef.current = header.id;
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (dragOverColId !== header.id) setDragOverColId(header.id);
-                }}
-                onDragLeave={() => setDragOverColId(null)}
-                onDragEnd={() => { setDragOverColId(null); dragColIdRef.current = null; }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const from = dragColIdRef.current;
-                  const to = header.id;
-                  setDragOverColId(null);
-                  dragColIdRef.current = null;
-                  if (!from || from === to) return;
-                  const allIds = table.getAllLeafColumns().map((c) => c.id);
-                  const current = columnOrder.length > 0 ? columnOrder : allIds;
-                  const fi = current.indexOf(from);
-                  const ti = current.indexOf(to);
-                  if (fi < 0 || ti < 0) return;
-                  const next = [...current];
-                  next.splice(fi, 1);
-                  next.splice(ti, 0, from);
-                  setColumnOrder(next);
-                  localStorage.setItem("tagwave_col_order", JSON.stringify(next));
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return;
+                  // Don't start col-drag if clicking the resize handle
+                  if ((e.target as HTMLElement).closest('[data-resize]')) return;
+
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let dragging = false;
+
+                  const onMove = (mv: MouseEvent) => {
+                    if (!dragging) {
+                      if (Math.abs(mv.clientX - startX) > 5 || Math.abs(mv.clientY - startY) > 5) {
+                        dragging = true;
+                        dragColIdRef.current = header.id;
+                      }
+                    }
+                    if (!dragging) return;
+                    const el = document.elementFromPoint(mv.clientX, mv.clientY);
+                    const th = el?.closest('th[data-col-id]');
+                    const over = th?.getAttribute('data-col-id') ?? null;
+                    setDragOverColId(over !== header.id ? over : null);
+                  };
+
+                  const onUp = (up: MouseEvent) => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    if (!dragging) { dragColIdRef.current = null; return; }
+                    // Block the click event that fires after mouseup from triggering sort
+                    document.addEventListener('click', (ce) => ce.stopPropagation(), { once: true, capture: true });
+                    const el = document.elementFromPoint(up.clientX, up.clientY);
+                    const th = el?.closest('th[data-col-id]');
+                    const to = th?.getAttribute('data-col-id');
+                    const from = dragColIdRef.current;
+                    setDragOverColId(null);
+                    dragColIdRef.current = null;
+                    if (!from || !to || from === to) return;
+                    const allIds = table.getAllLeafColumns().map((c) => c.id);
+                    const current = columnOrder.length > 0 ? columnOrder : allIds;
+                    const fi = current.indexOf(from);
+                    const ti = current.indexOf(to);
+                    if (fi < 0 || ti < 0) return;
+                    const next = [...current];
+                    next.splice(fi, 1);
+                    next.splice(ti, 0, from);
+                    setColumnOrder(next);
+                    localStorage.setItem("tagwave_col_order", JSON.stringify(next));
+                  };
+
+                  document.addEventListener('mousemove', onMove);
+                  document.addEventListener('mouseup', onUp);
                 }}
               >
                 <span className="flex items-center gap-1">
@@ -672,6 +698,7 @@ export default function TrackTable({
                 </span>
                 {header.column.getCanResize() && (
                   <div
+                    data-resize
                     onMouseDown={header.getResizeHandler()}
                     onTouchStart={header.getResizeHandler()}
                     className={`absolute top-0 right-0 h-full w-[3px] cursor-col-resize select-none touch-none transition-colors ${
@@ -858,6 +885,94 @@ export default function TrackTable({
           </svg>
           {favoriteTrackPaths.has(contextMenu.track.path) ? "Remover dos favoritos" : "Adicionar aos favoritos"}
         </button>
+        <div className="h-px bg-white/[0.06] my-1" />
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={() => {
+            // Export selected tracks if multiple, otherwise just this track
+            const exportTracks = selectedIds.size > 1
+              ? tracks.filter((t) => selectedIds.has(t.id))
+              : [contextMenu.track];
+            setPlaylistTracks(exportTracks);
+            setContextMenu(null);
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60">
+            <rect x="1" y="1" width="9" height="2" rx="0.5"/>
+            <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
+            <rect x="1" y="8" width="5" height="2" rx="0.5"/>
+          </svg>
+          {selectedIds.size > 1 ? `Criar Playlist (${selectedIds.size} faixas)` : "Criar Playlist"}
+        </button>
+        <div className="h-px bg-white/[0.06] my-1" />
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#D95340]/80 hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={() => {
+            const targets = selectedIds.size > 1
+              ? tracks.filter((t) => selectedIds.has(t.id))
+              : [contextMenu.track];
+            setRemoveDialog({ targets });
+            setContextMenu(null);
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-70">
+            <path d="M4 1h3a1 1 0 011 1v.5H2.5V2A1 1 0 014 1zM1 3h9l-.8 6.5A1 1 0 018.2 10H2.8a1 1 0 01-.997-.9L1 3z"/>
+          </svg>
+          {selectedIds.size > 1 ? `Remover ${selectedIds.size} faixas…` : "Remover…"}
+        </button>
+      </div>
+    )}
+
+    {playlistTracks && (
+      <CreatePlaylistModal
+        tracks={playlistTracks}
+        onClose={() => setPlaylistTracks(null)}
+      />
+    )}
+
+    {/* Diálogo de remoção de faixas */}
+    {removeDialog && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
+          <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
+            {removeDialog.targets.length === 1
+              ? `Remover "${removeDialog.targets[0].title ?? removeDialog.targets[0].filename}"`
+              : `Remover ${removeDialog.targets.length} faixas`}
+          </h3>
+          <p className="text-xs text-[#8F8883] mb-5">
+            Escolha o que deseja fazer com {removeDialog.targets.length === 1 ? "este arquivo" : "estes arquivos"}.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              className="w-full py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
+              onClick={async () => {
+                const ids = removeDialog.targets.map((t) => t.id);
+                for (const t of removeDialog.targets) {
+                  await invoke("trash_file", { path: t.path }).catch(() => {});
+                }
+                removeTracks(ids);
+                setRemoveDialog(null);
+              }}
+            >
+              Mover para a Lixeira
+            </button>
+            <button
+              className="w-full py-2 rounded-lg bg-white/8 hover:bg-white/12 text-[#D95340] text-sm font-medium transition-colors"
+              onClick={() => {
+                removeTracks(removeDialog.targets.map((t) => t.id));
+                setRemoveDialog(null);
+              }}
+            >
+              Remover da Lista
+            </button>
+            <button
+              className="w-full py-2 rounded-lg bg-transparent hover:bg-white/5 text-[#756D67] text-sm transition-colors"
+              onClick={() => setRemoveDialog(null)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       </div>
     )}
     </>

@@ -23,7 +23,7 @@ function makeFallback(path: string): number[] {
 }
 
 export default function MiniPlayer() {
-  const { tracks, selectedIds, playerTrackId, setPlayerTrack } = useAppStore();
+  const { tracks, selectedIds, playerTrackId, setPlayerTrack, setIsPlayingGlobal } = useAppStore();
   const [isPlaying, setIsPlaying]   = useState(false);
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
@@ -31,16 +31,30 @@ export default function MiniPlayer() {
   const [coverUrl, setCoverUrl]     = useState<string | null>(null);
   const [waveBars, setWaveBars]     = useState<number[] | null>(null);
   const [hoverPct, setHoverPct]     = useState<number | null>(null);
-  const audioRef   = useRef<HTMLAudioElement | null>(null);
-  const loadedPath = useRef<string | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const [showVolume, setShowVolume] = useState(false);
+
+  const audioRef     = useRef<HTMLAudioElement | null>(null);
+  const loadedPath   = useRef<string | null>(null);
+  const audioCtxRef  = useRef<AudioContext | null>(null);
+  const analyserRef  = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
+  const waveBarsRef  = useRef<number[]>([]);   // always current waveform data for animation loop
+  const volumePopupRef = useRef<HTMLDivElement>(null);
+  const isPlayingRef = useRef(false);          // sync ref for effects that can't use stale state
 
   const selectedArr = [...selectedIds];
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
   const activeTrack = tracks.find((t) => t.id === activeId) ?? null;
+
+  // Keep waveBarsRef in sync
+  useEffect(() => { if (waveBars) waveBarsRef.current = waveBars; }, [waveBars]);
+
+  // Keep isPlayingRef in sync + update global store
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    setIsPlayingGlobal(isPlaying);
+  }, [isPlaying, setIsPlayingGlobal]);
 
   // ── Audio Context helpers ─────────────────────────────────────────
   function setupAudioCtx() {
@@ -73,17 +87,21 @@ export default function MiniPlayer() {
           c.clearRect(0, 0, canvas.width, canvas.height);
           const W = canvas.width; const H = canvas.height;
           const bw = W / PLAYER_BARS;
+          const bars = waveBarsRef.current;
           for (let i = 0; i < PLAYER_BARS; i++) {
             const s = Math.floor(i * step), e2 = Math.floor((i + 1) * step);
             let sum = 0;
             for (let j = s; j < e2; j++) sum += freqData[j];
-            const amp = sum / Math.max(1, e2 - s) / 255;
-            if (amp < 0.015) continue;
-            const bh = amp * H * 0.88;
+            const beatAmp = sum / Math.max(1, e2 - s) / 255;
+            if (beatAmp < 0.012) continue;
+            // Shape the beat bars using the actual waveform profile
+            const waveBase = bars.length > i ? bars[i] : 0.5;
+            const finalAmp = waveBase * (0.3 + beatAmp * 0.7);
+            const bh = Math.max(1.5, finalAmp * H * 0.92);
             const x = i * bw + bw * 0.12;
             const y = (H - bh) / 2;
             const w2 = bw * 0.76;
-            c.fillStyle = `rgba(255, 148, 128, ${0.18 + amp * 0.65})`;
+            c.fillStyle = `rgba(255, 148, 128, ${0.14 + finalAmp * 0.72})`;
             c.beginPath();
             if (c.roundRect) c.roundRect(x, y, w2, bh, 1);
             else c.rect(x, y, w2, bh);
@@ -107,8 +125,10 @@ export default function MiniPlayer() {
   useEffect(() => {
     if (!activeTrack || !audioRef.current) return;
     const shouldAutoPlay = consumeAutoPlay();
+
     if (loadedPath.current === activeTrack.path) {
-      if (shouldAutoPlay) {
+      // Same track: only start playing if autoPlay requested and not already playing
+      if (shouldAutoPlay && !isPlayingRef.current) {
         setupAudioCtx();
         if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
         audioRef.current.play().catch(console.error);
@@ -117,6 +137,10 @@ export default function MiniPlayer() {
       }
       return;
     }
+
+    // New track — stop current playback first, then load
+    audioRef.current.pause();
+    stopLiveAnim();
     loadedPath.current = activeTrack.path;
     const src = convertFileSrc(activeTrack.path);
     audioRef.current.src = src;
@@ -124,14 +148,27 @@ export default function MiniPlayer() {
     audioRef.current.load();
     setProgress(0);
     setDuration(0);
-    if (isPlaying || shouldAutoPlay) {
+
+    if (isPlayingRef.current || shouldAutoPlay) {
       setupAudioCtx();
       if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume().catch(() => {});
-      audioRef.current.play().catch(console.error);
-      setIsPlaying(true);
-      startLiveAnim();
+      // Try to play immediately; fall back to canplay on AbortError (WKWebView quirk)
+      const startPlayback = () => {
+        setIsPlaying(true);
+        startLiveAnim();
+      };
+      audioRef.current.play()
+        .then(startPlayback)
+        .catch(() => {
+          audioRef.current?.addEventListener('canplay', () => {
+            audioRef.current?.play().then(startPlayback).catch(console.error);
+          }, { once: true });
+        });
+    } else {
+      setIsPlaying(false);
     }
 
+    // Cover
     if (activeTrack.has_cover) {
       invoke<string | null>("read_cover_base64", { path: activeTrack.path })
         .then((b64) => setCoverUrl(b64 ? `data:image/jpeg;base64,${b64}` : null))
@@ -142,13 +179,14 @@ export default function MiniPlayer() {
 
     // Waveform
     const cached = waveCache.get(activeTrack.path);
-    if (cached) { setWaveBars(cached); return; }
+    if (cached) { waveBarsRef.current = cached; setWaveBars(cached); return; }
     setWaveBars(null);
     invoke<number[]>("generate_waveform", { path: activeTrack.path, bars: PLAYER_BARS })
-      .then((data) => { waveCache.set(activeTrack.path, data); setWaveBars(data); })
+      .then((data) => { waveCache.set(activeTrack.path, data); waveBarsRef.current = data; setWaveBars(data); })
       .catch(() => {
         const fb = makeFallback(activeTrack.path);
         waveCache.set(activeTrack.path, fb);
+        waveBarsRef.current = fb;
         setWaveBars(fb);
       });
   }, [activeTrack?.id]);
@@ -179,6 +217,18 @@ export default function MiniPlayer() {
       audio.removeEventListener("ended", onEnd);
     };
   }, []);
+
+  // ── Volume popup: close on outside click ─────────────────────────
+  useEffect(() => {
+    if (!showVolume) return;
+    const handler = (e: MouseEvent) => {
+      if (volumePopupRef.current && !volumePopupRef.current.contains(e.target as Node)) {
+        setShowVolume(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showVolume]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
@@ -224,19 +274,21 @@ export default function MiniPlayer() {
     setProgress(t);
   }, [duration]);
 
-  function handleVolume(e: React.MouseEvent<HTMLDivElement>) {
+  // Vertical volume slider
+  const handleVerticalVolume = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
     setVolume(v);
     if (audioRef.current) audioRef.current.volume = v;
-  }
+  }, []);
 
   function fmt(s: number) {
     if (!isFinite(s) || s < 0) return "0:00";
     return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   }
 
-  // ── Cleanup AudioContext on unmount ───────────────────────────────
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       cancelAnimationFrame(animFrameRef.current);
@@ -247,18 +299,37 @@ export default function MiniPlayer() {
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
   const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
 
-  // Bars viewBox dimensions
-  const BAR_W = 1.5;
-  const BAR_GAP = 0.8;
+  const BAR_W    = 1.5;
+  const BAR_GAP  = 0.8;
   const BAR_STRIDE = BAR_W + BAR_GAP;
-  const VB_W = PLAYER_BARS * BAR_STRIDE;
-  const VB_H = 32;
+  const VB_W    = PLAYER_BARS * BAR_STRIDE;
+  const VB_H    = 32;
+
+  // Volume icon: muted/low/high
+  const volMuted = volume === 0;
+  const volIcon = (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M1.5 4.5h2L6 2v8L3.5 7.5H1.5V4.5z" fill="currentColor"/>
+      {!volMuted && volume > 0.01 && (
+        <path d="M8 3.5a3.5 3.5 0 010 5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      )}
+      {!volMuted && volume > 0.5 && (
+        <path d="M9.5 2a5.5 5.5 0 010 8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+      )}
+      {volMuted && (
+        <>
+          <path d="M8.5 4.5L11 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+          <path d="M11 4.5L8.5 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+        </>
+      )}
+    </svg>
+  );
 
   return (
     <div className="bg-[#0E0D0C] select-none">
       <audio ref={audioRef} />
 
-      {/* ── Linha de progresso no topo — assinatura visual do DS ── */}
+      {/* Progress line at top */}
       <div className="h-px bg-[#23201E]">
         <div className="h-full bg-[#D95340] transition-none" style={{ width: `${pct}%` }} />
       </div>
@@ -337,12 +408,10 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 3: Waveform seekável ─────────────────────────── */}
         <div className="flex items-center gap-3 flex-1 min-w-0 px-5">
-          {/* Tempo decorrido */}
           <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7 text-right">
             {fmt(progress)}
           </span>
 
-          {/* Waveform */}
           <div
             className="relative flex-1 h-9 cursor-pointer group"
             onClick={handleSeek}
@@ -360,10 +429,10 @@ export default function MiniPlayer() {
               className="absolute inset-0"
             >
               {displayBars.map((amp, i) => {
-                const barH  = Math.max(1.5, amp * (VB_H - 2));
-                const y     = (VB_H - barH) / 2;
+                const barH   = Math.max(1.5, amp * (VB_H - 2));
+                const y      = (VB_H - barH) / 2;
                 const barPct = i / PLAYER_BARS;
-                const played = pct > 0 && barPct < pct / 100;
+                const played  = pct > 0 && barPct < pct / 100;
                 const hovered = hoverPct !== null && barPct < hoverPct && !played;
                 return (
                   <rect
@@ -373,14 +442,10 @@ export default function MiniPlayer() {
                     width={BAR_W}
                     height={barH}
                     rx={0.5}
-                    fill={
-                      played  ? "#D95340" :
-                      hovered ? "#605A55" :
-                      "#2A2623"
-                    }
+                    fill={played ? "#D95340" : hovered ? "#605A55" : "#2A2623"}
                     opacity={
                       played  ? 0.35 + amp * 0.65 :
-                      hovered ? 0.5 + amp * 0.5 :
+                      hovered ? 0.5  + amp * 0.5  :
                       0.25 + amp * 0.4
                     }
                   />
@@ -388,7 +453,7 @@ export default function MiniPlayer() {
               })}
             </svg>
 
-            {/* Live beat canvas */}
+            {/* Live beat canvas — bars shaped by waveform profile */}
             <canvas
               ref={liveCanvasRef}
               className="absolute inset-0 w-full h-full pointer-events-none"
@@ -396,7 +461,7 @@ export default function MiniPlayer() {
               height={36}
             />
 
-            {/* Playhead vertical */}
+            {/* Playhead */}
             {pct > 0 && (
               <div
                 className="absolute top-1 bottom-1 w-px bg-white/30 pointer-events-none"
@@ -404,7 +469,7 @@ export default function MiniPlayer() {
               />
             )}
 
-            {/* Hover time tooltip */}
+            {/* Hover tooltip */}
             {hoverPct !== null && duration > 0 && (
               <div
                 className="absolute bottom-full mb-1 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#1c1715] border border-white/[0.08] text-[9px] font-mono text-[#C2BEBC] pointer-events-none whitespace-nowrap z-10"
@@ -415,7 +480,6 @@ export default function MiniPlayer() {
             )}
           </div>
 
-          {/* Duração total */}
           <span className="text-[9px] text-[#4C4743] font-mono tabular-nums shrink-0 w-7">
             {fmt(duration)}
           </span>
@@ -426,7 +490,6 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 4: BPM · Tom · Volume ───────────────────────── */}
         <div className="flex items-center gap-3 pl-5 shrink-0">
-          {/* BPM + Tom (quando disponíveis) */}
           {activeTrack?.bpm && (
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] font-mono tabular-nums text-[#4C4743]">
@@ -441,21 +504,51 @@ export default function MiniPlayer() {
             </span>
           )}
 
-          {/* Volume */}
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-            <path d="M1 3h1.6L5 1v7L2.6 6H1V3z" fill="#4C4743"/>
-            <path d="M6.5 2.5a2.5 2.5 0 010 4" stroke="#4C4743" strokeWidth="0.8" strokeLinecap="round" fill="none"/>
-          </svg>
+          {/* Volume icon + popup slider */}
+          <div className="relative" ref={volumePopupRef}>
+            <button
+              onClick={() => setShowVolume((v) => !v)}
+              className={`transition-colors ${showVolume ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#756D67]"}`}
+              title={`Volume: ${Math.round(volume * 100)}%`}
+            >
+              {volIcon}
+            </button>
 
-          <div onClick={handleVolume}
-            className="relative w-14 h-5 flex items-center cursor-pointer group">
-            <div className="absolute inset-x-0 h-px bg-[#23201E] rounded-full" />
-            <div className="absolute left-0 h-px bg-[#605A55] group-hover:bg-[#756D67] transition-colors rounded-full"
-              style={{ width: `${volume * 100}%` }} />
-            <div
-              className="absolute w-[5px] h-[5px] rounded-full bg-[#4C4743] group-hover:bg-[#756D67] -translate-x-1/2 transition-colors"
-              style={{ left: `${volume * 100}%` }}
-            />
+            {showVolume && (
+              <div
+                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 px-2.5 py-3 rounded-xl shadow-2xl z-50"
+                style={{ background: "#1c1715", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                {/* Percentage label */}
+                <span className="text-[9px] font-mono text-[#605A55] tabular-nums">
+                  {Math.round(volume * 100)}%
+                </span>
+
+                {/* Vertical track */}
+                <div
+                  className="relative w-3 cursor-pointer"
+                  style={{ height: 80 }}
+                  onClick={handleVerticalVolume}
+                  onMouseMove={(e) => {
+                    if (e.buttons !== 1) return;
+                    handleVerticalVolume(e);
+                  }}
+                >
+                  {/* Track background */}
+                  <div className="absolute inset-x-[5px] inset-y-0 rounded-full bg-[#23201E]" />
+                  {/* Fill */}
+                  <div
+                    className="absolute inset-x-[5px] bottom-0 rounded-full bg-[#D95340] transition-none"
+                    style={{ height: `${volume * 100}%` }}
+                  />
+                  {/* Thumb */}
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white shadow-md transition-none"
+                    style={{ bottom: `calc(${volume * 100}% - 6px)` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

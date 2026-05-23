@@ -12,12 +12,16 @@ interface DeleteDialogState {
 }
 
 export default function Sidebar({ onFolderSelect }: SidebarProps) {
-  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder } = useAppStore();
+  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, isScanning } = useAppStore();
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [subfolderMap, setSubfolderMap] = useState<Record<string, string[]>>({});
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+
+  const clearFolderTracks = (path: string) => {
+    if (path === lastFolder) setTracks([]);
+  };
 
   const isFavorite = (path: string) => favoriteFolders.includes(path);
 
@@ -40,6 +44,7 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
   };
 
   const handleRemoveFromList = (path: string) => {
+    clearFolderTracks(path);
     removeRecentFolder(path);
     if (isFavorite(path)) toggleFavorite(path);
     setDeleteDialog(null);
@@ -51,6 +56,7 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
     } catch (e) {
       console.error("Erro ao mover para lixeira:", e);
     }
+    clearFolderTracks(path);
     removeRecentFolder(path);
     if (isFavorite(path)) toggleFavorite(path);
     setDeleteDialog(null);
@@ -199,7 +205,15 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
             <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
               Remover "{deleteDialog.name}"
             </h3>
-            <p className="text-xs text-[#8F8883] mb-5">Escolha o que deseja fazer com esta pasta.</p>
+            {isScanning && deleteDialog.path === lastFolder && (
+              <p className="text-[11px] text-[#D95340] mb-2 flex items-center gap-1.5">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 1a4 4 0 100 8A4 4 0 005 1zm0 2.25a.5.5 0 01.5.5v2a.5.5 0 01-1 0v-2a.5.5 0 01.5-.5zm0 4.25a.625.625 0 110-1.25.625.625 0 010 1.25z"/></svg>
+                Scan em andamento — será interrompido.
+              </p>
+            )}
+            <p className="text-xs text-[#8F8883] mb-5">
+              {deleteDialog.path === lastFolder ? "As faixas carregadas serão removidas da lista." : "Escolha o que deseja fazer com esta pasta."}
+            </p>
             <div className="flex flex-col gap-2">
               <button
                 className="w-full py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"

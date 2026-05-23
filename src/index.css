@@ -100,6 +100,23 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /* Prevent text selection across the whole app UI */
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  cursor: default;
+}
+
+/* Block selection on every element */
+*, *::before, *::after {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Re-allow selection only in editable fields */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
 }
 
 ::selection {

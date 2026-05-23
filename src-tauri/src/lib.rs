@@ -771,6 +771,214 @@ async fn batch_enrich_itunes(tracks: Vec<EnrichRequest>) -> Vec<EnrichResult> {
     results
 }
 
+// ── DJ Software Detection & Playlist Export ───────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DjSoftwareInfo {
+    id: String,
+    name: String,
+    installed: bool,
+}
+
+#[tauri::command]
+fn detect_dj_software() -> Vec<DjSoftwareInfo> {
+    let candidates: &[(&str, &str, &[&str])] = &[
+        ("serato",    "Serato DJ Pro",  &["/Applications/Serato DJ Pro.app"]),
+        ("rekordbox", "rekordbox",       &["/Applications/rekordbox.app", "/Applications/rekordbox 6.app"]),
+        ("traktor",   "Traktor Pro 3",  &["/Applications/Traktor Pro 3.app", "/Applications/Traktor Pro 2.app"]),
+        ("vdj",       "Virtual DJ",     &["/Applications/VirtualDJ.app", "/Applications/VirtualDJ 2023.app", "/Applications/VirtualDJ 2024.app"]),
+    ];
+    candidates.iter().map(|(id, name, paths)| {
+        let installed = paths.iter().any(|p| Path::new(p).exists());
+        DjSoftwareInfo { id: id.to_string(), name: name.to_string(), installed }
+    }).collect()
+}
+
+fn home_dir() -> Result<std::path::PathBuf, String> {
+    // HOME = macOS/Linux; USERPROFILE = Windows
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .map_err(|_| "Home directory not found".to_string())
+}
+
+fn write_serato_crate(tracks: &[Track], path: &Path) -> Result<(), String> {
+    let mut data: Vec<u8> = Vec::new();
+
+    let encode_utf16be = |s: &str| -> Vec<u8> {
+        s.encode_utf16().flat_map(|c| c.to_be_bytes()).collect()
+    };
+
+    let write_chunk = |data: &mut Vec<u8>, tag: &[u8; 4], payload: &[u8]| {
+        data.extend_from_slice(tag);
+        data.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        data.extend_from_slice(payload);
+    };
+
+    // vrsn chunk
+    let version_bytes = encode_utf16be("1.0/Serato ScratchLive Crate");
+    write_chunk(&mut data, b"vrsn", &version_bytes);
+
+    // otrk chunk per track
+    for track in tracks {
+        // Serato path: strip leading "/" and keep as-is for modern Serato DJ Pro
+        let serato_path = track.path.trim_start_matches('/');
+        let serato_path = format!("Macintosh HD/{}", serato_path);
+        let path_bytes = encode_utf16be(&serato_path);
+
+        let mut ptrk: Vec<u8> = Vec::new();
+        write_chunk(&mut ptrk, b"ptrk", &path_bytes);
+
+        write_chunk(&mut data, b"otrk", &ptrk);
+    }
+
+    fs::write(path, &data).map_err(|e| e.to_string())
+}
+
+fn write_traktor_nml(tracks: &[Track], path: &Path, playlist_name: &str) -> Result<(), String> {
+    let to_traktor_dir = |full_path: &str| -> (String, String, String) {
+        let p = std::path::Path::new(full_path);
+        let filename = p.file_name().unwrap_or_default().to_str().unwrap_or("").to_string();
+        let parent = p.parent().unwrap_or(std::path::Path::new("/"));
+        let components: Vec<&str> = parent.components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(s) => s.to_str(),
+                _ => None,
+            })
+            .collect();
+        let dir = format!("/:{}/:", components.join("/:"));
+        let key = format!("Macintosh HD{}{}", dir, filename);
+        ("Macintosh HD".to_string(), dir, key)
+    };
+
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<NML VERSION=\"18\">\n");
+    xml.push_str("  <HEAD COMPANY=\"www.native-instruments.com\" PROGRAM=\"Traktor\"/>\n");
+    xml.push_str("  <MUSICFOLDERS/>\n");
+    xml.push_str(&format!("  <COLLECTION ENTRIES=\"{}\">\n", tracks.len()));
+
+    for track in tracks {
+        let title  = xml_escape(track.title.as_deref().unwrap_or(&track.filename));
+        let artist = xml_escape(track.artist.as_deref().unwrap_or(""));
+        let album  = xml_escape(track.album.as_deref().unwrap_or(""));
+        let genre  = xml_escape(track.genre.as_deref().unwrap_or(""));
+        let dur    = track.duration_secs.map(|d| d as u32).unwrap_or(0);
+        let bpm    = track.bpm.as_deref().unwrap_or("0");
+        let (volume, dir, _key) = to_traktor_dir(&track.path);
+        let filename = xml_escape(&track.filename);
+
+        xml.push_str(&format!(
+            "    <ENTRY TITLE=\"{}\" ARTIST=\"{}\" ALBUM=\"{}\" GENRE=\"{}\" COMMENT=\"\">\n",
+            title, artist, album, genre
+        ));
+        xml.push_str(&format!(
+            "      <LOCATION DIR=\"{}\" FILE=\"{}\" VOLUME=\"{}\" VOLUMEID=\"\"/>\n",
+            xml_escape(&dir), xml_escape(&filename), xml_escape(&volume)
+        ));
+        xml.push_str(&format!(
+            "      <INFO BITRATE=\"{}\" PLAYTIME=\"{}\" BPM=\"{}\"/>\n",
+            track.bitrate_kbps.unwrap_or(0) * 1000, dur, bpm
+        ));
+        xml.push_str("    </ENTRY>\n");
+    }
+
+    xml.push_str("  </COLLECTION>\n");
+    xml.push_str("  <PLAYLISTS>\n");
+    xml.push_str("    <NODE TYPE=\"FOLDER\" NAME=\"$ROOT\">\n");
+    xml.push_str(&format!("      <SUBNODES COUNT=\"1\">\n"));
+    xml.push_str(&format!("        <NODE TYPE=\"PLAYLIST\" NAME=\"{}\">\n", xml_escape(playlist_name)));
+    xml.push_str(&format!("          <PLAYLIST ENTRIES=\"{}\" TYPE=\"LIST\" UUID=\"\">\n", tracks.len()));
+
+    for track in tracks {
+        let (_vol, _dir, key) = to_traktor_dir(&track.path);
+        xml.push_str(&format!("            <ENTRY><PRIMARYKEY TYPE=\"TRACK\" KEY=\"{}\"/></ENTRY>\n", xml_escape(&key)));
+    }
+
+    xml.push_str("          </PLAYLIST>\n");
+    xml.push_str("        </NODE>\n");
+    xml.push_str("      </SUBNODES>\n");
+    xml.push_str("    </NODE>\n");
+    xml.push_str("  </PLAYLISTS>\n");
+    xml.push_str("</NML>\n");
+
+    fs::write(path, xml).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn export_playlist_to_dj(
+    playlist_name: String,
+    software_id: String,
+    tracks: Vec<Track>,
+) -> Result<String, String> {
+    let home = home_dir()?;
+    let safe_name: String = playlist_name.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+
+    match software_id.as_str() {
+        "serato" => {
+            let dir = home.join("Music").join("_Serato_").join("Subcrates");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{}.crate", safe_name));
+            write_serato_crate(&tracks, &path)?;
+            Ok(path.to_string_lossy().to_string())
+        }
+        "rekordbox" => {
+            let dir = home.join("Documents").join("TagWave Playlists");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{} - Rekordbox.xml", safe_name));
+            // Reuse existing Rekordbox XML logic
+            let output = path.to_string_lossy().to_string();
+            export_rekordbox(tracks, output.clone())?;
+            Ok(output)
+        }
+        "traktor" => {
+            // Try Traktor's own playlists dir first, fallback to Documents
+            let traktor_dirs = [
+                home.join("Documents").join("Native Instruments").join("Traktor Pro 3"),
+                home.join("Documents").join("Native Instruments").join("Traktor Pro 2"),
+                home.join("Documents").join("TagWave Playlists"),
+            ];
+            let base = traktor_dirs.iter()
+                .find(|d| d.exists())
+                .unwrap_or(&traktor_dirs[2]);
+            let dir = base.join("TagWave Playlists");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{}.nml", safe_name));
+            write_traktor_nml(&tracks, &path, &playlist_name)?;
+            Ok(path.to_string_lossy().to_string())
+        }
+        "vdj" => {
+            let dir = home.join("Documents").join("VirtualDJ").join("Playlists");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{}.m3u", safe_name));
+            export_m3u(tracks, path.to_string_lossy().to_string())?;
+            Ok(path.to_string_lossy().to_string())
+        }
+        _ => Err(format!("Software desconhecido: {}", software_id)),
+    }
+}
+
+#[tauri::command]
+fn open_dj_app(software_id: String) -> Result<(), String> {
+    let bundle_ids: &[(&str, &str)] = &[
+        ("serato",    "com.serato.dj.pro"),
+        ("rekordbox", "com.pioneerdj.rekordbox"),
+        ("traktor",   "com.native-instruments.Traktor-Pro-3"),
+        ("vdj",       "com.atomixproductions.virtualdj"),
+    ];
+    let bundle_id = bundle_ids.iter()
+        .find(|(id, _)| *id == software_id.as_str())
+        .map(|(_, bid)| bid.to_string())
+        .ok_or_else(|| format!("Software desconhecido: {}", software_id))?;
+
+    std::process::Command::new("open")
+        .args(["-b", &bundle_id])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -801,6 +1009,9 @@ pub fn run() {
             export_rekordbox,
             export_m3u,
             batch_enrich_itunes,
+            detect_dj_software,
+            export_playlist_to_dj,
+            open_dj_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

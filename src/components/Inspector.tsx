@@ -44,7 +44,7 @@ function Field({ label, value, onChange, disabled, placeholder, mono, multiline 
 }
 
 export default function Inspector() {
-  const { selectedIds, tracks, updateTrack, setPlayerTrack, playerTrackId } = useAppStore();
+  const { selectedIds, tracks, updateTrack, setPlayerTrack, playerTrackId, isPlayingGlobal } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
@@ -66,7 +66,7 @@ export default function Inspector() {
   const [enrichSummary, setEnrichSummary] = useState<string | null>(null);
   const [coverDataUrl, setCoverDataUrl]   = useState<string | null>(null);
 
-  const isPlaying = playerTrackId === first?.id;
+  const isVinylPlaying = playerTrackId === first?.id && isPlayingGlobal;
 
   useEffect(() => {
     if (!first) return;
@@ -213,57 +213,107 @@ export default function Inspector() {
         )}
       </div>
 
-      {/* Cover + animação vinil */}
+      {/* Disco de vinil */}
       {!isBatch && (
-        <div className="mx-3 mt-3">
-          {coverDataUrl ? (
-            <div className="relative group">
-              {/* Vinyl ring when playing */}
-              {isPlaying && (
-                <div
-                  className="absolute inset-0 rounded-full z-10 pointer-events-none"
-                  style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
-                />
-              )}
-              <div
-                className={`overflow-hidden transition-all duration-700 ${isPlaying ? "rounded-full shadow-lg shadow-[#D95340]/20" : "rounded-md"}`}
-                style={{
-                  animation: isPlaying ? "vinyl-spin 4s linear infinite" : undefined,
-                  aspectRatio: "1 / 1",
-                }}
-              >
-                <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
-              </div>
-              <button
-                onClick={async () => {
-                  const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
-                  if (!file || typeof file !== "string") return;
-                  try {
-                    await invoke("save_cover_from_file", { path: first.path, imagePath: file });
-                    updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
-                  } catch { /* silent */ }
-                }}
-                className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100 z-20"
-              >
-                Alterar Capa
-              </button>
-            </div>
-          ) : (
+        <div
+          className="mx-3 mt-3 relative group"
+          style={{ aspectRatio: "1/1" }}
+        >
+          {/* Disco — gira apenas quando tocando */}
+          <div
+            className="absolute inset-0 rounded-full overflow-hidden"
+            style={{
+              background: "#100e0d",
+              animation: isVinylPlaying ? "vinyl-spin 4s linear infinite" : undefined,
+            }}
+          >
+            {/* Ranhuras SVG — alta visibilidade */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
+              {/* Groove tracks: 20 rings de r=47.5 até r=29, passo ~1px */}
+              {Array.from({ length: 20 }, (_, i) => {
+                const r = 47.5 - i * 0.95;
+                return (
+                  <g key={i}>
+                    <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.42" />
+                    <circle cx="50" cy="50" r={r - 0.38} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="0.3" />
+                  </g>
+                );
+              })}
+              {/* Anel separador do label — destaque visual */}
+              <circle cx="50" cy="50" r="28.5" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7" />
+              <circle cx="50" cy="50" r="27.5" fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="0.5" />
+            </svg>
+
+            {/* Label central com a capa */}
             <div
-              className="h-16 rounded-md bg-white/[0.02] border border-white/[0.04] flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-white/[0.04] transition-colors"
-              onClick={async () => {
-                const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
-                if (!file || typeof file !== "string") return;
-                try {
-                  await invoke("save_cover_from_file", { path: first.path, imagePath: file });
-                  updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
-                } catch { /* silent */ }
-              }}
+              className="absolute rounded-full overflow-hidden"
+              style={{ width: "53%", height: "53%", top: "23.5%", left: "23.5%" }}
             >
-              <span className="text-[#4C4743] text-[10px] uppercase tracking-widest">sem capa</span>
-              <span className="text-[#4C4743] text-[9px]">clique para adicionar</span>
+              {coverDataUrl ? (
+                <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center" style={{ background: "#1c1714" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#4C4743">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                  </svg>
+                </div>
+              )}
             </div>
+
+            {/* Buraco central — sobre o label */}
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: "7%", height: "7%",
+                top: "46.5%", left: "46.5%",
+                background: "#080706",
+                boxShadow: "inset 0 1px 3px rgba(0,0,0,1)",
+                zIndex: 10,
+              }}
+            />
+          </div>
+
+          {/* Reflexo estático (não gira) — dá profundidade 3D */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: "radial-gradient(ellipse at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 52%)",
+            }}
+          />
+
+          {/* Sombra e brilho coral quando tocando */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              boxShadow: isVinylPlaying
+                ? "0 0 30px rgba(217,83,64,0.22), 0 6px 24px rgba(0,0,0,0.7)"
+                : "0 5px 20px rgba(0,0,0,0.6)",
+              transition: "box-shadow 0.5s ease",
+            }}
+          />
+
+          {/* Pulso quando tocando */}
+          {isVinylPlaying && (
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
+            />
           )}
+
+          {/* Botão alterar capa */}
+          <button
+            onClick={async () => {
+              const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+              if (!file || typeof file !== "string") return;
+              try {
+                await invoke("save_cover_from_file", { path: first.path, imagePath: file });
+                updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
+              } catch { /* silent */ }
+            }}
+            className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/70 text-white hover:bg-black/90 transition-colors opacity-0 group-hover:opacity-100 z-20"
+          >
+            {coverDataUrl ? "Alterar Capa" : "+ Capa"}
+          </button>
         </div>
       )}
 
@@ -271,17 +321,17 @@ export default function Inspector() {
       {!isBatch && (
         <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
           <button
-            onClick={() => setPlayerTrack(isPlaying ? null : first.id)}
+            onClick={() => setPlayerTrack(playerTrackId === first.id ? null : first.id)}
             className="w-6 h-6 rounded-full flex items-center justify-center transition-colors bg-[#D95340] hover:bg-[#E07364] shrink-0"
           >
-            {isPlaying ? (
+            {isVinylPlaying ? (
               <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><rect x="1" y="1" width="2" height="6" rx="0.5"/><rect x="5" y="1" width="2" height="6" rx="0.5"/></svg>
             ) : (
               <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><path d="M2 1.5l5 2.5-5 2.5V1.5z"/></svg>
             )}
           </button>
           <div className="flex-1 text-[10px] font-mono text-[#605A55]">
-            {isPlaying ? "tocando…" : first.duration_secs
+            {isVinylPlaying ? "tocando…" : first.duration_secs
               ? `${Math.floor(first.duration_secs / 60)}:${String(Math.floor(first.duration_secs % 60)).padStart(2, "0")}`
               : "—"
             }

@@ -160,14 +160,14 @@ export default function App() {
   useEffect(() => {
     const appWindow = getCurrentWindow();
     let unlisten: (() => void) | undefined;
-    appWindow.onCloseRequested(async (event) => {
-      if (!isBusyRef.current) return;
+    // Synchronous handler — event.preventDefault() MUST be called synchronously
+    appWindow.onCloseRequested((event) => {
+      if (!isBusyRef.current) return; // allow close immediately
       event.preventDefault();
-      const confirmed = await confirm(
+      confirm(
         "Um processo está em andamento. Deseja fechar mesmo assim?",
         { title: "Fechar TagWave", kind: "warning" }
-      );
-      if (confirmed) appWindow.destroy();
+      ).then((confirmed) => { if (confirmed) appWindow.destroy(); });
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
@@ -377,16 +377,23 @@ export default function App() {
       {/* Toolbar */}
       <div
         className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05] bg-[#23201E]"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        style={{ cursor: "default" }}
+        onMouseDown={(e) => {
+          // Inicia drag da janela quando clica no fundo da toolbar (não em botões/inputs)
+          const target = e.target as HTMLElement;
+          if (target.closest('button, input, select, a, [role="button"]')) return;
+          e.preventDefault();
+          getCurrentWindow().startDragging().catch(() => {});
+        }}
       >
-        {/* Espaço para os traffic lights do macOS — deve ser no-drag */}
-        <div className="w-20 shrink-0" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties} />
+        {/* Espaço para os traffic lights do macOS */}
+        <div className="w-20 shrink-0" />
 
         {/* Abrir pasta */}
         <button
           onClick={pickFolder}
           disabled={isScanning}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] disabled:opacity-50 text-xs font-bold uppercase tracking-wide text-white transition-colors"
         >
           {isScanning ? (
@@ -410,7 +417,7 @@ export default function App() {
         {/* Quick actions */}
         <div
           className="flex items-center gap-1 ml-1"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
         >
           {cleanupCount > 0 && (
             <button
@@ -485,7 +492,7 @@ export default function App() {
         {allTracks.length > 0 && (
           <span
             className="text-[11px] text-[#605A55] font-mono ml-1"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+           
           >
             {allTracks.length.toLocaleString("pt-BR")} faixas
           </span>
@@ -494,7 +501,7 @@ export default function App() {
         {/* Filter chips */}
         <div
           className="flex gap-0.5 ml-2"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
         >
           {(
             [
@@ -521,7 +528,7 @@ export default function App() {
 
         {/* Genre filter chip */}
         {genreFilter && (
-          <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <div>
             <button
               onClick={() => setGenreFilter(null)}
               className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold bg-[#D95340]/15 border border-[#D95340]/25 text-[#D95340]/80 hover:text-[#D95340] hover:bg-[#D95340]/20 transition-colors"
@@ -535,7 +542,7 @@ export default function App() {
 
         {/* Settings */}
         <button
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
           onClick={() => setShowSettings(true)}
           title="Configurações (⌘,)"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors border border-white/[0.06]"
@@ -551,7 +558,7 @@ export default function App() {
 
         {/* Compact toggle */}
         <button
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
           onClick={() => setCompact((v) => !v)}
           title={compact ? "Modo normal" : "Modo compacto"}
           className={`px-2 py-1.5 rounded-md text-xs transition-colors ${
@@ -564,7 +571,7 @@ export default function App() {
         {/* Advanced filter + Search */}
         <div
           className="flex items-center gap-1"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+         
         >
           {/* Filter popover */}
           <div className="relative" ref={advFilterRef}>

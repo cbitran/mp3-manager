@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store";
 import { type VisibilityState } from "@tanstack/react-table";
+
+interface DjSoftwareInfo { id: string; name: string; installed: boolean; }
 
 type Tab = "appearance" | "services" | "columns" | "license";
 
@@ -53,6 +56,11 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [djP, setDjP] = useState(djPrimary);
   const [djA, setDjA] = useState(djAutoImport);
   const [djS, setDjS] = useState(djShowAll);
+  const [detectedDj, setDetectedDj] = useState<DjSoftwareInfo[]>([]);
+
+  useEffect(() => {
+    invoke<DjSoftwareInfo[]>("detect_dj_software").then(setDetectedDj).catch(() => {});
+  }, []);
 
   // License
   const [licenseInput, setLicenseInput] = useState("");
@@ -255,16 +263,28 @@ export default function Settings({ onClose }: { onClose: () => void }) {
               {/* DJ Software */}
               <section>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#8F8883" }}>Software DJ</p>
-                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>Software principal para importação de BPM, Key e Cue Points.</p>
+                <p className="text-[11px] mb-3" style={{ color: "#605A55" }}>Software principal para importação de BPM, Key e Cue Points. Softwares instalados são detectados automaticamente.</p>
                 <div className="space-y-1.5 mb-3">
-                  {DJ_OPTIONS.map((opt) => (
-                    <label key={opt.id} className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.03]"
-                      style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
-                      <input type="radio" name="djprimary" value={opt.id} checked={djP === opt.id}
-                        onChange={() => setDjP(opt.id)} className="accent-[#D95340]" />
-                      <span className="text-[13px]" style={{ color: "#C2BEBC" }}>{opt.label}</span>
-                    </label>
-                  ))}
+                  {DJ_OPTIONS.map((opt) => {
+                    const detected = detectedDj.find((d) => d.id === opt.id);
+                    const isInstalled = detected?.installed ?? false;
+                    return (
+                      <label key={opt.id} className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.03]"
+                        style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
+                        <input type="radio" name="djprimary" value={opt.id} checked={djP === opt.id}
+                          onChange={() => setDjP(opt.id)} className="accent-[#D95340]" />
+                        <span className="text-[13px] flex-1" style={{ color: "#C2BEBC" }}>{opt.label}</span>
+                        {opt.id !== "none" && (
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{
+                            background: isInstalled ? "rgba(91,160,85,0.15)" : "rgba(255,255,255,0.04)",
+                            color: isInstalled ? "#5BA055" : "#4C4743",
+                          }}>
+                            {isInstalled ? "Instalado" : "Não encontrado"}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
                 <div className="space-y-2 mb-3">
                   <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-white/[0.03]"
