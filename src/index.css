@@ -218,6 +218,19 @@ html[data-theme="light"] .track-row-selected {
   background-color: rgba(0, 0, 0, 0.07);
 }
 
+/* ─── Scrollbar global — skin TagWave ───────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.10);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.10) transparent; }
+
 /* ─── Esconder scrollbar ─────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
