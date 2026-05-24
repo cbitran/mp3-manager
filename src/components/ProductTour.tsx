@@ -44,7 +44,7 @@ interface Pos {
   arrowUp: boolean;
 }
 
-function getTooltipPos(target: string, fallback?: string): Pos | null {
+function getTooltipPos(target: string, fallback?: string): Pos {
   const el = document.querySelector(`[data-tour="${target}"]`);
   const TOOLTIP_W = 260;
   const GAP = 12;
@@ -56,7 +56,6 @@ function getTooltipPos(target: string, fallback?: string): Pos | null {
       r.left + r.width / 2 - TOOLTIP_W / 2
     ));
     const arrowLeft = Math.max(16, Math.min(TOOLTIP_W - 16, r.left + r.width / 2 - left));
-    // Se o elemento está na metade inferior, tooltip vai acima
     const goAbove = r.bottom > window.innerHeight * 0.6;
     if (goAbove) {
       return { left, top: r.top - GAP - 160, bottom: null, arrowLeft, arrowUp: false };
@@ -69,13 +68,10 @@ function getTooltipPos(target: string, fallback?: string): Pos | null {
     return { left, top: null, bottom: 80, arrowLeft: TOOLTIP_W / 2, arrowUp: false };
   }
 
-  if (fallback === "center") {
-    const left = window.innerWidth / 2 - TOOLTIP_W / 2;
-    const top = window.innerHeight / 2 - 90;
-    return { left, top, bottom: null, arrowLeft: TOOLTIP_W / 2, arrowUp: false };
-  }
-
-  return null;
+  // fallback "center" ou elemento não encontrado — sempre mostra no centro
+  const left = window.innerWidth / 2 - TOOLTIP_W / 2;
+  const top = window.innerHeight / 2 - 90;
+  return { left, top, bottom: null, arrowLeft: TOOLTIP_W / 2, arrowUp: false };
 }
 
 interface ProductTourProps {
@@ -85,7 +81,7 @@ interface ProductTourProps {
 
 export default function ProductTour({ onDone, onStepChange }: ProductTourProps) {
   const [step, setStep] = useState(0);
-  const [pos, setPos] = useState<Pos | null>(null);
+  const [pos, setPos] = useState<Pos>(() => getTooltipPos(STEPS[0].target, STEPS[0].fallback));
 
   const current = STEPS[step];
 
@@ -123,8 +119,6 @@ export default function ProductTour({ onDone, onStepChange }: ProductTourProps) 
 
   const targetEl = document.querySelector(`[data-tour="${current.target}"]`);
   const targetRect = targetEl?.getBoundingClientRect() ?? null;
-
-  if (!pos) return null;
 
   const PAD = 5;
 

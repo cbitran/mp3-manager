@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useAppStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -25,7 +25,18 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
   const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites">("recent");
   const [isDragOver, setIsDragOver] = useState(false);
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
+  const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const dragCounterRef = useRef(0);
+
+  useEffect(() => {
+    const refresh = () =>
+      invoke<{ path: string; name: string }[]>("list_volumes")
+        .then(setVolumes)
+        .catch(() => {});
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => clearInterval(id);
+  }, []);
 
   const clearFolderTracks = (path: string) => {
     if (path === lastFolder) {
@@ -210,6 +221,27 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
                 : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhum favorito ainda — marque uma pasta com ★</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Dispositivos (volumes montados) */}
+      {volumes.length > 0 && (
+        <div className="px-3 pt-3 pb-1 border-t border-white/[0.05]">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743] px-1 mb-1.5">Dispositivos</p>
+          {volumes.map((v) => (
+            <button
+              key={v.path}
+              onClick={() => onFolderSelect(v.path)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors hover:bg-white/[0.04] group"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-[#605A55] shrink-0">
+                <rect x="1" y="3" width="10" height="7" rx="1.5"/>
+                <path d="M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/>
+                <circle cx="9" cy="6.5" r=".8" fill="currentColor" stroke="none"/>
+              </svg>
+              <span className="text-[11px] text-[#8F8883] group-hover:text-[#C2BEBC] transition-colors truncate">{v.name}</span>
+            </button>
+          ))}
         </div>
       )}
 

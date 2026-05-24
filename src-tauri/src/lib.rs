@@ -348,6 +348,43 @@ fn list_subfolders(path: String) -> Result<Vec<String>, String> {
     Ok(subs)
 }
 
+#[tauri::command]
+fn list_volumes() -> Vec<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut vols = vec![];
+        if let Ok(entries) = fs::read_dir("/Volumes") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    vols.push(serde_json::json!({ "path": path.to_string_lossy(), "name": name }));
+                }
+            }
+        }
+        vols.sort_by(|a, b| {
+            let na = a["name"].as_str().unwrap_or("").to_lowercase();
+            let nb = b["name"].as_str().unwrap_or("").to_lowercase();
+            na.cmp(&nb)
+        });
+        vols
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let mut vols = vec![];
+        for letter in b'C'..=b'Z' {
+            let path = format!("{}:\\", letter as char);
+            let p = Path::new(&path);
+            if p.exists() {
+                vols.push(serde_json::json!({ "path": path, "name": format!("Drive {}", letter as char) }));
+            }
+        }
+        vols
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { vec![] }
+}
+
 // ── Waveform ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1696,6 +1733,7 @@ pub fn run() {
             load_cache,
             find_new_files,
             scan_specific_files,
+            list_volumes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
