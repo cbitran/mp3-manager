@@ -630,7 +630,7 @@ export default function AIAssistant() {
                             e.stopPropagation();
                             invoke("reveal_in_finder", { path: t.path }).catch(() => {});
                           }}
-                          title="Revelar no Finder"
+                          title={IS_MAC ? "Revelar no Finder" : "Revelar no Explorer"}
                         >
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
                             <path d="M1 1h8v8H1V1zm1 1v6h6V2H2zm1 1h4v4H3V3z"/>

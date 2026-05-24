@@ -78,16 +78,20 @@ export default function App() {
         document.documentElement.setAttribute("data-theme", "light");
       } else {
         // auto: lê o tema real do sistema via Tauri (mais confiável que CSS media query em webviews)
+        // dark OS → removeAttribute (igual ao "Skin"), light OS → "light"
+        const applyAutoTheme = (isDark: boolean) => {
+          if (isDark) document.documentElement.removeAttribute("data-theme");
+          else document.documentElement.setAttribute("data-theme", "light");
+        };
         try {
           const sysTheme = await getCurrentWindow().theme();
-          document.documentElement.setAttribute("data-theme", sysTheme === "light" ? "light" : "dark");
+          applyAutoTheme(sysTheme !== "light");
         } catch {
-          const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+          applyAutoTheme(window.matchMedia("(prefers-color-scheme: dark)").matches);
         }
         // Escuta mudanças de tema do SO em tempo real
         unlisten = await getCurrentWindow().onThemeChanged(({ payload }) => {
-          document.documentElement.setAttribute("data-theme", payload === "light" ? "light" : "dark");
+          applyAutoTheme(payload !== "light");
         });
       }
     }
@@ -265,6 +269,14 @@ export default function App() {
   const isOnline = useIsOnline();
   // Fecha o banner automaticamente quando a conexão voltar
   useEffect(() => { if (isOnline) setShowOfflineBanner(false); }, [isOnline]);
+
+  // Auto-reset filterTab quando o tab ativo fica vazio
+  useEffect(() => {
+    if (filterTab === "favorites" && favoriteCount === 0) setFilterTab("all");
+    if (filterTab === "problems" && problemCount === 0) setFilterTab("all");
+    if (filterTab === "recent" && recentCount === 0) setFilterTab("all");
+  }, [favoriteCount, problemCount, recentCount, filterTab, setFilterTab]);
+
   const isBusyRef = useRef(false);
 
   // Estado dos modais de novas faixas
@@ -1579,16 +1591,17 @@ export default function App() {
         >
           {(
             [
-              { id: "all" as const,       label: "Todas" },
-              { id: "recent" as const,    label: `+ ${recentCount}` },
-              { id: "favorites" as const, label: `★ ${favoriteCount}` },
-              { id: "problems" as const,  label: `⚠ ${problemCount}` },
-              { id: "ok" as const,        label: `✓ ${allTracks.length - problemCount}` },
-            ] as { id: typeof filterTab; label: string }[]
+              { id: "all" as const,       label: "Todas",                        title: "Mostrar todas as faixas" },
+              { id: "recent" as const,    label: `+ ${recentCount}`,             title: `${recentCount} faixa${recentCount !== 1 ? "s" : ""} adicionada${recentCount !== 1 ? "s" : ""} recentemente` },
+              { id: "favorites" as const, label: `★ ${favoriteCount}`,           title: `${favoriteCount} faixa${favoriteCount !== 1 ? "s" : ""} favorita${favoriteCount !== 1 ? "s" : ""} (marcadas com estrela)` },
+              { id: "problems" as const,  label: `⚠ ${problemCount}`,            title: `${problemCount} faixa${problemCount !== 1 ? "s" : ""} com metadados incompletos (sem BPM, gênero, capa etc.) — clique para filtrar` },
+              { id: "ok" as const,        label: `✓ ${allTracks.length - problemCount}`, title: `${allTracks.length - problemCount} faixa${(allTracks.length - problemCount) !== 1 ? "s" : ""} com metadados completos` },
+            ] as { id: typeof filterTab; label: string; title: string }[]
           ).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setFilterTab(tab.id)}
+              title={tab.title}
               className={`px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wide transition-colors ${
                 filterTab === tab.id
                   ? "bg-[#D95340]/20 text-[#D95340] border border-[#D95340]/25"
@@ -1614,16 +1627,30 @@ export default function App() {
 
         <div className="flex-1" />
 
-        {/* Compact toggle */}
+        {/* Lista / Grade toggle */}
         <button
-         
           onClick={() => setCompact((v) => !v)}
-          title={compact ? "Modo normal" : "Modo compacto"}
-          className={`px-2 py-1.5 rounded-md text-xs transition-colors ${
-            compact ? "bg-white/8 text-[#F5F5F4]" : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
+          title={compact ? "Ver em lista" : "Ver em grade compacta"}
+          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+            compact ? "bg-white/[0.08] text-[#F5F5F4]" : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
           }`}
         >
-          {compact ? "▤" : "▣"}
+          {compact ? (
+            /* Ícone lista (modo atual = grade → clica p/ lista) */
+            <svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <line x1="0" y1="1" x2="13" y2="1"/>
+              <line x1="0" y1="5.5" x2="13" y2="5.5"/>
+              <line x1="0" y1="10" x2="13" y2="10"/>
+            </svg>
+          ) : (
+            /* Ícone grade (modo atual = lista → clica p/ grade) */
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="0.5" y="0.5" width="4.5" height="4.5" rx="0.8"/>
+              <rect x="7" y="0.5" width="4.5" height="4.5" rx="0.8"/>
+              <rect x="0.5" y="7" width="4.5" height="4.5" rx="0.8"/>
+              <rect x="7" y="7" width="4.5" height="4.5" rx="0.8"/>
+            </svg>
+          )}
         </button>
 
         {/* Advanced filter + Search */}
@@ -2315,7 +2342,12 @@ export default function App() {
           bitrateHigh={missingMeta.bitrateHigh}
           bitrateMid={missingMeta.bitrateMid}
           bitrateLow={missingMeta.bitrateLow}
-          onDismiss={() => setMissingMeta(null)}
+          onDismiss={() => {
+            setMissingMeta(null);
+            // "Deixar para depois" também marca a pasta — evita o modal repetindo
+            const folder = useAppStore.getState().lastFolder;
+            if (folder) markFolderEnriched(folder);
+          }}
           onEnrich={() => {
             setMissingMeta(null);
             const folder = useAppStore.getState().lastFolder;

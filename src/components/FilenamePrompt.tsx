@@ -16,15 +16,25 @@ interface Props {
 
 export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set(issues.map((i) => i.path)));
   const [fixing, setFixing] = useState(false);
   const [done, setDone] = useState(false);
 
-  const allTags = [...new Set(issues.flatMap((i) => i.tags))];
+  const visible = issues.filter((i) => !ignored.has(i.path));
+  const allTags = [...new Set(visible.flatMap((i) => i.tags))];
+
+  function ignoreItem(path: string) {
+    const next = new Set(ignored);
+    next.add(path);
+    setIgnored(next);
+    setSelected((prev) => { const s = new Set(prev); s.delete(path); return s; });
+    if (next.size === issues.length) onDismiss();
+  }
 
   async function applyFixes() {
     setFixing(true);
-    const targets = issues.filter((i) => selected.has(i.path));
+    const targets = visible.filter((i) => selected.has(i.path));
     for (const issue of targets) {
       try {
         const newPath = await invoke<string>("apply_filename_fix", {
@@ -52,25 +62,25 @@ export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
 
   return (
     <div className="mx-3 mb-2 rounded-md border border-[#8B2A42]/40 bg-[#8B2A42]/30 overflow-hidden">
-      {/* Bar */}
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* Header — clicável em toda a área */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none"
+        onClick={() => setExpanded((v) => !v)}
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-[#E07364] shrink-0" />
         <span className="text-[11px] font-semibold text-[#FAFAF9]">
-          {issues.length} nomes de arquivo precisam de limpeza
+          {visible.length} nomes de arquivo precisam de limpeza
         </span>
         <span className="text-[10px] text-[#C99BA6]">
           · {allTags.join(", ")}
         </span>
         <div className="flex-1" />
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="text-[11px] text-[#FAFAF9] hover:text-[#E07364] font-semibold transition-colors"
-        >
+        <span className="text-[11px] text-[#FAFAF9]/70 font-semibold shrink-0">
           {expanded ? "Fechar" : "Ver e corrigir"}
-        </button>
+        </span>
         <button
-          onClick={onDismiss}
-          className="text-[#C99BA6] hover:text-[#FAFAF9] text-xs ml-1 transition-colors"
+          onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+          className="text-[#C99BA6] hover:text-[#FAFAF9] text-xs ml-1 transition-colors shrink-0"
         >
           ✕
         </button>
@@ -83,12 +93,12 @@ export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.04]">
             <input
               type="checkbox"
-              checked={selected.size === issues.length}
+              checked={selected.size === visible.length && visible.length > 0}
               onChange={() =>
                 setSelected(
-                  selected.size === issues.length
+                  selected.size === visible.length
                     ? new Set()
-                    : new Set(issues.map((i) => i.path))
+                    : new Set(visible.map((i) => i.path))
                 )
               }
             />
@@ -99,10 +109,10 @@ export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
 
           {/* Issue rows */}
           <div className="max-h-52 overflow-y-auto">
-            {issues.map((issue) => (
+            {visible.map((issue) => (
               <div
                 key={issue.path}
-                className="flex items-start gap-2 px-3 py-1.5 border-b border-white/[0.02] hover:bg-white/[0.02]"
+                className="flex items-start gap-2 px-3 py-1.5 border-b border-white/[0.02] hover:bg-white/[0.02] group"
               >
                 <input
                   type="checkbox"
@@ -123,7 +133,7 @@ export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
                     → {issue.suggested}
                   </p>
                 </div>
-                <div className="flex gap-1 shrink-0 mt-0.5">
+                <div className="flex gap-1 shrink-0 mt-0.5 items-center">
                   {issue.tags.map((t) => (
                     <span
                       key={t}
@@ -132,16 +142,32 @@ export default function FilenamePrompt({ issues, onDismiss, onFixed }: Props) {
                       {t}
                     </span>
                   ))}
+                  {/* Ignorar item individual */}
+                  <button
+                    onClick={() => ignoreItem(issue.path)}
+                    title="Ignorar este item"
+                    className="opacity-0 group-hover:opacity-100 text-[#605A55] hover:text-[#C99BA6] transition-all text-xs leading-none ml-1"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Apply button */}
+          {/* Footer */}
           <div className="px-3 py-2 flex items-center justify-between">
-            <span className="text-[10px] text-[#605A55]">
-              {selected.size} selecionadas
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-[#605A55]">
+                {selected.size} selecionadas
+              </span>
+              <button
+                onClick={onDismiss}
+                className="text-[10px] text-[#605A55] hover:text-[#C99BA6] transition-colors"
+              >
+                Ignorar tudo
+              </button>
+            </div>
             <button
               onClick={applyFixes}
               disabled={fixing || selected.size === 0}

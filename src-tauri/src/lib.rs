@@ -234,7 +234,7 @@ fn save_tags(
         if let Some(v) = bpm  { if !v.is_empty() { tag.add_frame(id3::Frame::text("TBPM", v)); } }
         if let Some(v) = key  { if !v.is_empty() { tag.add_frame(id3::Frame::text("TKEY", v)); } }
         if let Some(r) = rating {
-            tag.remove_extended_text(None, Some("RATING"));
+            tag.remove_extended_text(Some("RATING"), None);
             tag.add_frame(id3::frame::ExtendedText { description: "RATING".to_string(), value: r.to_string() });
         }
         if let Some(v) = comment {
@@ -706,6 +706,31 @@ fn strip_numeric_prefix(s: &str) -> Option<String> {
     }
 }
 
+// Substitui underscores de forma inteligente:
+// _s / _re / _m / _t / _ll / _ve / _d após letra → apóstrofo (contração)
+// demais underscores → espaço
+fn replace_underscores_smart(s: &str) -> String {
+    const SUFFIXES: &[&str] = &["re", "ve", "ll", "m", "t", "s", "d"];
+    let chars: Vec<char> = s.chars().collect();
+    let mut result = String::with_capacity(s.len() + 4);
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '_' && i > 0 && chars[i - 1].is_alphabetic() {
+            let rest: String = chars[i + 1..].iter().collect();
+            let is_contraction = SUFFIXES.iter().any(|&suf| {
+                if !rest.starts_with(suf) { return false; }
+                let after = &rest[suf.len()..];
+                after.is_empty() || !after.chars().next().map(|c| c.is_alphanumeric()).unwrap_or(false)
+            });
+            result.push(if is_contraction { '\'' } else { ' ' });
+        } else {
+            result.push(chars[i]);
+        }
+        i += 1;
+    }
+    result
+}
+
 fn clean_filename_str(name: &str) -> (String, Vec<String>) {
     let mut issues = vec![];
     let (stem, ext) = if let Some(dot) = name.rfind('.') {
@@ -717,7 +742,7 @@ fn clean_filename_str(name: &str) -> (String, Vec<String>) {
     let mut s = stem.to_string();
 
     if s.contains('_') {
-        s = s.replace('_', " ");
+        s = replace_underscores_smart(&s);
         issues.push("underscores".to_string());
     }
 

@@ -126,6 +126,140 @@ function formatBPM(bpm: string): string {
   return isNaN(n) ? bpm : n.toFixed(2);
 }
 
+// ── Inline-edit request bus ──────────────────────────────────────────────────
+// Permite que o context menu dispare edição sem prop drilling
+const inlineEditBus = new Map<string, (field: "title" | "artist") => void>();
+export function requestInlineEdit(trackId: string, field: "title" | "artist") {
+  inlineEditBus.get(trackId)?.(field);
+}
+
+// ── TitleArtistCell ───────────────────────────────────────────────────────────
+const IS_WIN_TABLE = navigator.platform.toLowerCase().startsWith("win") ||
+  navigator.userAgent.toLowerCase().includes("windows");
+
+const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track }) {
+  const { title, artist, filename, issues } = track;
+  const hasIssues = issues.length > 0;
+  const updateTrack = useAppStore((s) => s.updateTrack);
+
+  const [editing, setEditing] = useState<"title" | "artist" | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inlineEditBus.set(track.id, (field) => {
+      setEditing(field);
+      setEditValue(field === "title" ? (track.title ?? track.filename) : (track.artist ?? ""));
+    });
+    return () => { inlineEditBus.delete(track.id); };
+  }, [track]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  async function commitEdit() {
+    if (!editing) return;
+    const trimmed = editValue.trim();
+    setEditing(null);
+    if (!trimmed) return;
+    try {
+      await invoke("save_tags", {
+        path: track.path,
+        title: editing === "title" ? trimmed : (track.title ?? null),
+        artist: editing === "artist" ? trimmed : (track.artist ?? null),
+        album: track.album ?? null, genre: track.genre ?? null,
+        year: track.year ?? null, trackNumber: track.track_number ?? null,
+        totalTracks: track.total_tracks ?? null,
+        bpm: track.bpm ?? null, key: track.key ?? null,
+        rating: (track.rating ?? 0) > 0 ? (track.rating ?? null) : null,
+        comment: track.comment ?? null,
+      });
+      updateTrack({ ...track, [editing]: trimmed });
+    } catch (err) { console.error("[inline-edit]", err); }
+  }
+
+  return (
+    <div className="min-w-0 flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        {editing === "title" ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+              if (e.key === "Escape") setEditing(null);
+              e.stopPropagation();
+            }}
+            onBlur={commitEdit}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full bg-[#1c1715] border border-[#D95340]/50 rounded px-1.5 py-px text-[13px] text-[#F5F5F4] focus:outline-none focus:border-[#D95340]"
+          />
+        ) : (
+          <span
+            className={`leading-snug [overflow-wrap:anywhere] ${
+              title ? "text-[13px] font-medium text-[#F5F5F4]" : "text-xs italic text-[#756D67]"
+            }`}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditing("title");
+              setEditValue(title ?? filename);
+            }}
+            title={IS_WIN_TABLE ? "Duplo clique para editar" : "⌘+clique duplo para editar"}
+          >
+            {title ?? filename}
+          </span>
+        )}
+        {editing === "artist" ? (
+          <input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+              if (e.key === "Escape") setEditing(null);
+              e.stopPropagation();
+            }}
+            onBlur={commitEdit}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full mt-px bg-[#1c1715] border border-[#D95340]/50 rounded px-1.5 py-px text-[11px] text-[#8F8883] focus:outline-none focus:border-[#D95340]"
+          />
+        ) : artist ? (
+          <div
+            className="text-[11px] text-[#8F8883] mt-px leading-snug [overflow-wrap:anywhere] cursor-text"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditing("artist");
+              setEditValue(artist);
+            }}
+          >
+            {artist}
+          </div>
+        ) : null}
+      </div>
+      {(!title || hasIssues) && (
+        <div className="flex flex-col items-end gap-px shrink-0 mt-px">
+          {!title && (
+            <span
+              title="Este arquivo não tem título nos metadados ID3. O nome do arquivo está sendo exibido no lugar. Duplo clique para editar."
+              className="px-1 py-px rounded text-[8px] font-semibold uppercase tracking-wider leading-tight cursor-default select-none"
+              style={{ background: "rgba(255,255,255,0.07)", color: "#756D67", border: "1px solid rgba(255,255,255,0.10)" }}
+            >
+              arquivo
+            </span>
+          )}
+          {hasIssues && (
+            <span className="px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-[#D95340]/20 text-[#D95340] leading-tight">
+              enriquecer
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ── Rating cell ──────────────────────────────────────────────────────────────
 
 const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
@@ -141,11 +275,13 @@ const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
         title: track.title ?? null, artist: track.artist ?? null,
         album: track.album ?? null, genre: track.genre ?? null,
         year: track.year ?? null, trackNumber: track.track_number ?? null,
+        totalTracks: track.total_tracks ?? null,
         bpm: track.bpm ?? null, key: track.key ?? null,
-        rating: next,
+        rating: next > 0 ? next : null,
+        comment: track.comment ?? null,
       });
-      updateTrack({ ...track, rating: next || undefined });
-    } catch { /* silencioso */ }
+      updateTrack({ ...track, rating: next > 0 ? next : undefined });
+    } catch (err) { console.error("[rating] save_tags error:", err); }
   };
 
   const displayed = hover > 0 ? hover : current;
@@ -466,50 +602,12 @@ export default function TrackTable({
         size: 60, minSize: 52,
       }),
 
-      // TÍTULO / ARTISTA (stacked com cleanup badge inline)
+      // TÍTULO / ARTISTA — edição inline disponível (duplo clique ou menu de contexto)
       col.accessor("title", {
         id: "title_artist",
         enableHiding: false,
         header: "TÍTULO / ARTISTA",
-        cell: ({ getValue, row }) => {
-          const title = getValue();
-          const { artist, filename, issues } = row.original;
-          const hasIssues = issues.length > 0;
-          return (
-            <div className="min-w-0">
-              <div className="flex items-start justify-between gap-2 min-w-0">
-                <span className="min-w-0 flex items-baseline gap-1.5 flex-wrap">
-                  <span className={`leading-snug [overflow-wrap:anywhere] ${
-                    title
-                      ? "text-[13px] font-medium text-[#F5F5F4]"
-                      : "text-xs italic text-[#4C4743]"
-                  }`}>
-                    {title ?? filename}
-                  </span>
-                  {!title && (
-                    <span
-                      title="Sem título nos metadados — exibindo o nome do arquivo. Edite o campo Título para corrigir."
-                      className="shrink-0 px-1 py-px rounded text-[8px] font-semibold uppercase tracking-wider leading-tight cursor-default select-none"
-                      style={{ background: "rgba(255,255,255,0.04)", color: "#3D3733", border: "1px solid rgba(255,255,255,0.05)" }}
-                    >
-                      arquivo
-                    </span>
-                  )}
-                </span>
-                {hasIssues && (
-                  <span className="shrink-0 mt-px px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-[#D95340]/20 text-[#D95340] leading-tight">
-                    enriquecer
-                  </span>
-                )}
-              </div>
-              {artist && (
-                <div className="text-[11px] text-[#8F8883] mt-px leading-snug [overflow-wrap:anywhere]">
-                  {artist}
-                </div>
-              )}
-            </div>
-          );
-        },
+        cell: ({ row }) => <TitleArtistCell track={row.original} />,
         size: 280, minSize: 200,
       }),
 
@@ -1195,6 +1293,33 @@ export default function TrackTable({
             {analyzingBpmId === contextMenu.track.id ? "Analisando…" : "Analisar BPM"}
           </button>
         )}
+        {/* Edição inline */}
+        <div className="h-px bg-white/[0.06] my-1" />
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={() => {
+            requestInlineEdit(contextMenu.track.id, "title");
+            setContextMenu(null);
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+            <path d="M1 9h8M6.5 1.5l2 2-5 5H1.5v-2l5-5z"/>
+          </svg>
+          Editar título
+        </button>
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={() => {
+            requestInlineEdit(contextMenu.track.id, "artist");
+            setContextMenu(null);
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+            <path d="M1 9h8M6.5 1.5l2 2-5 5H1.5v-2l5-5z"/>
+          </svg>
+          Editar artista
+        </button>
+        <div className="h-px bg-white/[0.06] my-1" />
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
           onClick={() => {
@@ -1203,7 +1328,7 @@ export default function TrackTable({
           }}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M1 2h9v7H1V2zm2 2v3h5V4H3z"/></svg>
-          Revelar no Finder
+          {IS_WIN_TABLE ? "Revelar no Explorer" : "Revelar no Finder"}
         </button>
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
