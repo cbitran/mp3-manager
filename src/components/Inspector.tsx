@@ -9,13 +9,15 @@ interface FieldProps {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
   disabled?: boolean;
   placeholder?: string;
   mono?: boolean;
   multiline?: boolean;
 }
 
-function Field({ label, value, onChange, disabled, placeholder, mono, multiline }: FieldProps) {
+function Field({ label, value, onChange, onBlur, onKeyDown, disabled, placeholder, mono, multiline }: FieldProps) {
   return (
     <div>
       <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
@@ -25,6 +27,7 @@ function Field({ label, value, onChange, disabled, placeholder, mono, multiline 
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
           disabled={disabled}
           placeholder={placeholder ?? ""}
           rows={2}
@@ -34,6 +37,8 @@ function Field({ label, value, onChange, disabled, placeholder, mono, multiline 
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          onKeyDown={onKeyDown}
           disabled={disabled}
           placeholder={placeholder ?? ""}
           className={`w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 disabled:opacity-30 transition-colors ${mono ? "font-mono" : ""}`}
@@ -43,7 +48,7 @@ function Field({ label, value, onChange, disabled, placeholder, mono, multiline 
   );
 }
 
-export default function Inspector({ onClose, embedded }: { onClose?: () => void; embedded?: boolean } = {}) {
+export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProgress }: { onClose?: () => void; embedded?: boolean; onBatchEnrich?: () => void; enrichProgress?: { done: number; total: number } | null } = {}) {
   const { selectedIds, tracks, updateTrack, playerTrackId, isPlayingGlobal, clearSelection } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
@@ -60,7 +65,7 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
   const [key, setKey]                   = useState(first?.key ?? "");
   const [rating, setRating]             = useState(first?.rating ?? 0);
   const [comment, setComment]           = useState(first?.comment ?? "");
-  const [saving, setSaving]             = useState(false);
+  const [, setSaving]                   = useState(false);
   const [saved, setSaved]               = useState(false);
   const [enriching, setEnriching]       = useState(false);
   const [enrichSummary, setEnrichSummary] = useState<string | null>(null);
@@ -101,48 +106,90 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
     setEnrichSummary(null);
     const gained: string[] = [];
 
+    // Variáveis locais para capturar novos valores (setters React são assíncronos)
+    let newGenre = genre;
+    let newAlbum = album;
+    let newYear = year;
+    let newBpm = bpm;
+    let newKey = key;
+    let newHasCover = first.has_cover;
+    let newCoverVersion = first.cover_version ?? 0;
+
     try {
       // 1. Spotify: BPM + Tom + Álbum + Ano
       const spInfo = await enrichTrackFull(title || first.filename, artist);
       if (spInfo) {
         if (spInfo.features) {
+          newBpm = spInfo.features.bpm;
+          newKey = spInfo.features.key;
           setBpm(spInfo.features.bpm);
           setKey(spInfo.features.key);
           gained.push(`BPM ${spInfo.features.bpm} · ${spInfo.features.key}`);
         }
-        if (!album && spInfo.album) { setAlbum(spInfo.album); gained.push("Álbum"); }
-        if (!year && spInfo.year)   setYear(spInfo.year);
+        if (!newAlbum && spInfo.album) { newAlbum = spInfo.album; setAlbum(spInfo.album); gained.push("Álbum"); }
+        if (!newYear && spInfo.year)   { newYear = spInfo.year; setYear(spInfo.year); }
       }
 
       // 2. iTunes: Gênero + Álbum + Ano + Capa
       const iTResult = await iTunesSearch(title || first.filename, artist);
       if (iTResult) {
-        if (!genre && iTResult.genre)  { setGenre(iTResult.genre); gained.push("Gênero"); }
-        if (!year  && iTResult.year)   setYear(iTResult.year);
-        if (!album && iTResult.album)  { setAlbum(iTResult.album); gained.push("Álbum"); }
+        if (!newGenre && iTResult.genre) { newGenre = iTResult.genre; setGenre(iTResult.genre); gained.push("Gênero"); }
+        if (!newYear  && iTResult.year)  { newYear = iTResult.year; setYear(iTResult.year); }
+        if (!newAlbum && iTResult.album) { newAlbum = iTResult.album; setAlbum(iTResult.album); gained.push("Álbum"); }
 
-        // Baixar e salvar capa se ausente
-        if (!first.has_cover && iTResult.artworkUrl) {
+        if (!newHasCover && iTResult.artworkUrl) {
           try {
             await invoke("save_cover", { path: first.path, coverUrl: iTResult.artworkUrl });
-            const newIssues = first.issues.filter((i) => i !== "sem capa");
-            updateTrack({
-              ...first,
-              has_cover: true,
-              cover_version: (first.cover_version ?? 0) + 1,
-              issues: newIssues,
-            });
+            newHasCover = true;
+            newCoverVersion += 1;
             gained.push("Capa");
           } catch { /* silent */ }
         }
       }
     } catch { /* silent */ }
-    finally {
-      setEnriching(false);
-      setEnrichSummary(
-        gained.length > 0 ? `✓ ${gained.join(" · ")}` : "Nenhum dado novo encontrado"
-      );
+
+    setEnriching(false);
+
+    if (gained.length > 0) {
+      try {
+        await invoke("save_tags", {
+          path: first.path,
+          title: title || null,
+          artist: artist || null,
+          album: newAlbum || null,
+          genre: newGenre || null,
+          year: newYear ? parseInt(newYear) : null,
+          trackNumber: trackNumber ? parseInt(trackNumber) : null,
+          totalTracks: totalTracks ? parseInt(totalTracks) : null,
+          bpm: newBpm || null,
+          key: newKey || null,
+          rating: rating > 0 ? rating : null,
+          comment: comment || null,
+        });
+        const newIssues: string[] = [];
+        if (!title)       newIssues.push("sem título");
+        if (!artist)      newIssues.push("sem artista");
+        if (!newGenre)    newIssues.push("sem gênero");
+        if (!newHasCover) newIssues.push("sem capa");
+        if (!newBpm)      newIssues.push("sem BPM");
+        updateTrack({
+          ...first,
+          album: newAlbum || first.album,
+          genre: newGenre || first.genre,
+          year: newYear ? parseInt(newYear) : first.year,
+          bpm: newBpm || first.bpm,
+          key: newKey || first.key,
+          has_cover: newHasCover,
+          cover_version: newCoverVersion,
+          issues: newIssues,
+        });
+        useAppStore.getState().recordEnrichment(gained.length);
+      } catch { /* silent */ }
     }
+
+    setEnrichSummary(
+      gained.length > 0 ? `✓ ${gained.join(" · ")}` : "Nenhum dado novo encontrado"
+    );
   }
 
   async function handleSave() {
@@ -449,12 +496,12 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
 
       {/* Fields */}
       <div className="flex flex-col gap-2.5 px-3 py-3">
-        <Field label="Título" value={title} onChange={setTitle} disabled={isBatch} placeholder={isBatch ? "(múltiplos)" : ""} />
-        <Field label="Artista" value={artist} onChange={setArtist} />
-        <Field label="Álbum" value={album} onChange={setAlbum} />
-        <Field label="Gênero" value={genre} onChange={setGenre} />
+        <Field label="Título" value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? "(múltiplos)" : ""} />
+        <Field label="Artista" value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label="Álbum" value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label="Gênero" value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Ano" value={year} onChange={setYear} />
+          <Field label="Ano" value={year} onChange={setYear} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
           <div>
             <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
               Faixa #
@@ -463,6 +510,8 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
               <input
                 value={trackNumber}
                 onChange={(e) => setTrackNumber(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
                 placeholder="—"
                 className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
               />
@@ -470,6 +519,8 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
               <input
                 value={totalTracks}
                 onChange={(e) => setTotalTracks(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
                 placeholder="—"
                 title="Total de faixas"
                 className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
@@ -478,36 +529,38 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="BPM" value={bpm} onChange={setBpm} mono />
-          <Field label="Tom" value={key} onChange={setKey} mono />
+          <Field label="BPM" value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
+          <Field label="Tom" value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
         </div>
-        <Field label="Comentário" value={comment} onChange={setComment} placeholder="—" multiline />
+        <Field label="Comentário" value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline />
       </div>
 
       </div>{/* fim área scrollável */}
 
-      {/* Footer fixo — Enriquecer + Salvar */}
+      {/* Footer fixo — Enriquecer */}
       <div className="shrink-0 border-t border-white/[0.05] px-3 pt-3 pb-4 flex flex-col gap-2">
         {/* Enriquecer */}
         <button
-          onClick={enrichAll}
-          disabled={enriching}
-          className="w-full rounded-lg disabled:opacity-60 overflow-hidden"
+          data-tour="enrich-inspector"
+          onClick={isBatch && onBatchEnrich ? onBatchEnrich : enrichAll}
+          disabled={enriching || !!enrichProgress}
+          className="w-full rounded-lg disabled:opacity-90 overflow-hidden"
           style={{
-            background: enriching
+            background: enriching && !enrichProgress
               ? "rgba(220,85,71,0.15)"
-              : enrichSummary
+              : enrichSummary && !enrichProgress
               ? "rgba(220,85,71,0.12)"
               : "linear-gradient(135deg, #8B3E38, #D95340)",
           }}
         >
-          <div className="flex items-center gap-2.5 px-3.5 py-2.5">
-            {enriching ? (
+          {/* Linha principal */}
+          <div className="flex items-center gap-2.5 px-3.5 pt-2.5 pb-2">
+            {enriching && !enrichProgress ? (
               <>
                 <span className="animate-spin text-white text-base">⟳</span>
                 <span className="text-white text-xs font-semibold">Buscando…</span>
               </>
-            ) : enrichSummary ? (
+            ) : enrichSummary && !enrichProgress ? (
               <>
                 <span className="text-white text-sm">{enrichSummary.startsWith("✓") ? "✓" : "✗"}</span>
                 <span className="text-white/90 text-[11px] font-medium flex-1 text-left leading-tight">
@@ -519,27 +572,45 @@ export default function Inspector({ onClose, embedded }: { onClose?: () => void;
               <>
                 <span className="text-white text-sm">✦</span>
                 <div className="flex-1 text-left">
-                  <p className="text-white text-xs font-bold leading-none">Enriquecer Metadados</p>
+                  <p className="text-white text-xs font-bold leading-none">
+                    {isBatch ? `Enriquecer ${selectedArr.length} faixas` : "Enriquecer Metadados"}
+                  </p>
                   <p className="text-white/55 text-[10px] mt-0.5">Spotify · iTunes</p>
                 </div>
-                <span className="text-white/40 text-xs">›</span>
+                {enrichProgress ? (
+                  <span className="text-white/70 text-[10px] font-semibold tabular-nums">
+                    {enrichProgress.done} / {enrichProgress.total}
+                  </span>
+                ) : (
+                  <span className="text-white/40 text-xs">›</span>
+                )}
               </>
             )}
           </div>
+
+          {/* Barra de progresso integrada ao botão */}
+          {enrichProgress && (
+            <div className="h-[3px] w-full" style={{ background: "rgba(0,0,0,0.25)" }}>
+              <div
+                className="h-full transition-all duration-300"
+                style={{
+                  width: `${Math.round((enrichProgress.done / enrichProgress.total) * 100)}%`,
+                  background: "rgba(255,255,255,0.55)",
+                }}
+              />
+            </div>
+          )}
         </button>
 
-        {/* Salvar Tags */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`w-full py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${
-            saved
-              ? "bg-[#2B4C28]/90 text-white"
-              : "bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white"
-          } disabled:opacity-50`}
-        >
-          {saving ? "Salvando…" : saved ? "✓ Salvo" : "Salvar Tags"}
-        </button>
+        {/* Indicador de auto-save */}
+        {saved && (
+          <div className="flex items-center justify-center gap-1.5 py-1">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#5BA055" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="2 5 4 7 8 3"/>
+            </svg>
+            <span className="text-[10px] text-[#5BA055] font-semibold">Tags salvas</span>
+          </div>
+        )}
       </div>
     </div>
   );

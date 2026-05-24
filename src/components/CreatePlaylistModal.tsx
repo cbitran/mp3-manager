@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import type { Track } from "../store";
 
 interface DjSoftwareInfo {
@@ -18,7 +19,8 @@ const DJ_LABELS: Record<string, string> = {
   rekordbox: "rekordbox",
   traktor:   "Traktor Pro 3",
   vdj:       "Virtual DJ",
-  djay:      "djay Pro",
+  djay:      "djay Pro (Algoriddim)",
+  m3u:       "Arquivo M3U",
 };
 
 const DJ_ICONS: Record<string, string> = {
@@ -39,10 +41,11 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
 
   useEffect(() => {
     invoke<DjSoftwareInfo[]>("detect_dj_software").then((sw) => {
-      setDjSoftware(sw);
-      // Pre-select installed software
-      const installed = new Set(sw.filter((s) => s.installed).map((s) => s.id));
-      setSelected(installed);
+      // Sort: installed first, then not installed
+      const sorted = [...sw].sort((a, b) => (b.installed ? 1 : 0) - (a.installed ? 1 : 0));
+      setDjSoftware(sorted);
+      const preSelected = new Set(sorted.filter((s) => s.installed).map((s) => s.id));
+      setSelected(preSelected);
     });
   }, []);
 
@@ -61,6 +64,21 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
     const exportResults: typeof results = [];
 
     for (const id of selected) {
+      if (id === "m3u") {
+        try {
+          const savePath = await save({
+            defaultPath: `${name.trim()}.m3u`,
+            filters: [{ name: "Playlist M3U", extensions: ["m3u"] }],
+          });
+          if (savePath) {
+            await invoke("export_m3u", { tracks, outputPath: savePath });
+            exportResults.push({ id, path: savePath });
+          }
+        } catch (e) {
+          exportResults.push({ id, error: String(e) });
+        }
+        continue;
+      }
       try {
         const path = await invoke<string>("export_playlist_to_dj", {
           playlistName: name.trim(),
@@ -77,16 +95,88 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
     setDone(true);
     setExporting(false);
 
-    // Auto-open installed software that exported successfully
+    // Auto-open DJ apps that exported successfully (skip m3u)
     for (const r of exportResults) {
-      if (!r.error) {
+      if (!r.error && r.id !== "m3u") {
         try {
           await invoke("open_dj_app", { softwareId: r.id });
-        } catch {
-          // ignore if app not found
-        }
+        } catch { /* ignore */ }
       }
     }
+  };
+
+  // Count label for export button
+  const djCount   = [...selected].filter((id) => id !== "m3u").length;
+  const hasMpu    = selected.has("m3u");
+  const btnLabel  = () => {
+    if (exporting) return "Exportando…";
+    const parts: string[] = [];
+    if (djCount > 0)  parts.push(`${djCount} software${djCount !== 1 ? "s" : ""}`);
+    if (hasMpu)       parts.push("M3U");
+    return parts.length ? `Exportar para ${parts.join(" + ")}` : "Exportar";
+  };
+
+  const renderRow = (id: string, label: string, subtitle: string, isInstalled: boolean, isM3u = false) => {
+    const isChecked = selected.has(id);
+    return (
+      <label
+        key={id}
+        className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
+        style={{
+          background: isChecked ? "rgba(217,83,64,0.08)" : "rgba(255,255,255,0.02)",
+          border: isChecked ? "1px solid rgba(217,83,64,0.25)" : "1px solid rgba(255,255,255,0.05)",
+          opacity: isInstalled ? 1 : 0.45,
+        }}
+      >
+        <input
+          type="checkbox"
+          className="sr-only"
+          checked={isChecked}
+          onChange={() => toggle(id)}
+          disabled={!isInstalled && !isM3u}
+        />
+        <div
+          className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all"
+          style={{
+            borderColor: isChecked ? "#D95340" : "rgba(255,255,255,0.12)",
+            background: isChecked ? "#D95340" : "transparent",
+          }}
+        >
+          {isChecked && (
+            <svg width="9" height="7" viewBox="0 0 9 7" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 3.5L3.5 6L8 1"/>
+            </svg>
+          )}
+        </div>
+        <div className="relative shrink-0">
+          <div
+            className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold"
+            style={{ background: "rgba(255,255,255,0.06)", color: "#8F8883" }}
+          >
+            {isM3u ? (
+              <svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1.5 1.5h5.5l2.5 2.5v8H1.5V1.5z"/>
+                <path d="M7 1.5V4h2.5"/>
+                <line x1="3" y1="7" x2="8" y2="7"/>
+                <line x1="3" y1="9" x2="6" y2="9"/>
+              </svg>
+            ) : DJ_ICONS[id]}
+          </div>
+          {isInstalled && !isM3u && (
+            <div
+              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
+              style={{ background: "#5BA055", borderColor: "#1c1715" }}
+            />
+          )}
+        </div>
+        <div className="flex-1">
+          <p className="text-[12px] font-medium" style={{ color: "#C2BEBC" }}>{label}</p>
+          <p className="text-[10px]" style={{ color: isInstalled || isM3u ? "#5BA055" : "#605A55" }}>
+            {subtitle}
+          </p>
+        </div>
+      </label>
+    );
   };
 
   return (
@@ -133,7 +223,9 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
             ))}
             <div className="pt-2">
               <p className="text-[10px]" style={{ color: "#4C4743" }}>
-                O software DJ foi aberto automaticamente. A playlist aparecerá na biblioteca.
+                {results.some((r) => !r.error && r.id !== "m3u")
+                  ? "O software DJ foi aberto automaticamente. A playlist aparecerá na biblioteca."
+                  : "Exportação concluída."}
               </p>
             </div>
             <button
@@ -158,61 +250,30 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: Set Techno 2025"
                 className="w-full px-3 py-2 rounded-lg text-[13px] outline-none"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  color: "#F5F5F4",
-                }}
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F5F4" }}
                 onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
                 onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
               />
             </div>
 
-            {/* DJ Software */}
+            {/* Software list */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest block mb-2" style={{ color: "#8F8883" }}>
                 Exportar para
               </label>
               <div className="space-y-1.5">
-                {djSoftware.map((sw) => {
-                  const isChecked = selected.has(sw.id);
-                  return (
-                    <label
-                      key={sw.id}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
-                      style={{
-                        background: isChecked ? "rgba(217,83,64,0.08)" : "rgba(255,255,255,0.02)",
-                        border: isChecked ? "1px solid rgba(217,83,64,0.25)" : "1px solid rgba(255,255,255,0.05)",
-                        opacity: sw.installed ? 1 : 0.45,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggle(sw.id)}
-                        disabled={!sw.installed}
-                      />
-                      <div
-                        className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
-                        style={{ background: "rgba(255,255,255,0.06)", color: "#8F8883" }}
-                      >
-                        {DJ_ICONS[sw.id]}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[12px] font-medium" style={{ color: "#C2BEBC" }}>{sw.name}</p>
-                        <p className="text-[10px]" style={{ color: sw.installed ? "#5BA055" : "#605A55" }}>
-                          {sw.installed ? "Instalado" : "Não encontrado"}
-                        </p>
-                      </div>
-                    </label>
-                  );
-                })}
+                {djSoftware.map((sw) => renderRow(sw.id, sw.name, sw.installed ? "Instalado" : "Não encontrado", sw.installed))}
+                {/* Separador antes do M3U */}
+                {djSoftware.length > 0 && (
+                  <div className="h-px my-0.5" style={{ background: "rgba(255,255,255,0.05)" }} />
+                )}
+                {renderRow("m3u", "Arquivo M3U", "Compatível com todos os softwares", true, true)}
               </div>
             </div>
 
             {/* Note */}
             <p className="text-[10px]" style={{ color: "#4C4743" }}>
-              O software será aberto automaticamente após a exportação.
+              {[...selected].some((id) => id !== "m3u") ? "O software DJ será aberto automaticamente após a exportação." : "Escolha onde exportar a playlist."}
             </p>
 
             {/* Actions */}
@@ -230,7 +291,7 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-40"
                 style={{ background: "#D95340", color: "white" }}
               >
-                {exporting ? "Exportando…" : `Exportar para ${selected.size} software${selected.size !== 1 ? "s" : ""}`}
+                {btnLabel()}
               </button>
             </div>
           </div>

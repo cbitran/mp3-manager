@@ -264,13 +264,22 @@ export default function MiniPlayer() {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      if (showVolume && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const delta = e.key === "ArrowUp" ? 0.05 : -0.05;
+        const v = Math.max(0, Math.min(1, volume + delta));
+        setVolume(v);
+        if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+        if (audioRef.current) audioRef.current.volume = v;
+        return;
+      }
       if (e.key === " ")               { e.preventDefault(); togglePlay(); }
       else if (e.key === "ArrowRight") { e.preventDefault(); skipTrack(1); }
       else if (e.key === "ArrowLeft")  { e.preventDefault(); skipTrack(-1); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeTrack, isPlaying]);
+  }, [activeTrack, isPlaying, showVolume, volume]);
 
   async function togglePlay() {
     if (!audioRef.current || !activeTrack) return;

@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
   onAnalyzeBpmFolder?: (folderPath: string) => void;
+  onEnrichFolder?: (folderPath: string) => void;
 }
 
 interface DeleteDialogState {
@@ -12,7 +13,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFolder }: SidebarProps) {
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
@@ -284,6 +285,17 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder }: SidebarP
                 <path d="M1 5.5a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-2a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-5a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 8a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0-4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-2a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5z"/>
               </svg>
               Analisar BPM da pasta
+            </button>
+          )}
+          {onEnrichFolder && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={() => { onEnrichFolder(contextMenu.path); closeContextMenu(); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              Enriquecer faixas da pasta
             </button>
           )}
           <div className="h-px bg-white/10 my-1" />

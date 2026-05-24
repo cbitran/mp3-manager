@@ -1,5 +1,6 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { enrichTrackFull } from "./services/SpotifyService";
+import { searchTrack as iTunesSearch } from "./services/iTunesService";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -21,8 +22,12 @@ import ToastContainer, { toast } from "./components/Toast";
 import ParenReviewPrompt, { type ParenIssue } from "./components/ParenReviewPrompt";
 import LibraryStats from "./components/LibraryStats";
 import Onboarding, { shouldShowOnboarding } from "./components/Onboarding";
+import ProductTour, { shouldShowTour } from "./components/ProductTour";
 import Settings from "./components/Settings";
 import TrialInfoModal from "./components/TrialInfoModal";
+import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
+import VideoPlayerModal from "./components/VideoPlayerModal";
+import EnrichResultModal from "./components/EnrichResultModal";
 
 function loadingLabel(mode: "startup" | "closing"): string {
   const lang = navigator.language.toLowerCase();
@@ -209,6 +214,7 @@ export default function App() {
   const [showSidebar, setShowSidebar]       = useState(true);
   const [missingMeta, setMissingMeta]       = useState<{
     missingGenre: number; missingYear: number; missingAlbum: number;
+    bitrateHigh: number; bitrateMid: number; bitrateLow: number;
   } | null>(null);
   const [filenameIssues, setFilenameIssues] = useState<FilenameIssue[]>([]);
   const [filenameMetaIssues, setFilenameMetaIssues] = useState<FilenameMetaIssue[]>([]);
@@ -227,11 +233,19 @@ export default function App() {
   const [enrichingIds, setEnrichingIds]         = useState<Set<string>>(new Set());
   const [enrichDoneIds, setEnrichDoneIds]       = useState<Set<string>>(new Set());
   const [enrichUndoSnapshot, setEnrichUndoSnapshot] = useState<Track[] | null>(null);
+  const [enrichResultModal, setEnrichResultModal] = useState<{ total: number; enriched: number; covers: number; folderName: string } | null>(null);
   const [analyzingBpmIds, setAnalyzingBpmIds]   = useState<Set<string>>(new Set());
   const [bpmDoneIds, setBpmDoneIds]             = useState<Set<string>>(new Set());
   const [analyzingBpm, setAnalyzingBpm]         = useState(false);
   const [bpmProgress, setBpmProgress]           = useState<{ done: number; total: number } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
+  const [showTour, setShowTour] = useState(() => !shouldShowOnboarding() && shouldShowTour());
+  const [tourPlayerVisible, setTourPlayerVisible] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [showOfflineBanner, setShowOfflineBanner] = useState(false);
+  const isOnline = useIsOnline();
+  // Fecha o banner automaticamente quando a conexão voltar
+  useEffect(() => { if (isOnline) setShowOfflineBanner(false); }, [isOnline]);
   const isBusyRef = useRef(false);
 
   useEffect(() => {
@@ -459,7 +473,13 @@ export default function App() {
     }
   }
 
-  async function batchEnrich() {
+  async function batchEnrich(source: "all" | "itunes" | "spotify" = "all", folderPath?: string) {
+    if (!navigator.onLine) {
+      setShowOfflineBanner(true);
+      setTimeout(() => setShowOfflineBanner(false), 4000);
+      return;
+    }
+
     const selected = allTracks.filter((t) => selectedIds.has(t.id));
     const isExplicitSelection = selected.length > 0;
     const targets = isExplicitSelection
@@ -471,183 +491,303 @@ export default function App() {
     setEnriching(true);
     setEnrichProgress({ done: 0, total: targets.length });
 
-    type ItunesResult = { path: string; genre: string | null; album: string | null; year: number | null; cover_url: string | null };
-
-    // Mapa path → id para atualizar highlights via eventos Rust
-    const pathToId = new Map(targets.map((t) => [t.path, t.id]));
-
-    // Registra listeners para eventos de progresso emitidos pelo Rust
-    const unlistenStart = await listen<{ path: string; idx: number; total: number }>(
-      "enrich_track_start",
-      ({ payload }) => {
-        const id = pathToId.get(payload.path);
-        if (id) setEnrichingIds(new Set([id]));
-      }
-    );
-    const unlistenDone = await listen<{ path: string; idx: number; total: number }>(
-      "enrich_track_done",
-      ({ payload }) => {
-        const id = pathToId.get(payload.path);
-        setEnrichingIds(new Set());
-        if (id) {
-          setEnrichDoneIds((prev) => new Set([...prev, id]));
-          setTimeout(() => {
-            setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-          }, 700);
-        }
-        setEnrichProgress({ done: payload.idx, total: payload.total });
-      }
-    );
-
-    try {
-      // ── Fase 1: Rust processa todas as faixas com delay controlado por Tokio ──
-      // Uma única invocação — sem risco de timing drift do setTimeout JS
-      const queryResults = await invoke<ItunesResult[]>("batch_enrich_all", {
-        tracks: targets.map((t) => ({
-          path: t.path,
-          title: t.title ?? null,
-          artist: t.artist ?? null,
-        })),
-      });
-
-      // ── Fase 2: salvar tags (rápido, sem rate-limit) ──────────────────────────
-      let enriched = 0;
-      for (let i = 0; i < targets.length; i++) {
-        const r = queryResults[i];
-        if (!r) continue;
-        const currentTrack = useAppStore.getState().tracks.find((t) => t.path === r.path);
-        if (!currentTrack) continue;
-
-        const apiFoundSomething = r.genre !== null || r.album !== null || r.year !== null;
-        const hasGap = (r.genre && !currentTrack.genre) || (r.album && !currentTrack.album) || (r.year && !currentTrack.year);
-        if (isExplicitSelection ? apiFoundSomething : hasGap) {
-          const updated = {
-            ...currentTrack,
-            genre: r.genre ?? currentTrack.genre,
-            album: r.album ?? currentTrack.album,
-            year: r.year ?? currentTrack.year,
-          };
-          await invoke("save_tags", {
-            path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null,
-            album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null,
-            trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null,
-            key: updated.key ?? null, rating: updated.rating ?? null,
-          }).catch(() => {});
-          useAppStore.getState().updateTrack(updated);
-          enriched++;
-        }
-      }
-
-      // ── Fase 2.5: Spotify como fallback para faixas que iTunes não encontrou ──
-      const itunesNotFound = targets.filter((_, i) => {
-        const r = queryResults[i];
-        return !r || (r.genre === null && r.album === null && r.year === null && r.cover_url === null);
-      });
-
-      for (const track of itunesNotFound) {
-        try {
-          const sp = await enrichTrackFull(track.title ?? track.filename, track.artist ?? "");
-          if (!sp) continue;
-          const cur = useAppStore.getState().tracks.find((t) => t.path === track.path);
-          if (!cur) continue;
-          const newAlbum = sp.album || null;
-          const newYear  = sp.year ? parseInt(sp.year) : null;
-          const newBpm   = sp.features?.bpm ?? null;
-          const newKey   = sp.features?.key ?? null;
-          const hasNew   = isExplicitSelection
-            ? (newAlbum || newYear || newBpm || newKey)
-            : ((newAlbum && !cur.album) || (newYear && !cur.year) || (newBpm && !cur.bpm) || (newKey && !cur.key));
-          if (hasNew) {
-            const updated = {
-              ...cur,
-              album: newAlbum ?? cur.album,
-              year:  newYear  ?? cur.year,
-              bpm:   newBpm   ?? cur.bpm,
-              key:   newKey   ?? cur.key,
-            };
-            await invoke("save_tags", {
-              path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null,
-              album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null,
-              trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null,
-              key: updated.key ?? null, rating: updated.rating ?? null,
-            }).catch(() => {});
-            useAppStore.getState().updateTrack(updated);
-            enriched++;
-          }
-          // Capa via Spotify se faixa ainda não tem
-          if (!cur.has_cover && sp.coverUrl && (isExplicitSelection || !cur.has_cover)) {
-            const ok = await Promise.race([
-              invoke("save_cover", { path: track.path, coverUrl: sp.coverUrl }).then(() => true).catch(() => false),
-              new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
-            ]);
-            if (ok) {
-              const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
-              if (fresh) {
-                useAppStore.getState().updateTrack({ ...fresh, has_cover: true, cover_version: (fresh.cover_version ?? 0) + 1, issues: fresh.issues.filter((ii) => ii !== "sem capa") });
+    // ── iTunes-only (JS direto, mais transparente que Rust batch) ─────────────
+    if (source === "itunes") {
+      let found = 0, enriched = 0;
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          const track = targets[i];
+          setEnrichingIds(new Set([track.id]));
+          try {
+            const result = await iTunesSearch(track.title ?? track.filename, track.artist ?? "");
+            if (result) {
+              found++;
+              const cur = useAppStore.getState().tracks.find((t) => t.path === track.path);
+              if (cur) {
+                const newGenre = result.genre || null;
+                const newAlbum = result.album || null;
+                const newYear = result.year ? parseInt(result.year) : null;
+                const apiFoundSomething = newGenre !== null || newAlbum !== null || newYear !== null;
+                const hasGap = !!(newGenre && !cur.genre) || !!(newAlbum && !cur.album) || !!(newYear && !cur.year);
+                if (isExplicitSelection ? apiFoundSomething : hasGap) {
+                  const resolvedGenre = newGenre ?? cur.genre;
+                  const updatedIssues = cur.issues.filter(i =>
+                    !(i === "sem gênero" && resolvedGenre)
+                  );
+                  const updated = { ...cur, genre: resolvedGenre, album: newAlbum ?? cur.album, year: newYear ?? cur.year, issues: updatedIssues };
+                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null }).catch(() => {});
+                  useAppStore.getState().updateTrack(updated);
+                  enriched++;
+                }
+                if (result.artworkUrl && (isExplicitSelection || !cur.has_cover)) {
+                  const ok = await Promise.race([
+                    invoke("save_cover", { path: track.path, coverUrl: result.artworkUrl }).then(() => true).catch(() => false),
+                    new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
+                  ]);
+                  if (ok) {
+                    const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
+                    if (fresh) useAppStore.getState().updateTrack({ ...fresh, has_cover: true, cover_version: (fresh.cover_version ?? 0) + 1, issues: fresh.issues.filter((ii) => ii !== "sem capa") });
+                  }
+                }
               }
             }
-          }
-        } catch { /* pula */ }
-        await new Promise<void>((res) => setTimeout(res, 300)); // rate limit Spotify
-      }
-
-      // ── Fase 3: baixar capas em paralelo (3 por vez) ──────────────────────────
-      const coverWork = targets
-        .map((track, i) => ({ track, r: queryResults[i] }))
-        .filter(({ track, r }) => r?.cover_url && (isExplicitSelection || !track.has_cover));
-
-      const COVER_BATCH = 3;
-      for (let i = 0; i < coverWork.length; i += COVER_BATCH) {
-        const batch = coverWork.slice(i, i + COVER_BATCH);
-        setEnrichingIds(new Set(batch.map(({ track }) => track.id)));
-
-        await Promise.all(batch.map(async ({ track, r }) => {
-          if (!r?.cover_url) return;
-          const ok = await Promise.race([
-            invoke("save_cover", { path: track.path, coverUrl: r.cover_url }).then(() => true).catch(() => false),
-            new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
-          ]);
-          if (ok) {
-            const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
-            if (fresh) {
-              useAppStore.getState().updateTrack({
-                ...fresh,
-                has_cover: true,
-                cover_version: (fresh.cover_version ?? 0) + 1,
-                issues: fresh.issues.filter((ii) => ii !== "sem capa"),
-              });
-            }
-          }
-        }));
-
-        setEnrichingIds(new Set());
-        batch.forEach(({ track }) => {
+          } catch { /* pula */ }
+          setEnrichingIds(new Set());
           setEnrichDoneIds((prev) => new Set([...prev, track.id]));
           setTimeout(() => {
             setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
             useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
           }, 700);
-        });
+          setEnrichProgress({ done: i + 1, total: targets.length });
+          if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 250));
+        }
+        toast(
+          found > 0
+            ? `iTunes: ${found}/${targets.length} encontradas · ${enriched} enriquecidas`
+            : `iTunes: 0/${targets.length} encontradas — tente Spotify`,
+          found > 0 ? "success" : "info",
+          found > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+        );
+        if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
+      } finally {
+        setEnriching(false); setEnrichProgress(null); setEnrichingIds(new Set());
+      }
+      return;
+    }
+
+    // ── Spotify-only ──────────────────────────────────────────────────────────
+    if (source === "spotify") {
+      let found = 0, enriched = 0;
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          const track = targets[i];
+          setEnrichingIds(new Set([track.id]));
+          try {
+            const sp = await enrichTrackFull(track.title ?? track.filename, track.artist ?? "");
+            if (sp) {
+              found++;
+              const cur = useAppStore.getState().tracks.find((t) => t.path === track.path);
+              if (cur) {
+                const newAlbum = sp.album || null;
+                const newYear = sp.year ? parseInt(sp.year) : null;
+                const newBpm = sp.features?.bpm ?? null;
+                const newKey = sp.features?.key ?? null;
+                const apiFoundSomething = newAlbum !== null || newYear !== null || newBpm !== null || newKey !== null;
+                const hasGap = !!(newAlbum && !cur.album) || !!(newYear && !cur.year) || !!(newBpm && !cur.bpm) || !!(newKey && !cur.key);
+                if (isExplicitSelection ? apiFoundSomething : hasGap) {
+                  const resolvedBpm = newBpm ?? cur.bpm;
+                  const updatedIssues = cur.issues.filter(i =>
+                    !(i === "sem BPM" && resolvedBpm)
+                  );
+                  const updated = { ...cur, album: newAlbum ?? cur.album, year: newYear ?? cur.year, bpm: resolvedBpm, key: newKey ?? cur.key, issues: updatedIssues };
+                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null }).catch(() => {});
+                  useAppStore.getState().updateTrack(updated);
+                  enriched++;
+                }
+                if (sp.coverUrl && (isExplicitSelection || !cur.has_cover)) {
+                  const ok = await Promise.race([
+                    invoke("save_cover", { path: track.path, coverUrl: sp.coverUrl }).then(() => true).catch(() => false),
+                    new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
+                  ]);
+                  if (ok) {
+                    const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
+                    if (fresh) useAppStore.getState().updateTrack({ ...fresh, has_cover: true, cover_version: (fresh.cover_version ?? 0) + 1, issues: fresh.issues.filter((ii) => ii !== "sem capa") });
+                  }
+                }
+              }
+            }
+          } catch { /* pula */ }
+          setEnrichingIds(new Set());
+          setEnrichDoneIds((prev) => new Set([...prev, track.id]));
+          setTimeout(() => {
+            setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
+            useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
+          }, 700);
+          setEnrichProgress({ done: i + 1, total: targets.length });
+          if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 350));
+        }
+        toast(
+          found > 0
+            ? `Spotify: ${found}/${targets.length} encontradas · ${enriched} enriquecidas`
+            : `Spotify: 0/${targets.length} encontradas — tente iTunes`,
+          found > 0 ? "success" : "info",
+          found > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+        );
+        if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
+      } finally {
+        setEnriching(false); setEnrichProgress(null); setEnrichingIds(new Set());
+      }
+      return;
+    }
+
+    // ── All services: iTunes + Spotify combinados ────────────────────────────
+    const coverStats = { count: 0 };
+    const coverPromises: Promise<void>[] = [];
+    let found = 0, enriched = 0;
+
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const track = targets[i];
+        setEnrichingIds(new Set([track.id]));
+
+        try {
+          const cur = useAppStore.getState().tracks.find((t) => t.path === track.path);
+          if (!cur) { setEnrichingIds(new Set()); continue; }
+
+          // Detecta o que está faltando nesta faixa
+          const needsGenre = !cur.genre;
+          const needsAlbum = !cur.album;
+          const needsYear  = !cur.year;
+          const needsBpm   = !cur.bpm;
+          const needsKey   = !cur.key;
+          const needsCover = !cur.has_cover;
+
+          // Pula completamente se já tem tudo
+          if (!needsGenre && !needsAlbum && !needsYear && !needsBpm && !needsKey && !needsCover) {
+            setEnrichingIds(new Set());
+            setEnrichProgress({ done: i + 1, total: targets.length });
+            continue;
+          }
+
+          let newGenre: string | null = cur.genre ?? null;
+          let newAlbum: string | null = cur.album ?? null;
+          let newYear:  number | null = cur.year  ?? null;
+          let newBpm:   string | null = cur.bpm   ?? null;
+          let newKey:   string | null = cur.key   ?? null;
+          let coverUrl: string | null = null;
+          let serviceFound = false;
+
+          // 1. iTunes: gênero, álbum, ano, capa — só chama se precisar de algum desses
+          if (needsGenre || needsAlbum || needsYear || needsCover) {
+            try {
+              const iTResult = await iTunesSearch(track.title ?? track.filename, track.artist ?? "");
+              if (iTResult) {
+                serviceFound = true;
+                if (!newGenre && iTResult.genre) newGenre = iTResult.genre;
+                if (!newAlbum && iTResult.album) newAlbum = iTResult.album;
+                if (!newYear  && iTResult.year)  newYear  = parseInt(iTResult.year);
+                if (needsCover && iTResult.artworkUrl) coverUrl = iTResult.artworkUrl;
+              }
+            } catch { /* pula */ }
+          }
+
+          // 2. Spotify: BPM, tom, álbum, ano, capa — só chama se ainda há lacunas
+          const stillNeedsSpotify = needsBpm || needsKey || (!newAlbum && needsAlbum) || (!newYear && needsYear) || (needsCover && !coverUrl);
+          if (stillNeedsSpotify) {
+            try {
+              const sp = await enrichTrackFull(track.title ?? track.filename, track.artist ?? "");
+              if (sp) {
+                serviceFound = true;
+                if (!newBpm   && sp.features?.bpm)              newBpm   = sp.features.bpm;
+                if (!newKey   && sp.features?.key)              newKey   = sp.features.key;
+                if (!newAlbum && sp.album)                      newAlbum = sp.album;
+                if (!newYear  && sp.year)                       newYear  = parseInt(sp.year);
+                if (needsCover && !coverUrl && sp.coverUrl)     coverUrl = sp.coverUrl;
+              }
+            } catch { /* pula */ }
+          }
+
+          if (serviceFound) found++;
+
+          const hasNewMeta =
+            newGenre !== (cur.genre ?? null) ||
+            newAlbum !== (cur.album ?? null) ||
+            newYear  !== (cur.year  ?? null) ||
+            newBpm   !== (cur.bpm   ?? null) ||
+            newKey   !== (cur.key   ?? null);
+
+          if (hasNewMeta) {
+            const resolvedGenre = newGenre ?? cur.genre;
+            const resolvedBpm   = newBpm   ?? cur.bpm;
+            const updatedIssues = cur.issues.filter(i =>
+              !(i === "sem gênero" && resolvedGenre) &&
+              !(i === "sem BPM"    && resolvedBpm)
+            );
+            const updated = {
+              ...cur,
+              genre: resolvedGenre,
+              album: newAlbum ?? cur.album,
+              year:  newYear  ?? cur.year,
+              bpm:   resolvedBpm,
+              key:   newKey   ?? cur.key,
+              issues: updatedIssues,
+            };
+            await invoke("save_tags", {
+              path: updated.path,
+              title: updated.title ?? null, artist: updated.artist ?? null,
+              album: updated.album ?? null, genre: updated.genre ?? null,
+              year: updated.year ?? null, trackNumber: updated.track_number ?? null,
+              bpm: updated.bpm ?? null, key: updated.key ?? null,
+              rating: updated.rating ?? null,
+            }).catch(() => {});
+            useAppStore.getState().updateTrack(updated);
+            enriched++;
+          }
+
+          // Capa em background: começa a baixar enquanto buscamos metadados da próxima faixa
+          if (coverUrl && !cur.has_cover) {
+            const p = invoke("save_cover", { path: track.path, coverUrl })
+              .then(() => {
+                const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
+                if (fresh) {
+                  useAppStore.getState().updateTrack({
+                    ...fresh,
+                    has_cover: true,
+                    cover_version: (fresh.cover_version ?? 0) + 1,
+                    issues: fresh.issues.filter((ii) => ii !== "sem capa"),
+                  });
+                  coverStats.count++;
+                }
+              })
+              .catch(() => {});
+            coverPromises.push(p);
+          }
+        } catch { /* pula */ }
+
+        setEnrichingIds(new Set());
+        setEnrichDoneIds((prev) => new Set([...prev, track.id]));
+        setTimeout(() => {
+          setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
+          useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
+        }, 700);
+        setEnrichProgress({ done: i + 1, total: targets.length });
+        if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 400));
       }
 
-      // Deseleciona faixas sem download de capa
-      const coveredIds = new Set(coverWork.map(({ track }) => track.id));
-      targets.forEach((track) => {
-        if (!coveredIds.has(track.id)) {
-          useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
-        }
-      });
+      // Aguarda capas (disparadas em background durante o loop de metadados)
+      await Promise.allSettled(coverPromises);
 
-      toast(
-        enriched > 0
-          ? `${enriched} faixa${enriched !== 1 ? "s" : ""} enriquecida${enriched !== 1 ? "s" : ""} via iTunes`
-          : "Nenhuma informação nova encontrada",
-        enriched > 0 ? "success" : "info",
-        enriched > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
-      );
+      const parts: string[] = [];
+      if (found > 0)            parts.push(`${found}/${targets.length} encontradas`);
+      if (enriched > 0)         parts.push(`${enriched} enriquecidas`);
+      if (coverStats.count > 0) parts.push(`${coverStats.count} capas`);
+
+      if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
+
+      // Encadear análise de BPM para faixas que ainda não têm BPM após enriquecimento
+      const stillNoBpm = targets.filter((t) => {
+        const fresh = useAppStore.getState().tracks.find((s) => s.path === t.path);
+        return !fresh?.bpm;
+      });
+      if (stillNoBpm.length > 0) {
+        parts.push(`${stillNoBpm.length} aguardando BPM`);
+        setTimeout(() => batchAnalyzeBpm(stillNoBpm), 800);
+      }
+
+      if (folderPath) {
+        // Modo pasta: exibe modal de resultado em vez de toast
+        const folderName = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? folderPath;
+        setEnrichResultModal({ total: targets.length, enriched, covers: coverStats.count, folderName });
+      } else {
+        toast(
+          parts.length > 0
+            ? `iTunes+Spotify: ${parts.join(" · ")}`
+            : "Nenhuma informação nova encontrada",
+          enriched > 0 ? "success" : "info",
+          enriched > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+        );
+      }
     } finally {
-      unlistenStart();
-      unlistenDone();
       setEnriching(false);
       setEnrichProgress(null);
       setEnrichingIds(new Set());
@@ -783,15 +923,54 @@ export default function App() {
     }
   }
 
+  async function filterNumericPrefixIssues(issues: FilenameIssue[], tracks: Track[]): Promise<FilenameIssue[]> {
+    const trackMap = new Map(tracks.map((t) => [t.path, t]));
+    const results = await Promise.all(
+      issues.map(async (issue) => {
+        if (!issue.tags.includes("prefixo numérico")) return issue;
+        const numMatch = issue.current.match(/^(\d+)/);
+        if (!numMatch) return issue;
+        const stripped = numMatch[1];
+        // 1. Check ID3 artist metadata
+        const track = trackMap.get(issue.path);
+        if (track?.artist) {
+          const artistNum = track.artist.match(/^(\d+)/);
+          if (artistNum && artistNum[1] === stripped) return null;
+        }
+        // 2. Parse filename: "ARTIST - TITLE.ext" → check if ARTIST starts with number
+        const nameNoExt = issue.current.replace(/\.[^.]+$/, "");
+        const dashIdx = nameNoExt.indexOf(" - ");
+        if (dashIdx > 0) {
+          const potentialArtist = nameNoExt.slice(0, dashIdx).trim();
+          if (/^\d/.test(potentialArtist)) {
+            try {
+              const potentialTitle = nameNoExt.slice(dashIdx + 3).trim();
+              const result = await iTunesSearch(potentialTitle, potentialArtist);
+              if (result?.artistName) {
+                const resNum = result.artistName.match(/^(\d+)/);
+                if (resNum && resNum[1] === stripped) return null;
+              }
+            } catch { /* keep issue if lookup fails */ }
+          }
+        }
+        return issue;
+      })
+    );
+    return results.filter((r): r is FilenameIssue => r !== null);
+  }
+
   function checkMissingMeta(loaded: Track[]) {
     if (loaded.length < 5) return;
     const missingGenre  = loaded.filter((t) => !t.genre).length;
     const missingYear   = loaded.filter((t) => !t.year).length;
     const missingAlbum  = loaded.filter((t) => !t.album).length;
     const total = missingGenre + missingYear + missingAlbum;
+    const bitrateHigh = loaded.filter((t) => (t.bitrate_kbps ?? 0) >= 320).length;
+    const bitrateMid  = loaded.filter((t) => { const b = t.bitrate_kbps ?? 0; return b >= 192 && b < 320; }).length;
+    const bitrateLow  = loaded.filter((t) => { const b = t.bitrate_kbps ?? 0; return b > 0 && b < 192; }).length;
     if (total > (loaded.length * 3) / 4) {
       setTimeout(
-        () => setMissingMeta({ missingGenre, missingYear, missingAlbum }),
+        () => setMissingMeta({ missingGenre, missingYear, missingAlbum, bitrateHigh, bitrateMid, bitrateLow }),
         600
       );
     }
@@ -807,6 +986,15 @@ export default function App() {
     setParenIssues([]);
     setDuplicateGroups([]);
     setGenreFilter(null);
+
+    const unlistenSkipped = await listen<{ count: number }>("scan_skipped", ({ payload }) => {
+      const n = payload.count;
+      toast(
+        `${n} arquivo${n !== 1 ? "s" : ""} ignorado${n !== 1 ? "s" : ""} — formato não suportado (não é áudio nem vídeo)`,
+        "info",
+      );
+    });
+
     try {
       const result = await invoke<Track[]>("scan_folder", { folder });
       setTracks(result);
@@ -818,6 +1006,7 @@ export default function App() {
       if (result.length > 0) {
         const paths = result.map((t) => t.path);
         invoke<FilenameIssue[]>("analyze_filename_issues", { paths })
+          .then((raw) => filterNumericPrefixIssues(raw, result))
           .then((issues) => { if (issues.length > 0) setFilenameIssues(issues); })
           .catch(() => {});
         invoke<ParenIssue[]>("analyze_paren_content", { paths })
@@ -828,6 +1017,7 @@ export default function App() {
           .catch(() => {});
       }
     } finally {
+      unlistenSkipped();
       setScanning(false);
     }
   }
@@ -993,7 +1183,7 @@ export default function App() {
         <div className="shrink-0 flex items-center justify-center w-8 h-8">
           <svg width="22" height="22" viewBox="0 0 100 100" fill="none">
             <circle cx="50" cy="50" r="46" fill="#D95340"/>
-            <circle cx="50" cy="50" r="10" fill="#1A0D0B"/>
+            <circle cx="50" cy="50" r="27" fill="#1A0D0B"/>
           </svg>
         </div>
 
@@ -1012,6 +1202,7 @@ export default function App() {
 
         {/* Abrir pasta — ícone compacto */}
         <button
+          data-tour="open-folder"
           onClick={pickFolder}
           disabled={isScanning}
           title="Abrir Pasta (⌘O)"
@@ -1079,6 +1270,7 @@ export default function App() {
           )}
           {allTracks.length > 0 && (
             <button
+              data-tour="analyze-bpm"
               onClick={() => batchAnalyzeBpm()}
               disabled={analyzingBpm || isScanning || enriching}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40 transition-all whitespace-nowrap shrink-0 ${
@@ -1099,22 +1291,37 @@ export default function App() {
             </button>
           )}
           {allTracks.length > 0 && (
-            <button
-              onClick={batchEnrich}
-              disabled={enriching || isScanning}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
-              title="Enriquecer metadados faltantes via iTunes"
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="5.5" cy="5.5" r="4"/>
-                <path d="M5.5 3.5v2l1.5 1"/>
-              </svg>
-              {enriching && enrichProgress
-                ? `${enrichProgress.done}/${enrichProgress.total}`
-                : selectedIds.size > 0
-                  ? `Enriquecer ${selectedIds.size}`
-                  : "Enriquecer"}
-            </button>
+            <div className="relative group" data-tour="enrich">
+              <button
+                onClick={() => batchEnrich("all")}
+                disabled={enriching || isScanning}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+                title="Enriquecer metadados faltantes via iTunes + Spotify"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="5.5" cy="5.5" r="4"/>
+                  <path d="M5.5 3.5v2l1.5 1"/>
+                </svg>
+                {enriching && enrichProgress
+                  ? `${enrichProgress.done}/${enrichProgress.total}`
+                  : selectedIds.size > 0
+                    ? `Enriquecer ${selectedIds.size}`
+                    : "Enriquecer"}
+              </button>
+              <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[160px]">
+                <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
+                  <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                    Todos os serviços
+                  </button>
+                  <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                    Só iTunes
+                  </button>
+                  <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                    Só Spotify
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           {allTracks.length > 0 && (
             <button
@@ -1159,7 +1366,25 @@ export default function App() {
                     onClick={exportM3U}
                     className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
                   >
-                    M3U · Serato / djay / VirtualDJ
+                    M3U
+                  </button>
+                  <button
+                    onClick={exportM3U}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    Serato DJ
+                  </button>
+                  <button
+                    onClick={exportM3U}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    djay Pro
+                  </button>
+                  <button
+                    onClick={exportM3U}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    Virtual DJ
                   </button>
                   <button
                     onClick={exportCsv}
@@ -1342,17 +1567,34 @@ export default function App() {
             )}
           </div>
 
-          <div className="relative flex items-center">
-            <svg className="absolute left-2.5 pointer-events-none shrink-0" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#605A55" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="5.5" cy="5.5" r="4"/>
-              <line x1="8.7" y1="8.7" x2="12" y2="12"/>
-            </svg>
-            <input
-              className="w-52 pl-8 pr-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
-              placeholder="buscar…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="relative flex items-center shrink-0">
+            {(windowWidth >= 1100 || searchExpanded || !!searchQuery) ? (
+              <>
+                <svg className="absolute left-2.5 pointer-events-none shrink-0" width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#605A55" strokeWidth="1.5" strokeLinecap="round">
+                  <circle cx="5.5" cy="5.5" r="4"/>
+                  <line x1="8.7" y1="8.7" x2="12" y2="12"/>
+                </svg>
+                <input
+                  autoFocus={searchExpanded && windowWidth < 1100}
+                  className="w-52 pl-8 pr-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
+                  placeholder="buscar…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onBlur={() => { if (!searchQuery) setSearchExpanded(false); }}
+                />
+              </>
+            ) : (
+              <button
+                onClick={() => setSearchExpanded(true)}
+                title="Buscar (clique para expandir)"
+                className="flex items-center justify-center w-7 h-7 rounded-md text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
+              >
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <circle cx="5.5" cy="5.5" r="4"/>
+                  <line x1="8.7" y1="8.7" x2="12" y2="12"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1506,6 +1748,12 @@ export default function App() {
                   if (folderTracks.length === 0) { toast("Nenhuma faixa nesta pasta", "info"); return; }
                   batchAnalyzeBpm(folderTracks);
                 }}
+                onEnrichFolder={(folderPath) => {
+                  const folderTracks = allTracks.filter((t) => t.path.startsWith(folderPath + "/") || t.path.startsWith(folderPath + "\\"));
+                  if (folderTracks.length === 0) { toast("Nenhuma faixa nesta pasta", "info"); return; }
+                  useAppStore.setState({ selectedIds: new Set(folderTracks.map((t) => t.id)) });
+                  setTimeout(() => batchEnrich("all", folderPath), 50);
+                }}
               />
             {/* Drag handle */}
             <div
@@ -1650,6 +1898,8 @@ export default function App() {
                 onVideoPlay={mediaTab === "video" ? (t) => setVideoTrack(t) : undefined}
                 enrichingIds={new Set([...enrichingIds, ...analyzingBpmIds])}
                 enrichDoneIds={new Set([...enrichDoneIds, ...bpmDoneIds])}
+                onOpenFolder={pickFolder}
+                onEnrich={() => batchEnrich("all")}
               />
             </div>
             {showRightPanel && allTracks.length > 0 && (() => {
@@ -1702,7 +1952,7 @@ export default function App() {
 
                   {/* Content */}
                   {rightPanelTab === "selected" && selectedIds.size > 0
-                    ? <Inspector embedded />
+                    ? <Inspector embedded onBatchEnrich={() => batchEnrich("all")} enrichProgress={enrichProgress} />
                     : <LibraryStats embedded />
                   }
                 </div>
@@ -1716,8 +1966,8 @@ export default function App() {
         </div>
       </div>
 
-      {(selectedIds.size > 0 || !!playerTrackId) && (
-        <div style={{ animation: 'slide-up-player 0.18s ease-out' }}>
+      {(selectedIds.size > 0 || !!playerTrackId || tourPlayerVisible) && (
+        <div data-tour="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>
           <MiniPlayer />
         </div>
       )}
@@ -1731,49 +1981,7 @@ export default function App() {
 
       {/* Modal de vídeo — abre ao dar double-click em faixa de vídeo */}
       {videoTrack && (
-        <div className="fixed inset-0 z-[700] flex items-center justify-center bg-black/75 backdrop-blur-sm"
-          onClick={() => setVideoTrack(null)}>
-          <div
-            className="relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/[0.08] flex flex-col"
-            style={{ width: "min(72vw, 860px)", maxHeight: "80vh" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-black/60 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="#8F8883" strokeWidth="1.3" strokeLinecap="round">
-                <rect x="1" y="2.5" width="6" height="5" rx="0.8"/>
-                <path d="M7 4.5l2-1.5v4L7 5.5"/>
-              </svg>
-              <span className="text-[#C2BEBC] text-[12px] font-medium truncate flex-1">
-                {videoTrack.title || videoTrack.filename}
-              </span>
-              <button
-                onClick={() => setVideoTrack(null)}
-                className="w-6 h-6 flex items-center justify-center rounded-full text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
-              >
-                <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
-                </svg>
-              </button>
-            </div>
-            {/* Vídeo */}
-            <video
-              key={videoTrack.path}
-              src={convertFileSrc(videoTrack.path)}
-              controls
-              autoPlay
-              playsInline
-              className="w-full flex-1 bg-black"
-              style={{ maxHeight: "calc(80vh - 44px)" }}
-              onError={() => {
-                import("@tauri-apps/plugin-opener").then(({ openPath }) => {
-                  openPath(videoTrack.path).catch(() => {});
-                });
-                setVideoTrack(null);
-              }}
-            />
-          </div>
-        </div>
+        <VideoPlayerModal track={videoTrack} onClose={() => setVideoTrack(null)} />
       )}
 
       {/* Diálogo: pastas que não existem mais no disco */}
@@ -1839,8 +2047,25 @@ export default function App() {
       {showTrialInfo && !isTrialActivated() && (
         <TrialInfoModal onClose={() => setShowTrialInfo(false)} />
       )}
-      {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
+      {showOnboarding && <Onboarding onComplete={() => { setShowOnboarding(false); setShowTour(shouldShowTour()); }} />}
+      {!showOnboarding && showTour && (
+        <ProductTour
+          onDone={() => { setShowTour(false); setTourPlayerVisible(false); }}
+          onStepChange={(s) => setTourPlayerVisible(s === 4)}
+        />
+      )}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showOfflineBanner && <OfflineBanner onClose={() => setShowOfflineBanner(false)} />}
+      {enrichResultModal && (
+        <EnrichResultModal
+          total={enrichResultModal.total}
+          enriched={enrichResultModal.enriched}
+          covers={enrichResultModal.covers}
+          folderName={enrichResultModal.folderName}
+          onClose={() => setEnrichResultModal(null)}
+          onUndo={enrichUndoSnapshot ? () => { undoEnrich(); setEnrichResultModal(null); } : undefined}
+        />
+      )}
       <ToastContainer />
 
       {/* Drag & drop overlay */}
@@ -1859,14 +2084,17 @@ export default function App() {
       {missingMeta && (
         <MissingMetaPrompt
           totalTracks={allTracks.length}
+          folderName={lastFolder ? lastFolder.split(/[\\/]/).filter(Boolean).pop() ?? lastFolder : undefined}
           missingGenre={missingMeta.missingGenre}
           missingYear={missingMeta.missingYear}
           missingAlbum={missingMeta.missingAlbum}
+          bitrateHigh={missingMeta.bitrateHigh}
+          bitrateMid={missingMeta.bitrateMid}
+          bitrateLow={missingMeta.bitrateLow}
           onDismiss={() => setMissingMeta(null)}
           onEnrich={() => {
             setMissingMeta(null);
-            // Selecionar todas e abrir Inspector (usuário clica Enriquecer manualmente)
-            // TODO: trigger batch enrichment
+            batchEnrich("all");
           }}
         />
       )}

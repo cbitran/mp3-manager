@@ -159,27 +159,39 @@ fn count_audio_files(folder: String) -> usize {
 
 #[tauri::command]
 fn scan_folder(folder: String, app: tauri::AppHandle) -> Vec<Track> {
-    let paths: Vec<_> = WalkDir::new(&folder)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension()
-                    .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
-                    .unwrap_or(false)
-        })
-        .map(|e| e.path().to_path_buf())
-        .collect();
-    let total = paths.len();
+    // Separa arquivos suportados e não-suportados (excluindo ocultos)
+    let mut audio_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut skipped: usize = 0;
+    for entry in WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() { continue; }
+        let name = entry.file_name().to_string_lossy();
+        if name.starts_with('.') { continue; } // ocultos
+        let is_audio = entry.path().extension()
+            .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
+            .unwrap_or(false);
+        if is_audio {
+            audio_paths.push(entry.path().to_path_buf());
+        } else {
+            skipped += 1;
+        }
+    }
+
+    let total = audio_paths.len();
     let counter = Arc::new(AtomicUsize::new(0));
-    paths.par_iter().filter_map(|p| {
+    let tracks: Vec<Track> = audio_paths.par_iter().filter_map(|p| {
         let result = read_track(p);
         let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
         if done % 10 == 0 || done == total {
             let _ = app.emit("scan_progress", serde_json::json!({ "done": done, "total": total }));
         }
         result
-    }).collect()
+    }).collect();
+
+    if skipped > 0 {
+        let _ = app.emit("scan_skipped", serde_json::json!({ "count": skipped }));
+    }
+
+    tracks
 }
 
 #[tauri::command]
@@ -1307,40 +1319,79 @@ struct DjSoftwareInfo {
 
 #[tauri::command]
 fn detect_dj_software() -> Vec<DjSoftwareInfo> {
-    let candidates: &[(&str, &str, &[&str])] = &[
-        ("serato", "Serato DJ Pro", &[
-            "/Applications/Serato DJ Pro.app",
-            "/Applications/Serato DJ Lite.app",
-        ]),
-        ("rekordbox", "rekordbox", &[
-            "/Applications/rekordbox.app",
-            "/Applications/rekordbox 6.app",
-            "/Applications/rekordbox 6/rekordbox.app",
-            "/Applications/rekordbox 7/rekordbox.app",
-            "/Applications/rekordbox 8/rekordbox.app",
-        ]),
-        ("traktor", "Traktor Pro 3", &[
-            "/Applications/Traktor Pro 3.app",
-            "/Applications/Traktor Pro 2.app",
-            "/Applications/Traktor Pro.app",
-            "/Applications/Native Instruments/Traktor Pro 3.app",
-        ]),
-        ("vdj", "Virtual DJ", &[
-            "/Applications/VirtualDJ.app",
-            "/Applications/VirtualDJ 2023.app",
-            "/Applications/VirtualDJ 2024.app",
-            "/Applications/VirtualDJ 2025.app",
-        ]),
-        ("djay", "djay Pro", &[
-            "/Applications/djay Pro.app",
-            "/Applications/djay Pro AI.app",
-            "/Applications/djay.app",
-        ]),
-    ];
-    candidates.iter().map(|(id, name, paths)| {
+    let candidates = dj_software_candidates();
+    candidates.into_iter().map(|(id, name, paths)| {
         let installed = paths.iter().any(|p| Path::new(p).exists());
-        DjSoftwareInfo { id: id.to_string(), name: name.to_string(), installed }
+        DjSoftwareInfo { id, name, installed }
     }).collect()
+}
+
+fn dj_software_candidates() -> Vec<(String, String, Vec<String>)> {
+    #[cfg(target_os = "macos")]
+    {
+        vec![
+            ("serato".into(),    "Serato DJ Pro".into(),        vec![
+                "/Applications/Serato DJ Pro.app".into(),
+                "/Applications/Serato DJ Lite.app".into(),
+            ]),
+            ("rekordbox".into(), "rekordbox".into(),             vec![
+                "/Applications/rekordbox.app".into(),
+                "/Applications/rekordbox 6.app".into(),
+                "/Applications/rekordbox 6/rekordbox.app".into(),
+                "/Applications/rekordbox 7/rekordbox.app".into(),
+                "/Applications/rekordbox 8/rekordbox.app".into(),
+            ]),
+            ("traktor".into(),   "Traktor Pro 3".into(),         vec![
+                "/Applications/Traktor Pro 3.app".into(),
+                "/Applications/Traktor Pro 2.app".into(),
+                "/Applications/Traktor Pro.app".into(),
+                "/Applications/Native Instruments/Traktor Pro 3.app".into(),
+            ]),
+            ("vdj".into(),       "Virtual DJ".into(),            vec![
+                "/Applications/VirtualDJ.app".into(),
+                "/Applications/VirtualDJ 2023.app".into(),
+                "/Applications/VirtualDJ 2024.app".into(),
+                "/Applications/VirtualDJ 2025.app".into(),
+            ]),
+            ("djay".into(),      "djay Pro (Algoriddim)".into(), vec![
+                "/Applications/djay Pro.app".into(),
+                "/Applications/djay Pro AI.app".into(),
+                "/Applications/djay.app".into(),
+            ]),
+        ]
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let pf  = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into());
+        let pf86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| "C:\\Program Files (x86)".into());
+        vec![
+            ("serato".into(),    "Serato DJ Pro".into(),        vec![
+                format!("{}\\Serato\\DJ Pro\\DJ Pro.exe",       pf),
+                format!("{}\\Serato\\DJ Pro\\DJ Pro.exe",       pf86),
+                format!("{}\\Serato\\DJ Lite\\DJ Lite.exe",     pf),
+                format!("{}\\Serato\\DJ Lite\\DJ Lite.exe",     pf86),
+            ]),
+            ("rekordbox".into(), "rekordbox".into(),             vec![
+                format!("{}\\Pioneer\\rekordbox\\rekordbox.exe",   pf),
+                format!("{}\\Pioneer\\rekordbox\\rekordbox.exe",   pf86),
+                format!("{}\\rekordbox\\rekordbox.exe",            pf),
+                format!("{}\\rekordbox\\rekordbox.exe",            pf86),
+            ]),
+            ("traktor".into(),   "Traktor Pro 3".into(),         vec![
+                format!("{}\\Native Instruments\\Traktor Pro 3\\Traktor.exe", pf),
+                format!("{}\\Native Instruments\\Traktor Pro 3\\Traktor.exe", pf86),
+            ]),
+            ("vdj".into(),       "Virtual DJ".into(),            vec![
+                format!("{}\\VirtualDJ\\VirtualDJ.exe", pf),
+                format!("{}\\VirtualDJ\\VirtualDJ.exe", pf86),
+            ]),
+            ("djay".into(),      "djay Pro (Algoriddim)".into(), vec![
+                // djay Pro via Microsoft Store — sem caminho fixo, marcar como não instalado
+            ]),
+        ]
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { vec![] }
 }
 
 fn home_dir() -> Result<std::path::PathBuf, String> {
@@ -1370,9 +1421,14 @@ fn write_serato_crate(tracks: &[Track], path: &Path) -> Result<(), String> {
 
     // otrk chunk per track
     for track in tracks {
-        // Serato path: strip leading "/" and keep as-is for modern Serato DJ Pro
-        let serato_path = track.path.trim_start_matches('/');
-        let serato_path = format!("Macintosh HD/{}", serato_path);
+        // macOS: "Macintosh HD/Users/..." (strip leading slash, prepend volume)
+        // Windows: "C:/Users/..." (forward slashes, as-is)
+        #[cfg(target_os = "macos")]
+        let serato_path = format!("Macintosh HD/{}", track.path.trim_start_matches('/'));
+        #[cfg(target_os = "windows")]
+        let serato_path = track.path.replace('\\', "/");
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let serato_path = track.path.clone();
         let path_bytes = encode_utf16be(&serato_path);
 
         let mut ptrk: Vec<u8> = Vec::new();
@@ -1517,48 +1573,25 @@ fn export_playlist_to_dj(
 
 #[tauri::command]
 fn open_dj_app(software_id: String) -> Result<(), String> {
-    let app_paths: &[(&str, &[&str])] = &[
-        ("serato", &[
-            "/Applications/Serato DJ Pro.app",
-            "/Applications/Serato DJ Lite.app",
-        ]),
-        ("rekordbox", &[
-            "/Applications/rekordbox 7/rekordbox.app",
-            "/Applications/rekordbox 6/rekordbox.app",
-            "/Applications/rekordbox.app",
-            "/Applications/rekordbox 6.app",
-        ]),
-        ("traktor", &[
-            "/Applications/Traktor Pro 3.app",
-            "/Applications/Traktor Pro 2.app",
-            "/Applications/Traktor Pro.app",
-            "/Applications/Native Instruments/Traktor Pro 3.app",
-        ]),
-        ("vdj", &[
-            "/Applications/VirtualDJ.app",
-            "/Applications/VirtualDJ 2025.app",
-            "/Applications/VirtualDJ 2024.app",
-            "/Applications/VirtualDJ 2023.app",
-        ]),
-        ("djay", &[
-            "/Applications/djay Pro.app",
-            "/Applications/djay Pro AI.app",
-            "/Applications/djay.app",
-        ]),
-    ];
-    let paths = app_paths.iter()
-        .find(|(id, _)| *id == software_id.as_str())
-        .map(|(_, p)| p)
+    let candidates = dj_software_candidates();
+    let paths = candidates.iter()
+        .find(|(id, _, _)| id == &software_id)
+        .map(|(_, _, p)| p)
         .ok_or_else(|| format!("Software desconhecido: {}", software_id))?;
 
     let app_path = paths.iter()
-        .find(|p| Path::new(p).exists())
+        .find(|p| Path::new(p.as_str()).exists())
         .ok_or_else(|| "Software não encontrado ou não instalado".to_string())?;
 
-    std::process::Command::new("open")
-        .arg(app_path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(app_path).spawn().map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new(app_path).spawn().map_err(|e| e.to_string())?;
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    return Err("Plataforma não suportada".to_string());
+
     Ok(())
 }
 

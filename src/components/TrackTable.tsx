@@ -10,7 +10,7 @@ import {
   type ColumnOrderState,
 } from "@tanstack/react-table";
 
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Track } from "../store";
 import { setAutoPlayOnLoad } from "../store";
@@ -61,21 +61,21 @@ function formatBPM(bpm: string): string {
 
 // ---------------------------------------------------------------------------
 
-function CoverCell({ path, hasCover }: { path: string; hasCover: boolean }) {
+const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { path: string; hasCover: boolean; coverVersion?: number }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!hasCover) { setSrc(null); return; }
     queuedInvoke<string | null>(() => invoke("read_cover_base64", { path }))
       .then((b64) => setSrc(b64 ? `data:image/jpeg;base64,${b64}` : null))
       .catch(() => setSrc(null));
-  }, [path, hasCover]);
+  }, [path, hasCover, coverVersion]);
   if (!src) return (
     <div className="w-7 h-7 rounded-sm bg-white/[0.04] border border-white/[0.05] flex items-center justify-center mx-auto">
       <svg width="9" height="9" viewBox="0 0 11 11" fill="currentColor" className="text-[#373331]"><path d="M1 2.5A1.5 1.5 0 012.5 1h6A1.5 1.5 0 0110 2.5v6A1.5 1.5 0 018.5 10h-6A1.5 1.5 0 011 8.5v-6zM4 4a1 1 0 100-2 1 1 0 000 2zm-2 4l2-2 1 1 2-3 2 4H2z"/></svg>
     </div>
   );
   return <img src={src} alt="" className="w-7 h-7 rounded-sm object-cover mx-auto block" />;
-}
+});
 
 const LEFT_COLS = new Set(["title_artist", "album", "artist", "comment"]);
 
@@ -86,6 +86,8 @@ export default function TrackTable({
   onVideoPlay,
   enrichingIds,
   enrichDoneIds,
+  onOpenFolder,
+  onEnrich,
 }: {
   tracks: Track[];
   compact?: boolean;
@@ -93,6 +95,8 @@ export default function TrackTable({
   onVideoPlay?: (track: Track) => void;
   enrichingIds?: Set<string>;
   enrichDoneIds?: Set<string>;
+  onOpenFolder?: () => void;
+  onEnrich?: () => void;
 }) {
   const {
     selectedIds,
@@ -271,10 +275,44 @@ export default function TrackTable({
       }),
 
       // CAPA
-      col.display({
+      col.accessor("has_cover", {
         id: "capa",
-        header: () => <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Capa</span>,
-        cell: ({ row }) => <CoverCell path={row.original.path} hasCover={row.original.has_cover} />,
+        enableSorting: true,
+        sortingFn: (rowA, rowB) => {
+          const a = rowA.original.has_cover ? 1 : 0;
+          const b = rowB.original.has_cover ? 1 : 0;
+          return a - b;
+        },
+        header: ({ column }) => {
+          const sorted = column.getIsSorted();
+          return (
+            <button
+              onClick={() => {
+                if (!sorted)               column.toggleSorting(false); // asc = sem capa primeiro
+                else if (sorted === "asc") column.toggleSorting(true);  // desc = com capa primeiro
+                else                       column.clearSorting();
+              }}
+              className="w-full flex items-center justify-center gap-1.5"
+              title={
+                sorted === "asc"  ? "Sem capa primeiro (clique para inverter)"
+                : sorted === "desc" ? "Com capa primeiro (clique para remover ordenação)"
+                : "Ordenar por capa"
+              }
+            >
+              <span className="text-[9px] font-bold uppercase tracking-widest transition-colors duration-200"
+                style={{ color: sorted ? "#C2BEBC" : "#8F8883" }}>
+                Capa
+              </span>
+              {sorted && (
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: sorted === "desc" ? "#5BA055" : "#D95340" }}
+                />
+              )}
+            </button>
+          );
+        },
+        cell: ({ row }) => <CoverCell path={row.original.path} hasCover={row.original.has_cover} coverVersion={row.original.cover_version} />,
         size: 60, minSize: 52,
       }),
 
@@ -290,12 +328,23 @@ export default function TrackTable({
           return (
             <div className="min-w-0">
               <div className="flex items-start justify-between gap-2 min-w-0">
-                <span className={`min-w-0 leading-snug [overflow-wrap:anywhere] ${
-                  title
-                    ? "text-[13px] font-medium text-[#F5F5F4]"
-                    : "text-xs italic text-[#4C4743]"
-                }`}>
-                  {title ?? filename}
+                <span className="min-w-0 flex items-baseline gap-1.5 flex-wrap">
+                  <span className={`leading-snug [overflow-wrap:anywhere] ${
+                    title
+                      ? "text-[13px] font-medium text-[#F5F5F4]"
+                      : "text-xs italic text-[#4C4743]"
+                  }`}>
+                    {title ?? filename}
+                  </span>
+                  {!title && (
+                    <span
+                      title="Sem título nos metadados — exibindo o nome do arquivo. Edite o campo Título para corrigir."
+                      className="shrink-0 px-1 py-px rounded text-[8px] font-semibold uppercase tracking-wider leading-tight cursor-default select-none"
+                      style={{ background: "rgba(255,255,255,0.04)", color: "#3D3733", border: "1px solid rgba(255,255,255,0.05)" }}
+                    >
+                      arquivo
+                    </span>
+                  )}
                 </span>
                 {hasIssues && (
                   <span className="shrink-0 mt-px px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-[#D95340]/20 text-[#D95340] leading-tight">
@@ -370,7 +419,35 @@ export default function TrackTable({
       // STATUS ●
       col.accessor("issues", {
         id: "status",
-        header: () => null,
+        enableSorting: true,
+        sortingFn: (rowA, rowB) => rowA.original.issues.length - rowB.original.issues.length,
+        header: ({ column }) => {
+          const sorted = column.getIsSorted();
+          return (
+            <button
+              onClick={() => {
+                if (!sorted)          column.toggleSorting(true);  // desc = problemáticas primeiro
+                else if (sorted === "desc") column.toggleSorting(false); // asc = OK primeiro
+                else                  column.clearSorting();
+              }}
+              className="w-full flex items-center justify-center"
+              title={
+                sorted === "desc" ? "Problemáticas primeiro (clique para inverter)"
+                : sorted === "asc"  ? "OK primeiro (clique para remover ordenação)"
+                : "Ordenar por status"
+              }
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full inline-block transition-all duration-200"
+                style={{
+                  backgroundColor: sorted === "asc" ? "#5BA055" : "#D95340",
+                  opacity: sorted ? 1 : 0.45,
+                  boxShadow: sorted ? `0 0 5px ${sorted === "asc" ? "#5BA05566" : "#D9534066"}` : "none",
+                }}
+              />
+            </button>
+          );
+        },
         cell: (i) => {
           const n = i.getValue().length;
           const color = n === 0 ? "#5BA055" : n > 2 ? "#D95340" : "#E07364";
@@ -642,14 +719,56 @@ export default function TrackTable({
     };
   }, [contextMenu]);
 
+  // Reposiciona o menu de contexto se sair da tela (ex: última faixa da lista)
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextRef.current) return;
+    const menu = contextRef.current;
+    const rect = menu.getBoundingClientRect();
+    const GAP = 8;
+    let top  = contextMenu.y;
+    let left = contextMenu.x;
+    if (top  + rect.height > window.innerHeight - GAP) top  = Math.max(GAP, top  - rect.height);
+    if (left + rect.width  > window.innerWidth  - GAP) left = Math.max(GAP, window.innerWidth - rect.width - GAP);
+    menu.style.top  = `${top}px`;
+    menu.style.left = `${left}px`;
+  }, [contextMenu]);
+
 
   if (tracks.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center">
-        <img src="/tagwave-icon.png" alt="TagWave" className="w-14 h-14 opacity-10" />
-        <p className="text-xs text-[#605A55] uppercase tracking-widest">
-          {hasFolder ? "Nenhuma faixa encontrada" : "Abra uma pasta para escanear"}
-        </p>
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
+        <img src="/tagwave-icon.png" alt="TagWave" className="w-14 h-14 opacity-10 mb-1" />
+        {hasFolder ? (
+          <>
+            <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa encontrada</p>
+            <p className="text-[11px] text-[#3a3533] leading-relaxed max-w-[260px]">
+              Tente ajustar o filtro ou selecione outra pasta na barra lateral.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa carregada</p>
+            <p className="text-[12px] text-[#4C4743] leading-relaxed max-w-[280px]">
+              Selecione uma pasta na barra lateral esquerda ou adicione uma nova pasta com suas músicas.
+            </p>
+            {onOpenFolder && (
+              <button
+                onClick={onOpenFolder}
+                className="mt-2 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-xs font-semibold transition-colors"
+                style={{ background: "#D95340" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#E07364"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#D95340"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 5.5C2 4.67 2.67 4 3.5 4H6L7 5H12.5C13.33 5 14 5.67 14 6.5V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V5.5Z"/>
+                  <line x1="8" y1="7.5" x2="8" y2="11"/>
+                  <line x1="6.25" y1="9.25" x2="9.75" y2="9.25"/>
+                </svg>
+                Abrir Pasta de Músicas
+              </button>
+            )}
+          </>
+        )}
       </div>
     );
   }
@@ -851,6 +970,7 @@ export default function TrackTable({
               if (onVideoPlay) { onVideoPlay(contextMenu.track); }
               else { openPath(contextMenu.track.path).catch(() => {}); }
             } else {
+              setAutoPlayOnLoad();
               setPlayerTrack(contextMenu.track.id);
             }
             setContextMenu(null);
@@ -859,6 +979,18 @@ export default function TrackTable({
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
           {VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) ? "Reproduzir vídeo" : "Tocar"}
         </button>
+        {/* Enriquecer metadados */}
+        {onEnrich && (
+          <button
+            className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+            onClick={() => { setContextMenu(null); onEnrich(); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            {selectedIds.size > 1 ? `Enriquecer ${selectedIds.size} faixas` : "Enriquecer metadados"}
+          </button>
+        )}
         {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
         {!VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) && (
           <button
