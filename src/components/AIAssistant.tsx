@@ -566,7 +566,7 @@ export default function AIAssistant() {
           open
             ? "bg-[#D95340] text-white scale-95"
             : "bg-[#1c1715] border border-white/[0.15] text-[#D95340] hover:bg-[#251a18] hover:scale-105 hover:shadow-[0_0_16px_rgba(217,83,64,0.25)]"
-        } ${bouncing && !open ? "animate-bounce" : ""}`}
+        } ${bouncing && !open ? "animate-ai-bounce" : ""}`}
       >
         {open ? (
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
