@@ -23,7 +23,7 @@ function makeFallback(path: string): number[] {
 }
 
 export default function MiniPlayer() {
-  const { tracks, selectedIds, playerTrackId, setPlayerTrack, setIsPlayingGlobal } = useAppStore();
+  const { tracks, selectedIds, playerTrackId, setPlayerTrack, setIsPlayingGlobal, setPlayerPlayback } = useAppStore();
   const [isPlaying, setIsPlaying]   = useState(false);
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
@@ -224,7 +224,10 @@ export default function MiniPlayer() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setProgress(audio.currentTime);
+    const onTime = () => {
+      setProgress(audio.currentTime);
+      setPlayerPlayback(audio.currentTime, isFinite(audio.duration) ? audio.duration : 0);
+    };
     const onDur  = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
     const onEnd  = () => {
       setProgress(0);
@@ -351,11 +354,11 @@ export default function MiniPlayer() {
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
   const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
 
-  const BAR_W    = 1.5;
+  const BAR_W    = 2;
   const BAR_GAP  = 0.8;
   const BAR_STRIDE = BAR_W + BAR_GAP;
   const VB_W    = PLAYER_BARS * BAR_STRIDE;
-  const VB_H    = 32;
+  const VB_H    = 44;
 
   // Volume icon: muted/low/high
   const volMuted = volume === 0;
@@ -465,7 +468,7 @@ export default function MiniPlayer() {
           </span>
 
           <div
-            className="relative flex-1 h-9 cursor-pointer group"
+            className="relative flex-1 h-11 cursor-pointer group"
             onClick={handleSeek}
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -486,6 +489,7 @@ export default function MiniPlayer() {
                 const barPct = i / PLAYER_BARS;
                 const played  = pct > 0 && barPct < pct / 100;
                 const hovered = hoverPct !== null && barPct < hoverPct && !played;
+                // Beatport pattern: unplayed = vivo, played = apagado
                 return (
                   <rect
                     key={i}
@@ -494,11 +498,11 @@ export default function MiniPlayer() {
                     width={BAR_W}
                     height={barH}
                     rx={0.5}
-                    fill={played ? "#D95340" : hovered ? "#605A55" : "#2A2623"}
+                    fill={played ? "#D95340" : hovered ? "#E07364" : "#D95340"}
                     opacity={
-                      played  ? 0.35 + amp * 0.65 :
-                      hovered ? 0.5  + amp * 0.5  :
-                      0.25 + amp * 0.4
+                      played  ? 0.18 + amp * 0.22 :   // tocado → apagado
+                      hovered ? 0.7  + amp * 0.3  :   // hover → realçado
+                      0.5 + amp * 0.5                  // não tocado → vivo
                     }
                   />
                 );
@@ -516,8 +520,8 @@ export default function MiniPlayer() {
             {/* Playhead */}
             {pct > 0 && (
               <div
-                className="absolute top-1 bottom-1 w-px bg-white/30 pointer-events-none"
-                style={{ left: `${pct}%` }}
+                className="absolute top-0 bottom-0 pointer-events-none"
+                style={{ left: `${pct}%`, width: "2px", background: "rgba(255,255,255,0.9)", boxShadow: "0 0 4px rgba(255,255,255,0.5)" }}
               />
             )}
 

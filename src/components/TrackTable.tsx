@@ -13,6 +13,73 @@ import {
 import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Track } from "../store";
+
+// ── Mini waveform ─────────────────────────────────────────────────────────────
+const MINI_BARS = 40;
+const miniWaveCache = new Map<string, number[]>();
+
+const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path: string; isCurrentTrack: boolean }) {
+  const [bars, setBars] = useState<number[] | null>(miniWaveCache.get(path) ?? null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerProgress = useAppStore((s) => s.playerProgress);
+  const playerDuration = useAppStore((s) => s.playerDuration);
+
+  useEffect(() => {
+    if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      obs.disconnect();
+      queuedInvoke<number[]>(() => invoke("generate_waveform", { path, bars: MINI_BARS }))
+        .then((b) => { miniWaveCache.set(path, b); setBars(b); })
+        .catch(() => {});
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [path]);
+
+  const pct = isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0;
+  const VB_W = MINI_BARS * 2.8;
+  const VB_H = 20;
+
+  return (
+    <div ref={containerRef} className="w-full flex items-center justify-center">
+      {bars ? (
+        <svg width="100%" height="22" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="overflow-visible">
+          {bars.map((amp, i) => {
+            const barH  = Math.max(1, amp * (VB_H - 2));
+            const y     = (VB_H - barH) / 2;
+            const barPct = i / MINI_BARS;
+            const played = isCurrentTrack && pct > 0 && barPct < pct;
+            return (
+              <rect
+                key={i}
+                x={i * 2.8}
+                y={y}
+                width={2}
+                height={barH}
+                rx={0.5}
+                fill="#D95340"
+                opacity={played ? 0.15 + amp * 0.2 : isCurrentTrack ? 0.5 + amp * 0.5 : 0.15 + amp * 0.25}
+              />
+            );
+          })}
+          {/* Playhead */}
+          {isCurrentTrack && pct > 0 && (
+            <rect x={pct * VB_W - 0.5} y={0} width={1.5} height={VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
+          )}
+        </svg>
+      ) : (
+        <div className="w-full h-[22px] flex items-center gap-px px-1">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="flex-1 rounded-sm bg-white/[0.05]" style={{ height: `${30 + (i % 3) * 20}%` }} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 import { setAutoPlayOnLoad } from "../store";
 import { openPath } from "@tauri-apps/plugin-opener";
 import CreatePlaylistModal from "./CreatePlaylistModal";
@@ -162,6 +229,7 @@ export default function TrackTable({
     tipo: false,
     adicionada: false,
     comment: false,
+    onda: true,
   };
 
   const mergedVisibility: VisibilityState = { ...DEFAULT_VISIBILITY, ...columnVisibility };
@@ -272,6 +340,19 @@ export default function TrackTable({
           />
         ),
         size: 32,
+      }),
+
+      // ONDA (mini waveform sincronizado com player)
+      col.display({
+        id: "onda",
+        header: () => <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743]">Onda</span>,
+        cell: ({ row }) => (
+          <WaveformCell
+            path={row.original.path}
+            isCurrentTrack={row.original.id === playerTrackId}
+          />
+        ),
+        size: 90, minSize: 70,
       }),
 
       // CAPA

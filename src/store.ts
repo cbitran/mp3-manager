@@ -109,6 +109,9 @@ interface AppState {
   setPlayerTrack: (id: string | null) => void;
   isPlayingGlobal: boolean;
   setIsPlayingGlobal: (playing: boolean) => void;
+  playerProgress: number;   // segundos atuais
+  playerDuration: number;   // duração total
+  setPlayerPlayback: (progress: number, duration: number) => void;
 
   isTrialActivated: () => boolean;
   isTrialExpired: () => boolean;
@@ -128,6 +131,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPlayerTrack: (id) => set({ playerTrackId: id }),
   isPlayingGlobal: false,
   setIsPlayingGlobal: (isPlayingGlobal) => set({ isPlayingGlobal }),
+  playerProgress: 0,
+  playerDuration: 0,
+  setPlayerPlayback: (playerProgress, playerDuration) => set({ playerProgress, playerDuration }),
   filterTab: "all",
   genreFilter: null,
   searchQuery: "",
