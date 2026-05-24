@@ -38,8 +38,6 @@ export default function MiniPlayer() {
   const [coverUrl, setCoverUrl]     = useState<string | null>(null);
   const [waveBars, setWaveBars]     = useState<number[] | null>(null);
   const [hoverPct, setHoverPct]     = useState<number | null>(null);
-  const [showVolume, setShowVolume] = useState(false);
-
   const audioRef     = useRef<HTMLAudioElement | null>(null);
   const loadedPath   = useRef<string | null>(null);
   const audioCtxRef  = useRef<AudioContext | null>(null);
@@ -48,7 +46,6 @@ export default function MiniPlayer() {
   const animFrameRef = useRef<number>(0);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const waveBarsRef  = useRef<number[]>([]);   // always current waveform data for animation loop
-  const volumePopupRef = useRef<HTMLDivElement>(null);
   const isPlayingRef = useRef(false);          // sync ref for effects that can't use stale state
 
   const selectedArr = [...selectedIds];
@@ -261,39 +258,18 @@ export default function MiniPlayer() {
     };
   }, []);
 
-  // ── Volume popup: close on outside click ─────────────────────────
-  useEffect(() => {
-    if (!showVolume) return;
-    const handler = (e: MouseEvent) => {
-      if (volumePopupRef.current && !volumePopupRef.current.contains(e.target as Node)) {
-        setShowVolume(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showVolume]);
-
   // ── Keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
-      if (showVolume && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        e.preventDefault();
-        const delta = e.key === "ArrowUp" ? 0.05 : -0.05;
-        const v = Math.max(0, Math.min(1, volume + delta));
-        setVolume(v);
-        if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
-        if (audioRef.current) audioRef.current.volume = v;
-        return;
-      }
       if (e.key === " ")               { e.preventDefault(); togglePlay(); }
       else if (e.key === "ArrowRight") { e.preventDefault(); skipTrack(1); }
       else if (e.key === "ArrowLeft")  { e.preventDefault(); skipTrack(-1); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeTrack, isPlaying, showVolume, volume]);
+  }, [activeTrack, isPlaying, volume]);
 
   async function togglePlay() {
     if (!audioRef.current || !activeTrack) return;
@@ -533,47 +509,39 @@ export default function MiniPlayer() {
             {fmt(duration)}
           </span>
 
-          {/* Volume inline — ícone + slider horizontal */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-1" ref={volumePopupRef}>
+          {/* Volume inline — ícone + slider nativo (fluido, sem re-render no drag) */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-1">
             <button
-              onClick={() => setShowVolume((v) => !v)}
-              className={`transition-colors ${showVolume ? "text-[#C97B40]" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              onClick={() => {
+                const v = volume > 0 ? 0 : 0.8;
+                setVolume(v);
+                if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+                if (audioRef.current) audioRef.current.volume = v;
+              }}
+              className="text-[#605A55] hover:text-[#8F8883] transition-colors"
               title={`Volume: ${Math.round(volume * 100)}%`}
             >
               {volIcon}
             </button>
 
-            {/* Slider horizontal compacto */}
-            <div
-              className="relative w-14 cursor-pointer"
-              style={{ height: 12 }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                const trackEl = e.currentTarget;
-                const applyV = (clientX: number) => {
-                  const rect = trackEl.getBoundingClientRect();
-                  const v = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                  setVolume(v);
-                  if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
-                  if (audioRef.current) audioRef.current.volume = v;
-                };
-                applyV(e.clientX);
-                const onMove = (mv: MouseEvent) => applyV(mv.clientX);
-                const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-                document.addEventListener("mousemove", onMove);
-                document.addEventListener("mouseup", onUp);
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.005}
+              value={volume}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setVolume(v);
+                if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+                if (audioRef.current) audioRef.current.volume = v;
               }}
-            >
-              <div className="absolute inset-y-[5px] inset-x-0 rounded-full bg-[#23201E]" />
-              <div
-                className="absolute inset-y-[5px] left-0 rounded-full bg-[#C97B40]/60 transition-none"
-                style={{ width: `${volume * 100}%` }}
-              />
-              <div
-                className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#C97B40] shadow-md transition-none"
-                style={{ left: `calc(${volume * 100}% - 5px)` }}
-              />
-            </div>
+              className="volume-slider w-16 cursor-pointer"
+              title={`Volume: ${Math.round(volume * 100)}%`}
+              style={{
+                background: `linear-gradient(to right, #C97B40 0%, #C97B40 ${volume * 100}%, #2a2623 ${volume * 100}%, #2a2623 100%)`,
+              }}
+            />
           </div>
         </div>
 

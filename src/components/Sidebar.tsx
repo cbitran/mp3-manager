@@ -1,7 +1,10 @@
 import { useRef, useState, useEffect } from "react";
 import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
+
+const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
+               navigator.userAgent.toLowerCase().includes("windows");
+const FILE_MANAGER = IS_WIN ? "Explorer" : "Finder";
 
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
@@ -288,8 +291,8 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
           {devicesExpanded && volumes.map((v) => (
             <button
               key={v.path}
-              onClick={() => openPath(v.path).catch(() => {})}
-              title="Abrir no Finder"
+              onClick={() => invoke("open_folder", { path: v.path }).catch(() => {})}
+              title={`Abrir no ${FILE_MANAGER}`}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors hover:bg-white/[0.04] group"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-[#605A55] shrink-0">

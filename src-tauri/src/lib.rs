@@ -298,6 +298,25 @@ fn read_file_base64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path.replace('/', "\\"))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -1713,6 +1732,7 @@ pub fn run() {
             analyze_bpm,
             count_audio_files,
             reveal_in_finder,
+            open_folder,
             analyze_filename_issues,
             apply_filename_fix,
             analyze_paren_content,
