@@ -61,7 +61,7 @@ const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path
                 height={barH}
                 rx={0.5}
                 fill="#D95340"
-                opacity={played ? 0.15 + amp * 0.2 : isCurrentTrack ? 0.5 + amp * 0.5 : 0.15 + amp * 0.25}
+                opacity={played ? 0.55 + amp * 0.45 : isCurrentTrack ? 0.05 + amp * 0.10 : 0.10 + amp * 0.20}
               />
             );
           })}
@@ -126,6 +126,56 @@ function formatBPM(bpm: string): string {
   return isNaN(n) ? bpm : n.toFixed(2);
 }
 
+// ── Rating cell ──────────────────────────────────────────────────────────────
+
+const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
+  const [hover, setHover] = useState<number>(0);
+  const updateTrack = useAppStore((s) => s.updateTrack);
+  const current = track.rating ?? 0;
+
+  const setRating = async (value: number) => {
+    const next = current === value ? 0 : value; // click same star = reset
+    try {
+      await invoke("save_tags", {
+        path: track.path,
+        title: track.title ?? null, artist: track.artist ?? null,
+        album: track.album ?? null, genre: track.genre ?? null,
+        year: track.year ?? null, trackNumber: track.track_number ?? null,
+        bpm: track.bpm ?? null, key: track.key ?? null,
+        rating: next,
+      });
+      updateTrack({ ...track, rating: next || undefined });
+    } catch { /* silencioso */ }
+  };
+
+  const displayed = hover > 0 ? hover : current;
+
+  return (
+    <div
+      className="flex gap-px justify-center cursor-pointer"
+      onMouseLeave={() => setHover(0)}
+      title={current > 0 ? `Nota: ${current}/5 — clique para alterar` : "Clique para avaliar (1–5 ★)"}
+    >
+      {Array.from({ length: 5 }, (_, idx) => {
+        const filled = idx < displayed;
+        return (
+          <svg
+            key={idx}
+            width="9" height="9" viewBox="0 0 12 12"
+            fill={filled ? "currentColor" : "none"}
+            stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
+            className={`transition-colors ${filled ? "text-[#D95340]" : hover > 0 ? "text-[#D95340]/30" : "text-[#3D3733]"}`}
+            onMouseEnter={() => setHover(idx + 1)}
+            onClick={(e) => { e.stopPropagation(); setRating(idx + 1); }}
+          >
+            <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
+          </svg>
+        );
+      })}
+    </div>
+  );
+});
+
 // ---------------------------------------------------------------------------
 
 const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { path: string; hasCover: boolean; coverVersion?: number }) {
@@ -178,6 +228,8 @@ export default function TrackTable({
     columnVisibility,
     setColumnVisibility,
     removeTracks,
+    playlists,
+    addTracksToPlaylist,
   } = useAppStore();
 
   const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
@@ -224,6 +276,7 @@ export default function TrackTable({
   const dragColIdRef = useRef<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [draggingColId, setDraggingColId] = useState<string | null>(null);
+  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; label: string } | null>(null);
 
   const DEFAULT_VISIBILITY: VisibilityState = {
     tipo: false,
@@ -605,20 +658,8 @@ export default function TrackTable({
       // RATING
       col.accessor("rating", {
         header: "Nota",
-        cell: (i) => {
-          const r = i.getValue();
-          if (!r || r === 0) return <span className="text-[#605A55] text-[10px]">—</span>;
-          return (
-            <span className="flex gap-px justify-center">
-              {Array.from({ length: 5 }).map((_, idx) => (
-                <svg key={idx} width="8" height="8" viewBox="0 0 12 12" fill={idx < r ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" className={idx < r ? "text-[#D95340]" : "text-[#4C4743]"}>
-                  <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
-                </svg>
-              ))}
-            </span>
-          );
-        },
-        size: 68, minSize: 56,
+        cell: (i) => <RatingCell track={i.row.original} />,
+        size: 80, minSize: 70,
       }),
 
       // DURAÇÃO
@@ -875,15 +916,16 @@ export default function TrackTable({
                 style={{
                   width: header.getSize(),
                   position: 'relative',
-                  opacity: draggingColId === header.id ? 0.35 : 1,
-                  transition: 'opacity 0.15s',
+                  opacity: draggingColId === header.id ? 0.2 : 1,
+                  transition: 'opacity 0.12s, transform 0.12s',
+                  transform: dragOverColId === header.id ? 'translateX(4px)' : 'translateX(0)',
                   boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)',
                 }}
                 className={`px-3 py-2.5 text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] select-none whitespace-nowrap ${
                   LEFT_COLS.has(header.id) ? 'text-left' : 'text-center'
                 } ${
                   dragOverColId === header.id
-                    ? 'border-l-2 border-l-[#D95340] bg-[#D95340]/[0.06]'
+                    ? 'border-l-2 border-l-[#D95340] bg-[#D95340]/[0.10]'
                     : 'border-l border-l-transparent'
                 }`}
                 onClick={header.column.getToggleSortingHandler()}
@@ -895,6 +937,10 @@ export default function TrackTable({
                   const startY = e.clientY;
                   let dragging = false;
 
+                  const colLabel = typeof header.column.columnDef.header === "string"
+                    ? header.column.columnDef.header
+                    : header.id;
+
                   const onMove = (mv: MouseEvent) => {
                     if (!dragging) {
                       if (Math.abs(mv.clientX - startX) > 6 || Math.abs(mv.clientY - startY) > 6) {
@@ -905,6 +951,7 @@ export default function TrackTable({
                       }
                     }
                     if (!dragging) return;
+                    setDragGhost({ x: mv.clientX, y: mv.clientY, label: colLabel });
                     const el = document.elementFromPoint(mv.clientX, mv.clientY);
                     const th = el?.closest('th[data-col-id]');
                     const over = th?.getAttribute('data-col-id') ?? null;
@@ -916,6 +963,7 @@ export default function TrackTable({
                     document.removeEventListener('mouseup', onUp);
                     document.body.style.cursor = '';
                     setDraggingColId(null);
+                    setDragGhost(null);
                     if (!dragging) { dragColIdRef.current = null; return; }
                     document.addEventListener('click', (ce) => ce.stopPropagation(), { once: true, capture: true });
                     const el = document.elementFromPoint(up.clientX, up.clientY);
@@ -1088,13 +1136,14 @@ export default function TrackTable({
                 });
                 if (bpm !== null) {
                   const bpmStr = bpm.toFixed(1).replace(".0", "");
+                  const fresh = useAppStore.getState().tracks.find((t2) => t2.path === track.path) ?? track;
                   await invoke("save_tags", {
-                    path: track.path, title: track.title ?? null, artist: track.artist ?? null,
-                    album: track.album ?? null, genre: track.genre ?? null, year: track.year ?? null,
-                    trackNumber: track.track_number ?? null, bpm: bpmStr,
-                    key: track.key ?? null, rating: track.rating ?? null,
+                    path: fresh.path, title: fresh.title ?? null, artist: fresh.artist ?? null,
+                    album: fresh.album ?? null, genre: fresh.genre ?? null, year: fresh.year ?? null,
+                    trackNumber: fresh.track_number ?? null, bpm: bpmStr,
+                    key: fresh.key ?? null, rating: fresh.rating ?? null,
                   });
-                  useAppStore.getState().updateTrack({ ...track, bpm: bpmStr });
+                  useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr });
                 }
               } catch { /* silencioso */ }
               finally { setAnalyzingBpmId(null); }
@@ -1143,7 +1192,6 @@ export default function TrackTable({
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
           onClick={() => {
-            // Export selected tracks if multiple, otherwise just this track
             const exportTracks = selectedIds.size > 1
               ? tracks.filter((t) => selectedIds.has(t.id))
               : [contextMenu.track];
@@ -1158,6 +1206,42 @@ export default function TrackTable({
           </svg>
           {selectedIds.size > 1 ? `Criar Playlist (${selectedIds.size} faixas)` : "Criar Playlist"}
         </button>
+        {/* Adicionar a playlist existente */}
+        {playlists.length > 0 && (
+          <div className="relative group/submenu">
+            <button className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60">
+                  <rect x="1" y="1" width="9" height="2" rx="0.5"/>
+                  <rect x="1" y="4.5" width="5" height="2" rx="0.5"/>
+                  <path d="M8 6v3M6.5 7.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                Adicionar à playlist
+              </span>
+              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="opacity-40"><path d="M1 0l4 3-4 3V0z"/></svg>
+            </button>
+            <div className="absolute left-full top-0 ml-1 hidden group-hover/submenu:block z-50 min-w-[160px]">
+              <div className="py-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-xl">
+                {playlists.map((pl) => (
+                  <button
+                    key={pl.id}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.06] truncate"
+                    onClick={() => {
+                      const paths = selectedIds.size > 1
+                        ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
+                        : [contextMenu.track.path];
+                      addTracksToPlaylist(pl.id, paths);
+                      setContextMenu(null);
+                    }}
+                  >
+                    {pl.name}
+                    <span className="ml-1 text-[#4C4743] text-[9px]">({pl.trackPaths.length})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="h-px bg-white/[0.06] my-1" />
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#D95340]/80 hover:bg-white/[0.06] flex items-center gap-2"
@@ -1226,6 +1310,30 @@ export default function TrackTable({
               Cancelar
             </button>
           </div>
+        </div>
+      </div>
+    )}
+    {/* Column drag ghost */}
+    {dragGhost && (
+      <div
+        className="fixed z-[999] pointer-events-none select-none"
+        style={{
+          left: dragGhost.x + 12,
+          top: dragGhost.y - 16,
+          transform: "rotate(-2deg)",
+        }}
+      >
+        <div
+          className="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest"
+          style={{
+            background: "#D95340",
+            color: "white",
+            boxShadow: "0 8px 24px rgba(217,83,64,0.5), 0 2px 8px rgba(0,0,0,0.5)",
+            opacity: 0.92,
+            letterSpacing: "0.08em",
+          }}
+        >
+          {dragGhost.label}
         </div>
       </div>
     )}

@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useAppStore } from "../store";
 import { type VisibilityState } from "@tanstack/react-table";
+import { DEFAULT_SHORTCUTS, formatShortcut, captureKey } from "../shortcuts";
 
 interface DjSoftwareInfo { id: string; name: string; installed: boolean; }
 
-type Tab = "appearance" | "services" | "columns" | "license";
+type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts";
 
 const COLUMN_ORDER: { id: string; label: string }[] = [
   { id: "album",         label: "Álbum"    },
@@ -38,6 +39,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     djPrimary, djAutoImport, djShowAll, setDjPrefs,
     activateLicense, isTrialActivated,
     daysElapsed, daysRemaining, tracksAnalyzed, tagsEnriched, estimatedTimeSaved,
+    shortcutOverrides, setShortcutOverride, resetSingleShortcut, resetShortcutOverrides,
   } = useAppStore();
 
   const [tab, setTab] = useState<Tab>("appearance");
@@ -70,6 +72,9 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   }, [detectedDj]);
 
   const [licenseInput, setLicenseInput] = useState("");
+  const [showLicenseForm, setShowLicenseForm] = useState(false);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const recordingRef = useRef<string | null>(null);
 
   const mergedVisibility: VisibilityState = { ...columnVisibility };
 
@@ -83,10 +88,29 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     setTimeout(() => setSaved(null), 2000);
   }
 
+  // Captura de tecla ao gravar um shortcut
+  useEffect(() => {
+    if (!recordingId) return;
+    recordingRef.current = recordingId;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") { setRecordingId(null); return; }
+      const key = captureKey(e);
+      if (key && recordingRef.current) {
+        setShortcutOverride(recordingRef.current, key);
+        setRecordingId(null);
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [recordingId, setShortcutOverride]);
+
   const TABS: { id: Tab; label: string }[] = [
     { id: "appearance", label: "Aparência" },
     { id: "services",   label: "Serviços"  },
     { id: "columns",    label: "Colunas"   },
+    { id: "shortcuts",  label: "Atalhos"   },
     { id: "license",    label: "Licença"   },
   ];
 
@@ -283,6 +307,86 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           )}
 
           {/* ── LICENÇA ── */}
+          {/* ── ATALHOS ── */}
+          {tab === "shortcuts" && (
+            <div className="space-y-1">
+              {/* Cabeçalho com botão de reset */}
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#8F8883]">
+                  Clique em um atalho para personalizar
+                </p>
+                {Object.keys(shortcutOverrides).length > 0 && (
+                  <button
+                    onClick={resetShortcutOverrides}
+                    className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
+                  >
+                    Restaurar padrões
+                  </button>
+                )}
+              </div>
+
+              {/* Agrupa por categoria */}
+              {Array.from(new Set(DEFAULT_SHORTCUTS.map((s) => s.category))).map((cat) => (
+                <div key={cat} className="mb-4">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743] mb-1.5 px-1">
+                    {cat}
+                  </p>
+                  <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+                    {DEFAULT_SHORTCUTS.filter((s) => s.category === cat).map((shortcut, idx, arr) => {
+                      const currentKey = shortcutOverrides[shortcut.id] ?? shortcut.defaultKey;
+                      const isCustom = !!shortcutOverrides[shortcut.id];
+                      const isRecording = recordingId === shortcut.id;
+                      return (
+                        <div
+                          key={shortcut.id}
+                          className={`flex items-center gap-3 px-3 py-2.5 ${
+                            idx < arr.length - 1 ? "border-b border-white/[0.04]" : ""
+                          } ${isRecording ? "bg-[#D95340]/[0.07]" : "hover:bg-white/[0.02]"} transition-colors`}
+                        >
+                          {/* Label + descrição */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] text-[#C2BEBC]">{shortcut.label}</p>
+                            <p className="text-[10px] text-[#4C4743] truncate">{shortcut.description}</p>
+                          </div>
+
+                          {/* Botão de reset individual (só quando customizado) */}
+                          {isCustom && !isRecording && (
+                            <button
+                              onClick={() => resetSingleShortcut(shortcut.id)}
+                              title="Restaurar padrão"
+                              className="text-[10px] text-[#4C4743] hover:text-[#605A55] transition-colors shrink-0"
+                            >
+                              ↺
+                            </button>
+                          )}
+
+                          {/* Badge da tecla — clicável para gravar */}
+                          <button
+                            onClick={() => setRecordingId(isRecording ? null : shortcut.id)}
+                            title={isRecording ? "Pressione uma tecla (Esc para cancelar)" : "Clique para alterar"}
+                            className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold border transition-all ${
+                              isRecording
+                                ? "bg-[#D95340]/20 border-[#D95340]/50 text-[#E07364] animate-pulse"
+                                : isCustom
+                                ? "bg-[#C97B40]/10 border-[#C97B40]/30 text-[#C97B40] hover:border-[#C97B40]/60"
+                                : "bg-white/[0.04] border-white/[0.10] text-[#8F8883] hover:border-white/[0.20] hover:text-[#C2BEBC]"
+                            }`}
+                          >
+                            {isRecording ? "…" : formatShortcut(currentKey)}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <p className="text-[10px] text-[#4C4743] text-center pt-1">
+                Atalhos personalizados aparecem em <span className="text-[#C97B40]">laranja</span>
+              </p>
+            </div>
+          )}
+
           {tab === "license" && (
             <div className="space-y-5">
               <div className="rounded-lg px-4 py-4 flex flex-col gap-3 bg-white/[0.03] border border-white/[0.06]">
@@ -307,11 +411,13 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   <span className="text-[#5BA055] text-sm">✓</span>
                   <span className="text-[13px] font-semibold text-[#5BA055]">Licença ativa</span>
                 </div>
-              ) : (
+              ) : showLicenseForm ? (
+                /* Formulário de ativação */
                 <div className="flex flex-col gap-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#8F8883]">Ativar Licença</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#8F8883]">Inserir chave de licença</p>
                   <div className="flex gap-2">
                     <input
+                      autoFocus
                       type="text"
                       value={licenseInput}
                       onChange={(e) => setLicenseInput(e.target.value)}
@@ -322,6 +428,10 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                           activateLicense(licenseInput.trim());
                           setLicenseInput("");
                         }
+                        if (e.key === "Escape") {
+                          setShowLicenseForm(false);
+                          setLicenseInput("");
+                        }
                       }}
                     />
                     <button
@@ -330,6 +440,28 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                       className="px-4 py-2 rounded-lg text-[12px] font-bold uppercase tracking-wide text-white disabled:opacity-40 bg-[#D95340] hover:bg-[#E07364] transition-colors"
                     >Ativar</button>
                   </div>
+                  <button
+                    onClick={() => { setShowLicenseForm(false); setLicenseInput(""); }}
+                    className="text-[11px] text-[#4C4743] hover:text-[#605A55] transition-colors text-left"
+                  >
+                    ← Voltar
+                  </button>
+                </div>
+              ) : (
+                /* Estado padrão: botão de compra + link para inserir código */
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <button
+                    onClick={() => window.open("https://tagwave.app", "_blank")}
+                    className="w-full py-3 rounded-xl text-[13px] font-bold text-white bg-[#D95340] hover:bg-[#E07364] transition-colors shadow-lg shadow-[#D95340]/20"
+                  >
+                    Obter Licença
+                  </button>
+                  <button
+                    onClick={() => setShowLicenseForm(true)}
+                    className="text-[11px] text-[#C97B40] hover:text-[#D98B50] transition-colors"
+                  >
+                    Já tenho uma licença →
+                  </button>
                 </div>
               )}
             </div>

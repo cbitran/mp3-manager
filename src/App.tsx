@@ -28,6 +28,11 @@ import TrialInfoModal from "./components/TrialInfoModal";
 import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
 import VideoPlayerModal from "./components/VideoPlayerModal";
 import EnrichResultModal from "./components/EnrichResultModal";
+import AIAssistant from "./components/AIAssistant";
+import NewTracksModal from "./components/NewTracksModal";
+import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
+import CreatePlaylistModal from "./components/CreatePlaylistModal";
+import type { PendingNewTrack } from "./store";
 
 function loadingLabel(mode: "startup" | "closing"): string {
   const lang = navigator.language.toLowerCase();
@@ -57,6 +62,9 @@ export default function App() {
     daysRemaining,
     theme,
   } = useAppStore();
+
+  const promotePendingTracks = useAppStore((s) => s.promotePendingTracks);
+  const addWatchedFolder = useAppStore((s) => s.addWatchedFolder);
 
   // Aplica data-theme no <html> usando a API nativa do Tauri para detectar o tema do macOS/Windows
   useEffect(() => {
@@ -96,6 +104,9 @@ export default function App() {
 
   const allTracks = useAppStore((s) => s.tracks);
   const playerTrackId = useAppStore((s) => s.playerTrackId);
+  const activePlaylistId = useAppStore((s) => s.activePlaylistId);
+  const playlists = useAppStore((s) => s.playlists);
+  const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null;
   const baseFiltered = filteredTracks();
 
   // ── Advanced filter state ────────────────────────────────────────
@@ -188,7 +199,7 @@ export default function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showColPicker]);
 
-  const [sidebarWidth, setSidebarWidth]     = useState(208);
+  const [sidebarWidth, setSidebarWidth]     = useState(240);
   const [rightPanelTab, setRightPanelTab]   = useState<"selected" | "library">("library");
   const [mediaTab, setMediaTab]             = useState<"audio" | "video">("audio");
 
@@ -199,11 +210,18 @@ export default function App() {
   const videoCount = allTracks.filter(isVideo).length;
   const hasVideos  = videoCount > 0;
 
+  // Filtra por playlist ativa (se houver)
+  const tracksAfterPlaylist = useMemo(() => {
+    if (!activePlaylist) return tracks;
+    const pathSet = new Set(activePlaylist.trackPaths);
+    return tracks.filter((t) => pathSet.has(t.path));
+  }, [tracks, activePlaylist]);
+
   // Filtra por aba de mídia (Áudio / Vídeo)
   const tracksForMedia = useMemo(() =>
-    mediaTab === "video" ? tracks.filter(isVideo) : tracks.filter((t) => !isVideo(t)),
+    mediaTab === "video" ? tracksAfterPlaylist.filter(isVideo) : tracksAfterPlaylist.filter((t) => !isVideo(t)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tracks, mediaTab]
+    [tracksAfterPlaylist, mediaTab]
   );
 
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
@@ -247,6 +265,11 @@ export default function App() {
   // Fecha o banner automaticamente quando a conexão voltar
   useEffect(() => { if (isOnline) setShowOfflineBanner(false); }, [isOnline]);
   const isBusyRef = useRef(false);
+
+  // Estado dos modais de novas faixas
+  const [newTracksModal, setNewTracksModal] = useState<Track[] | null>(null);
+  const [playlistOffer, setPlaylistOffer]   = useState<Track[] | null>(null);
+  const [createPlaylistTracks, setCreatePlaylistTracks] = useState<Track[] | null>(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -305,6 +328,7 @@ export default function App() {
   // Sync busy state to ref for window close handler
   useEffect(() => { isBusyRef.current = isScanning || normalizing || exporting || enriching; }, [isScanning, normalizing, exporting, enriching]);
 
+
   // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
 
   async function normalizeTags() {
@@ -320,8 +344,30 @@ export default function App() {
     }
   }
 
+  // Retorna as faixas a exportar: seleção > playlist ativa > null (bloqueia)
+  function getExportTargets(): Track[] | null {
+    const fresh = useAppStore.getState();
+    if (fresh.selectedIds.size > 0) {
+      return fresh.tracks.filter((t) => fresh.selectedIds.has(t.id));
+    }
+    if (activePlaylist) {
+      const paths = new Set(activePlaylist.trackPaths);
+      return fresh.tracks.filter((t) => paths.has(t.path));
+    }
+    return null;
+  }
+
+  function requireExportTargets(): Track[] | null {
+    const targets = getExportTargets();
+    if (!targets) {
+      toast("Selecione faixas ou uma playlist na sidebar para exportar", "info");
+    }
+    return targets;
+  }
+
   async function exportRekordbox() {
-    if (allTracks.length === 0) return;
+    const targets = requireExportTargets();
+    if (!targets) return;
     const outPath = await save({
       defaultPath: "TagWave_Export.xml",
       filters: [{ name: "Rekordbox XML", extensions: ["xml"] }],
@@ -329,10 +375,7 @@ export default function App() {
     if (!outPath) return;
     setExporting(true);
     try {
-      const count = await invoke<number>("export_rekordbox", {
-        tracks: allTracks,
-        outputPath: outPath,
-      });
+      const count = await invoke<number>("export_rekordbox", { tracks: targets, outputPath: outPath });
       toast(`${count} faixa${count !== 1 ? "s" : ""} exportada${count !== 1 ? "s" : ""} para Rekordbox`);
     } finally {
       setExporting(false);
@@ -340,7 +383,8 @@ export default function App() {
   }
 
   async function exportM3U() {
-    if (allTracks.length === 0) return;
+    const targets = requireExportTargets();
+    if (!targets) return;
     const outPath = await save({
       defaultPath: "TagWave_Playlist.m3u",
       filters: [{ name: "Playlist M3U", extensions: ["m3u"] }],
@@ -348,7 +392,7 @@ export default function App() {
     if (!outPath) return;
     setExporting(true);
     try {
-      const m3uCount = await invoke<number>("export_m3u", { tracks: allTracks, outputPath: outPath });
+      const m3uCount = await invoke<number>("export_m3u", { tracks: targets, outputPath: outPath });
       toast(`Playlist M3U criada · ${m3uCount} faixas`);
     } finally {
       setExporting(false);
@@ -356,7 +400,8 @@ export default function App() {
   }
 
   async function exportCsv() {
-    if (allTracks.length === 0) return;
+    const targets = requireExportTargets();
+    if (!targets) return;
     const outPath = await save({
       defaultPath: "TagWave_Export.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }],
@@ -364,7 +409,7 @@ export default function App() {
     if (!outPath) return;
     setExporting(true);
     try {
-      const count = await invoke<number>("export_csv", { tracks: allTracks, outputPath: outPath });
+      const count = await invoke<number>("export_csv", { tracks: targets, outputPath: outPath });
       toast(`CSV exportado · ${count} faixas`);
     } finally {
       setExporting(false);
@@ -372,7 +417,8 @@ export default function App() {
   }
 
   async function exportTraktorNml() {
-    if (allTracks.length === 0) return;
+    const targets = requireExportTargets();
+    if (!targets) return;
     const outPath = await save({
       defaultPath: "TagWave_Traktor.nml",
       filters: [{ name: "Traktor NML", extensions: ["nml"] }],
@@ -380,7 +426,7 @@ export default function App() {
     if (!outPath) return;
     setExporting(true);
     try {
-      const count = await invoke<number>("export_traktor_nml", { tracks: allTracks, outputPath: outPath });
+      const count = await invoke<number>("export_traktor_nml", { tracks: targets, outputPath: outPath });
       toast(`Traktor NML exportado · ${count} faixas`);
     } finally {
       setExporting(false);
@@ -480,11 +526,14 @@ export default function App() {
       return;
     }
 
-    const selected = allTracks.filter((t) => selectedIds.has(t.id));
+    // Lê do store no momento da chamada — evita closure stale quando chamado do context menu
+    const freshSelectedIds = useAppStore.getState().selectedIds;
+    const freshTracks = useAppStore.getState().tracks;
+    const selected = freshTracks.filter((t) => freshSelectedIds.has(t.id));
     const isExplicitSelection = selected.length > 0;
     const targets = isExplicitSelection
       ? selected
-      : allTracks.filter((t) => !t.genre || !t.album || !t.year);
+      : freshTracks.filter((t) => !t.genre || !t.album || !t.year);
     if (targets.length === 0) { toast("Todas as faixas já têm metadados completos", "info"); return; }
 
     setEnrichUndoSnapshot([...targets]);
@@ -829,14 +878,16 @@ export default function App() {
           ]);
           if (bpm !== null) {
             const bpmStr = bpm % 1 === 0 ? String(bpm) : bpm.toFixed(1);
+            // Sempre lê a versão mais recente da faixa para não sobrescrever campos enriquecidos
+            const fresh = useAppStore.getState().tracks.find((t2) => t2.path === track.path) ?? track;
             await invoke("save_tags", {
-              path: track.path,
-              title: track.title ?? null, artist: track.artist ?? null,
-              album: track.album ?? null, genre: track.genre ?? null,
-              year: track.year ?? null, trackNumber: track.track_number ?? null,
-              bpm: bpmStr, key: track.key ?? null, rating: track.rating ?? null,
+              path: fresh.path,
+              title: fresh.title ?? null, artist: fresh.artist ?? null,
+              album: fresh.album ?? null, genre: fresh.genre ?? null,
+              year: fresh.year ?? null, trackNumber: fresh.track_number ?? null,
+              bpm: bpmStr, key: fresh.key ?? null, rating: fresh.rating ?? null,
             }).catch(() => {});
-            useAppStore.getState().updateTrack({ ...track, bpm: bpmStr });
+            useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr });
             analyzed++;
           }
         } catch { /* pula faixas com erro */ }
@@ -978,6 +1029,7 @@ export default function App() {
 
   async function scanFolder(folder: string) {
     setLastFolder(folder);
+    addWatchedFolder(folder);
     setScanning(true);
     setScanTotal(null);
     setScanDone(0);
@@ -1026,6 +1078,28 @@ export default function App() {
     const folder = await open({ directory: true, multiple: false });
     if (!folder || typeof folder !== "string") return;
     await scanFolder(folder);
+  }
+
+  async function handleAddNewTracks(newTracks: Track[], enrich: boolean) {
+    const ids = new Set(newTracks.map((t) => t.id));
+    setTracks([...newTracks, ...allTracks]);
+    setNewTrackIds(ids);
+    recordScan(newTracks.length);
+    checkMissingMeta(newTracks);
+    promotePendingTracks(newTracks.map((t) => t.path));
+    setNewTracksModal(null);
+    if (enrich) {
+      await batchEnrich("all");
+    }
+    // Oferta de playlist sempre ao final (enriquecido ou não)
+    setPlaylistOffer(newTracks);
+  }
+
+  function handleDeferNewTracks() {
+    const storeNow = useAppStore.getState();
+    const updated = storeNow.pendingNewTracks.map((p) => ({ ...p, shownSession: true }));
+    storeNow.setPendingNewTracks(updated);
+    setNewTracksModal(null);
   }
 
   const [appLoading, setAppLoading] = useState<"startup" | "closing" | null>("startup");
@@ -1094,21 +1168,57 @@ export default function App() {
           useAppStore.setState({ lastFolder: lastF });
           checkMissingMeta(activeTracks);
 
-          // Detecta arquivos novos adicionados desde a última sessão
+          // Detecta arquivos novos / integra pendentes de sessão anterior
           try {
-            const knownPaths = activeTracks.map((t) => t.path);
-            const newPaths = await invoke<string[]>("find_new_files", {
-              folder: lastF,
-              knownPaths,
-            });
-            if (newPaths.length > 0) {
-              const newTracks = await invoke<Track[]>("scan_specific_files", { paths: newPaths });
-              if (newTracks.length > 0) {
-                const ids = new Set(newTracks.map((t) => t.id));
-                useAppStore.getState().setTracks([...newTracks, ...activeTracks]);
-                setNewTrackIds(ids);
-                checkMissingMeta(newTracks);
+            const storeNow = useAppStore.getState();
+            const pending = storeNow.pendingNewTracks;
+            const knownPaths = new Set(activeTracks.map((t) => t.path));
+
+            // 1) Auto-integra faixas que o usuário adiou na sessão anterior (shownSession=true)
+            const toAutoIntegrate = pending.filter((p) => p.shownSession);
+            if (toAutoIntegrate.length > 0) {
+              const autoPaths = toAutoIntegrate.map((p) => p.path);
+              const autoTracks = await invoke<Track[]>("scan_specific_files", { paths: autoPaths });
+              if (autoTracks.length > 0) {
+                useAppStore.getState().setTracks([...autoTracks, ...activeTracks]);
+                setNewTrackIds(new Set(autoTracks.map((t) => t.id)));
+                storeNow.promotePendingTracks(autoPaths);
+                toast(
+                  `${autoTracks.length} faixa${autoTracks.length !== 1 ? "s" : ""} integrada${autoTracks.length !== 1 ? "s" : ""} automaticamente da sessão anterior`,
+                  "info"
+                );
+                autoTracks.forEach((t) => knownPaths.add(t.path));
               }
+            }
+
+            // 2) Encontra arquivos genuinamente novos nas pastas monitoradas
+            const watched = [...new Set([lastF, ...storeNow.watchedFolders].filter(Boolean) as string[])];
+            const stillPending = pending.filter((p) => !p.shownSession);
+            const stillPendingPaths = new Set(stillPending.map((p) => p.path));
+
+            const brandNewPaths: string[] = [];
+            for (const folder of watched) {
+              try {
+                const found = await invoke<string[]>("find_new_files", { folder, knownPaths: [...knownPaths] });
+                found.forEach((p) => { if (!stillPendingPaths.has(p)) brandNewPaths.push(p); });
+              } catch { /* pasta pode ter sido removida */ }
+            }
+
+            // 3) Monta a lista completa de pendentes (antigos não-adiados + recém-detectados)
+            const nowMs = Date.now();
+            const newEntries: PendingNewTrack[] = brandNewPaths.map((path) => ({
+              path,
+              folderPath: lastF ?? "",
+              detectedAt: nowMs,
+              shownSession: false,
+            }));
+            const allPending = [...stillPending, ...newEntries];
+
+            if (allPending.length > 0) {
+              storeNow.setPendingNewTracks(allPending);
+              // Escaneia metadados para preview no modal
+              const scanned = await invoke<Track[]>("scan_specific_files", { paths: allPending.map((p) => p.path) });
+              if (scanned.length > 0) setNewTracksModal(scanned);
             }
           } catch {
             // Detecção de novos é best-effort — não bloqueia a abertura
@@ -1335,17 +1445,32 @@ export default function App() {
               {normalizing ? "Normalizando…" : "Normalizar Tags"}
             </button>
           )}
-          {allTracks.length > 0 && (
+          {allTracks.length > 0 && (() => {
+            const hasSelection = selectedIds.size > 0;
+            const canExport = hasSelection || !!activePlaylist;
+            const exportLabel = exporting
+              ? "Exportando…"
+              : hasSelection
+              ? `Exportar (${selectedIds.size})`
+              : activePlaylist
+              ? `Exportar "${activePlaylist.name}"`
+              : "Exportar";
+            return (
             <div className="relative group">
               <button
-                disabled={exporting}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
+                disabled={exporting || !canExport}
+                title={canExport ? undefined : "Selecione faixas ou uma playlist para exportar"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 ${
+                  canExport
+                    ? "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
+                    : "text-[#373331] cursor-not-allowed"
+                }`}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5.5 1v6M3 4l2.5-3 2.5 3"/>
                   <path d="M2 8v1.5h7V8"/>
                 </svg>
-                {exporting ? "Exportando…" : "Exportar"}
+                {exportLabel}
               </button>
               {/* pt-1: padding transparente que cobre o gap e mantém o hover contínuo */}
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
@@ -1395,15 +1520,31 @@ export default function App() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
 
-        {/* Stats */}
-        {allTracks.length > 0 && (
+        {/* Stats / active playlist indicator */}
+        {activePlaylist ? (
+          <div className="flex items-center gap-1.5 ml-1 shrink-0">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-[#D95340] opacity-70">
+              <rect x="0.5" y="0.5" width="9" height="2" rx="0.5"/>
+              <rect x="0.5" y="4" width="7" height="2" rx="0.5"/>
+              <rect x="0.5" y="7.5" width="5" height="2" rx="0.5"/>
+            </svg>
+            <span className="text-[11px] text-[#D95340] font-semibold whitespace-nowrap">{activePlaylist.name}</span>
+            <span className="text-[10px] text-[#605A55]">({tracksForMedia.length})</span>
+            <button
+              onClick={() => useAppStore.getState().setActivePlaylistId(null)}
+              className="text-[10px] text-[#605A55] hover:text-[#D95340] transition-colors"
+              title="Fechar playlist"
+            >×</button>
+          </div>
+        ) : allTracks.length > 0 ? (
           <span className="text-[11px] text-[#605A55] font-mono ml-1 whitespace-nowrap shrink-0">
             {allTracks.length.toLocaleString("pt-BR")} faixas
           </span>
-        )}
+        ) : null}
 
         {/* Filter chips */}
         <div
@@ -1873,22 +2014,51 @@ export default function App() {
             </div>
           )}
           <div className="flex flex-1 overflow-hidden relative">
-            {/* Conteúdo principal — split view quando há músicas novas */}
+            {/* Conteúdo principal */}
             <div className="flex flex-col flex-1 overflow-hidden">
               {newTrackIds.size > 0 && (() => {
                 const newTracks = tracks.filter((t) => newTrackIds.has(t.id));
                 if (newTracks.length === 0) return null;
                 return (
-                  <div className="flex flex-col border-b-2 border-[#D95340]/25" style={{ maxHeight: "42%" }}>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-[#1a0f0e] border-b border-[#D95340]/20 shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] shrink-0" style={{ animation: "pulse 2s ease-in-out infinite" }} />
-                      <span className="text-[9px] font-bold text-[#D95340] uppercase tracking-widest">
-                        {newTracks.length} {newTracks.length === 1 ? "música nova" : "músicas novas"}
-                      </span>
-                      <span className="text-[9px] text-[#605A55]">adicionadas desde a última sessão</span>
+                  <>
+                    {/* Seção de novas faixas com fundo tintado */}
+                    <div className="flex flex-col shrink-0" style={{ maxHeight: "42%", background: "linear-gradient(180deg, rgba(217,83,64,0.07) 0%, rgba(217,83,64,0.03) 100%)" }}>
+                      {/* Header proeminente */}
+                      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[#D95340]/20 shrink-0">
+                        <div className="relative shrink-0">
+                          <span className="block w-2 h-2 rounded-full bg-[#D95340]" />
+                          <span className="absolute inset-0 rounded-full bg-[#D95340] animate-ping opacity-50" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-bold text-[#E0796A] uppercase tracking-widest">
+                            Recém chegadas
+                          </span>
+                          <span className="text-[10px] text-[#605A55] ml-2">
+                            {newTracks.length} {newTracks.length === 1 ? "faixa nova" : "faixas novas"} · integradas à biblioteca
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setNewTrackIds(new Set())}
+                          className="flex items-center gap-1 text-[10px] text-[#4C4743] hover:text-[#8F8883] transition-colors shrink-0 px-2 py-1 rounded-md hover:bg-white/[0.05]"
+                        >
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
+                          </svg>
+                          Dispensar
+                        </button>
+                      </div>
+                      <div className="overflow-auto">
+                        <TrackTable tracks={newTracks} compact={compact} hasFolder={true} />
+                      </div>
                     </div>
-                    <TrackTable tracks={newTracks} compact={compact} hasFolder={true} />
-                  </div>
+
+                    {/* Divisor rotulado entre as duas seções */}
+                    <div className="flex items-center gap-3 px-4 py-1.5 shrink-0 border-y border-white/[0.05]" style={{ background: "#0E0D0C" }}>
+                      <div className="flex-1 h-px bg-white/[0.05]" />
+                      <span className="text-[9px] font-bold text-[#373331] uppercase tracking-widest">Biblioteca</span>
+                      <div className="flex-1 h-px bg-white/[0.05]" />
+                    </div>
+                  </>
                 );
               })()}
               <TrackTable
@@ -2067,6 +2237,34 @@ export default function App() {
         />
       )}
       <ToastContainer />
+      <AIAssistant />
+
+      {/* Modal de novas faixas detectadas */}
+      {newTracksModal && (
+        <NewTracksModal
+          tracks={newTracksModal}
+          onAddAndEnrich={(tracks) => handleAddNewTracks(tracks, true)}
+          onAddOnly={(tracks) => handleAddNewTracks(tracks, false)}
+          onDefer={handleDeferNewTracks}
+        />
+      )}
+
+      {/* Oferta de playlist pós-adição */}
+      {playlistOffer && !createPlaylistTracks && (
+        <NewTracksPlaylistOffer
+          tracks={playlistOffer}
+          onCreatePlaylist={(tracks) => { setPlaylistOffer(null); setCreatePlaylistTracks(tracks); }}
+          onDismiss={() => setPlaylistOffer(null)}
+        />
+      )}
+
+      {/* CreatePlaylistModal disparado pelo fluxo de novas faixas */}
+      {createPlaylistTracks && (
+        <CreatePlaylistModal
+          tracks={createPlaylistTracks}
+          onClose={() => setCreatePlaylistTracks(null)}
+        />
+      )}
 
       {/* Drag & drop overlay */}
       {isDragOver && (

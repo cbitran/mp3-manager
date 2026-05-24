@@ -92,52 +92,63 @@ export default function TrialInfoModal({ onClose }: { onClose: () => void }) {
             Após o período de avaliação, você precisará de uma licença para continuar usando o TagWave.
           </p>
 
-          {/* CTA */}
-          <button
-            disabled
-            className="w-full py-2.5 rounded-xl text-[13px] font-bold uppercase tracking-wide transition-colors cursor-not-allowed"
-            style={{ background: `${urgencyColor}22`, color: `${urgencyColor}66` }}
-          >
-            Ativar licença — $39
-          </button>
-          <p className="text-[10px] text-[#373331] text-center -mt-3">
-            Sistema de pagamento em preparação — em breve
-          </p>
-
-          <div className="border-t border-white/[0.05]" />
-
-          {/* License input */}
+          {/* License input or CTA */}
           {showLicense ? (
-            <div className="flex gap-2">
-              <input
-                className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-[12px] font-mono text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 transition-colors"
-                placeholder="TAGW-XXXX-XXXX-XXXX"
-                value={licenseInput}
-                onChange={(e) => setLicenseInput(e.target.value)}
-              />
+            <div className="flex flex-col gap-3">
+              <p className="text-[11px] text-[#8F8883] text-center">Insira sua chave de licença TagWave:</p>
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-[12px] font-mono text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340]/50 transition-colors"
+                  placeholder="TAGW-XXXX-XXXX-XXXX"
+                  value={licenseInput}
+                  onChange={(e) => setLicenseInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && licenseInput.length >= 8) { activateLicense(licenseInput); onClose(); } }}
+                />
+                <button
+                  onClick={() => { activateLicense(licenseInput); onClose(); }}
+                  disabled={licenseInput.length < 8}
+                  className="px-4 py-2 rounded-lg bg-[#D95340] hover:bg-[#E07364] disabled:opacity-40 text-white text-[12px] font-semibold transition-colors"
+                >
+                  Ativar
+                </button>
+              </div>
               <button
-                onClick={() => { activateLicense(licenseInput); onClose(); }}
-                disabled={licenseInput.length < 18}
-                className="px-4 py-2 rounded-lg bg-[#D95340] hover:bg-[#E07364] disabled:opacity-40 text-white text-[12px] font-semibold transition-colors"
+                onClick={() => setShowLicense(false)}
+                className="text-[10px] text-[#4C4743] hover:text-[#756D67] transition-colors text-center"
               >
-                Ativar
+                Voltar
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-between">
+            <>
+              {/* Primary CTA */}
               <button
                 onClick={() => setShowLicense(true)}
-                className="text-[11px] text-[#4C4743] hover:text-[#756D67] transition-colors"
+                className="w-full py-3 rounded-xl text-[13px] font-bold uppercase tracking-wide transition-all hover:scale-[1.02] active:scale-[0.98]"
+                style={{ background: urgencyColor, color: "white", boxShadow: `0 4px 20px ${urgencyColor}55` }}
               >
-                Já tenho uma licença
+                Obter Licença — $39
               </button>
-              <button
-                onClick={() => { extendForBeta(); onClose(); }}
-                className="text-[11px] text-[#373331] hover:text-[#4C4743] transition-colors"
-              >
-                Continuar em modo beta
-              </button>
-            </div>
+
+              <div className="border-t border-white/[0.05]" />
+
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setShowLicense(true)}
+                  className="text-[11px] font-semibold transition-colors"
+                  style={{ color: urgencyColor }}
+                >
+                  Já tenho uma chave →
+                </button>
+                <button
+                  onClick={() => { extendForBeta(); onClose(); }}
+                  className="text-[11px] text-[#4C4743] hover:text-[#605A55] transition-colors"
+                >
+                  Continuar em modo beta
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>

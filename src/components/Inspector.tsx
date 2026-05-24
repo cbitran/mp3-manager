@@ -400,53 +400,64 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
         </div>
       )}
 
-      {/* BPM + Tom destacados */}
-      {!isBatch && (first.bpm || first.key) && (
-        <div className="mx-3 mt-3 flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/[0.02] border border-white/[0.04]">
-          {first.bpm && (
-            <div className="flex-1">
-              <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">BPM</p>
-              <p className="text-base font-mono font-bold text-[#F5F5F4] tabular-nums leading-none">
-                {parseFloat(first.bpm).toFixed(2)}
-              </p>
+      {/* BPM + Tom + info de arquivo (box unificado) */}
+      {!isBatch && (first.bpm || first.key || first.format || first.bitrate_kbps || first.sample_rate_hz || first.file_size_bytes > 0) && (
+        <div className="mx-3 mt-3 rounded-md bg-white/[0.02] border border-white/[0.04] overflow-hidden">
+          {/* Linha superior: BPM e Tom */}
+          {(first.bpm || first.key) && (
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              {first.bpm && (
+                <div className="flex-1">
+                  <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">BPM</p>
+                  <p className="text-base font-mono font-bold text-[#F5F5F4] tabular-nums leading-none">
+                    {parseFloat(first.bpm).toFixed(2)}
+                  </p>
+                </div>
+              )}
+              {first.key && (
+                <div>
+                  <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">TOM</p>
+                  <span
+                    className="inline-block px-2 py-0.5 rounded-sm text-sm font-mono font-bold text-white"
+                    style={{ backgroundColor: `hsl(${((["Abm","G#m","B","Ebm","D#m","Gb","F#","Bbm","A#m","Db","C#","Fm","Ab","G#","Cm","Eb","D#","Gm","Bb","A#","Dm","F","Am","C","Em","G","Bm","D","F#m","Gbm","A","Dbm","C#m","E"].indexOf(first.key)+1)%12)*30}, 60%, 44%)` }}
+                  >
+                    {first.key}
+                  </span>
+                </div>
+              )}
             </div>
           )}
-          {first.key && (
-            <div>
-              <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">TOM</p>
-              <span
-                className="inline-block px-2 py-0.5 rounded-sm text-sm font-mono font-bold text-white"
-                style={{ backgroundColor: `hsl(${((["Abm","G#m","B","Ebm","D#m","Gb","F#","Bbm","A#m","Db","C#","Fm","Ab","G#","Cm","Eb","D#","Gm","Bb","A#","Dm","F","Am","C","Em","G","Bm","D","F#m","Gbm","A","Dbm","C#m","E"].indexOf(first.key)+1)%12)*30}, 60%, 44%)` }}
-              >
-                {first.key}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Formato / Bitrate */}
-      {!isBatch && (
-        <div className="mx-3 mt-2 flex items-center gap-2 flex-wrap">
-          {first.format && (
-            <span className="px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-white/[0.04] text-[#605A55]">
-              {first.format}
-            </span>
-          )}
-          {first.bitrate_kbps && (
-            <span className="text-[10px] font-mono text-[#8F8883]">
-              {first.bitrate_kbps} kbps
-            </span>
-          )}
-          {first.sample_rate_hz && (
-            <span className="text-[10px] font-mono text-[#8F8883]">
-              {(first.sample_rate_hz / 1000).toFixed(1)} kHz
-            </span>
-          )}
-          {first.file_size_bytes > 0 && (
-            <span className="text-[10px] font-mono text-[#8F8883]">
-              {(first.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
-            </span>
+          {/* Separador laranja + linha de info de arquivo */}
+          {(first.format || first.bitrate_kbps || first.sample_rate_hz || first.file_size_bytes > 0) && (
+            <>
+              <div className="h-px bg-[#C97B40]/30" />
+              <div className="flex items-center gap-2 px-3 py-1.5 flex-wrap">
+                {first.format && (
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#C97B40]/80">
+                    {first.format}
+                  </span>
+                )}
+                {(first.format && (first.bitrate_kbps || first.sample_rate_hz || first.file_size_bytes > 0)) && (
+                  <span className="text-[#373331] text-[9px]">·</span>
+                )}
+                {first.bitrate_kbps && (
+                  <span className="text-[10px] font-mono text-[#605A55]">
+                    {first.bitrate_kbps} kbps
+                  </span>
+                )}
+                {first.sample_rate_hz && (
+                  <span className="text-[10px] font-mono text-[#605A55]">
+                    {(first.sample_rate_hz / 1000).toFixed(1)} kHz
+                  </span>
+                )}
+                {first.file_size_bytes > 0 && (
+                  <span className="text-[10px] font-mono text-[#605A55]">
+                    {(first.file_size_bytes / (1024 * 1024)).toFixed(1)} MB
+                  </span>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}

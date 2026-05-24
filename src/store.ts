@@ -28,10 +28,30 @@ export interface Track {
 
 export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
 
+export interface Playlist {
+  id: string;
+  name: string;
+  trackPaths: string[];
+  createdAt: number;
+  updatedAt: number;
+  lastExportedTo?: string[];
+}
+
 const LAST_FOLDER_KEY    = "mp3mgr_lastFolder";
 const FAVORITES_KEY      = "mp3mgr_favorites";
 const FAV_TRACKS_KEY     = "mp3mgr_favTracks";
 const RECENT_KEY         = "mp3mgr_recentFolders";
+
+const PLAYLISTS_KEY      = "tagwave_playlists";
+const PENDING_NEW_KEY    = "tagwave_pendingNewTracks";
+const WATCHED_FOLDERS_KEY = "tagwave_watchedFolders";
+
+export interface PendingNewTrack {
+  path: string;
+  folderPath: string;
+  detectedAt: number;
+  shownSession: boolean; // true = usuário clicou "Depois" uma vez; próxima abertura integra automaticamente
+}
 
 const TRIAL_DAYS         = 14;
 const TRIAL_START_KEY    = "tagwave_trialStartDate";
@@ -97,12 +117,39 @@ interface AppState {
   setDiscogsToken: (token: string) => void;
   acoustidKey: string;
   setAcoustidKey: (key: string) => void;
+  claudeApiKey: string;
+  setClaudeApiKey: (key: string) => void;
+  shortcutOverrides: Record<string, string>;
+  setShortcutOverride: (id: string, key: string) => void;
+  resetSingleShortcut: (id: string) => void;
+  resetShortcutOverrides: () => void;
   theme: "auto" | "light" | "dark";
   setTheme: (theme: "auto" | "light" | "dark") => void;
   djPrimary: string;
   djAutoImport: boolean;
   djShowAll: boolean;
   setDjPrefs: (primary: string, autoImport: boolean, showAll: boolean) => void;
+
+  // Pastas monitoradas para detecção de novos arquivos
+  watchedFolders: string[];
+  addWatchedFolder: (path: string) => void;
+  removeWatchedFolder: (path: string) => void;
+
+  // Faixas novas pendentes (detectadas mas ainda não integradas)
+  pendingNewTracks: PendingNewTrack[];
+  setPendingNewTracks: (tracks: PendingNewTrack[]) => void;
+  promotePendingTracks: (paths: string[]) => void;
+  dismissPendingTracks: () => void;
+
+  // Playlists
+  playlists: Playlist[];
+  activePlaylistId: string | null;
+  createPlaylist: (name: string, trackPaths: string[]) => string;
+  updatePlaylist: (id: string, updates: Partial<Omit<Playlist, "id" | "createdAt">>) => void;
+  deletePlaylist: (id: string) => void;
+  addTracksToPlaylist: (id: string, trackPaths: string[]) => void;
+  removeTrackFromPlaylist: (id: string, trackPath: string) => void;
+  setActivePlaylistId: (id: string | null) => void;
 
   // Player
   playerTrackId: string | null;
@@ -143,6 +190,84 @@ export const useAppStore = create<AppState>((set, get) => ({
   recentFolders: JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"),
   favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
 
+  // Pastas monitoradas
+  watchedFolders: JSON.parse(localStorage.getItem(WATCHED_FOLDERS_KEY) ?? "[]") as string[],
+  addWatchedFolder: (path) => {
+    const next = [...new Set([path, ...get().watchedFolders])];
+    localStorage.setItem(WATCHED_FOLDERS_KEY, JSON.stringify(next));
+    set({ watchedFolders: next });
+  },
+  removeWatchedFolder: (path) => {
+    const next = get().watchedFolders.filter((f) => f !== path);
+    localStorage.setItem(WATCHED_FOLDERS_KEY, JSON.stringify(next));
+    set({ watchedFolders: next });
+  },
+
+  // Faixas novas pendentes
+  pendingNewTracks: JSON.parse(localStorage.getItem(PENDING_NEW_KEY) ?? "[]") as PendingNewTrack[],
+  setPendingNewTracks: (tracks) => {
+    localStorage.setItem(PENDING_NEW_KEY, JSON.stringify(tracks));
+    set({ pendingNewTracks: tracks });
+  },
+  promotePendingTracks: (paths) => {
+    const pathSet = new Set(paths);
+    const remaining = get().pendingNewTracks.filter((p) => !pathSet.has(p.path));
+    localStorage.setItem(PENDING_NEW_KEY, JSON.stringify(remaining));
+    set({ pendingNewTracks: remaining });
+  },
+  dismissPendingTracks: () => {
+    localStorage.setItem(PENDING_NEW_KEY, "[]");
+    set({ pendingNewTracks: [] });
+  },
+
+  // Playlists
+  playlists: JSON.parse(localStorage.getItem(PLAYLISTS_KEY) ?? "[]") as Playlist[],
+  activePlaylistId: null,
+  createPlaylist: (name, trackPaths) => {
+    const pl: Playlist = {
+      id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name, trackPaths,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const next = [pl, ...get().playlists];
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
+    set({ playlists: next });
+    return pl.id;
+  },
+  updatePlaylist: (id, updates) => {
+    const next = get().playlists.map((p) =>
+      p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
+    );
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
+    set({ playlists: next });
+  },
+  deletePlaylist: (id) => {
+    const next = get().playlists.filter((p) => p.id !== id);
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
+    const active = get().activePlaylistId;
+    set({ playlists: next, activePlaylistId: active === id ? null : active });
+  },
+  addTracksToPlaylist: (id, trackPaths) => {
+    const next = get().playlists.map((p) => {
+      if (p.id !== id) return p;
+      const merged = [...new Set([...p.trackPaths, ...trackPaths])];
+      return { ...p, trackPaths: merged, updatedAt: Date.now() };
+    });
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
+    set({ playlists: next });
+  },
+  removeTrackFromPlaylist: (id, trackPath) => {
+    const next = get().playlists.map((p) =>
+      p.id === id
+        ? { ...p, trackPaths: p.trackPaths.filter((tp) => tp !== trackPath), updatedAt: Date.now() }
+        : p
+    );
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
+    set({ playlists: next });
+  },
+  setActivePlaylistId: (activePlaylistId) => set({ activePlaylistId }),
+
   // Trial state
   trialStartDate: initTrialStart(),
   tracksAnalyzed: parseInt(localStorage.getItem(TRACKS_ANALYZED_KEY) ?? "0", 10),
@@ -178,6 +303,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAcoustidKey: (key) => {
     localStorage.setItem("tagwave_acoustid_key", key);
     set({ acoustidKey: key });
+  },
+  claudeApiKey: "",
+  setClaudeApiKey: (_key) => {},
+  shortcutOverrides: JSON.parse(localStorage.getItem("tagwave_shortcuts") ?? "{}"),
+  setShortcutOverride: (id, key) => {
+    const overrides = { ...useAppStore.getState().shortcutOverrides, [id]: key };
+    localStorage.setItem("tagwave_shortcuts", JSON.stringify(overrides));
+    set({ shortcutOverrides: overrides });
+  },
+  resetSingleShortcut: (id) => {
+    const overrides = { ...useAppStore.getState().shortcutOverrides };
+    delete overrides[id];
+    localStorage.setItem("tagwave_shortcuts", JSON.stringify(overrides));
+    set({ shortcutOverrides: overrides });
+  },
+  resetShortcutOverrides: () => {
+    localStorage.removeItem("tagwave_shortcuts");
+    set({ shortcutOverrides: {} });
   },
   theme: (localStorage.getItem("tagwave_theme") as "auto" | "light" | "dark") ?? "auto",
   setTheme: (theme) => {

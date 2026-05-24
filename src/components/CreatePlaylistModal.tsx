@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import type { Track } from "../store";
+import { useAppStore, type Track } from "../store";
 
 interface DjSoftwareInfo {
   id: string;
@@ -35,9 +35,12 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
   const [name, setName] = useState("Minha Playlist");
   const [djSoftware, setDjSoftware] = useState<DjSoftwareInfo[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [results, setResults] = useState<Array<{ id: string; path?: string; error?: string }>>([]);
   const [done, setDone] = useState(false);
+  const createPlaylist = useAppStore((s) => s.createPlaylist);
+  const updatePlaylist  = useAppStore((s) => s.updatePlaylist);
 
   useEffect(() => {
     invoke<DjSoftwareInfo[]>("detect_dj_software").then((sw) => {
@@ -59,9 +62,15 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
   };
 
   const handleExport = async () => {
-    if (!name.trim() || selected.size === 0) return;
+    if (!name.trim() || (selected.size === 0 && !saveToLibrary)) return;
     setExporting(true);
     const exportResults: typeof results = [];
+
+    // Save to TagWave library first
+    let playlistId: string | null = null;
+    if (saveToLibrary) {
+      playlistId = createPlaylist(name.trim(), tracks.map((t) => t.path));
+    }
 
     for (const id of selected) {
       if (id === "m3u") {
@@ -94,6 +103,12 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
     setResults(exportResults);
     setDone(true);
     setExporting(false);
+
+    // Update playlist with export info
+    if (playlistId && exportResults.length > 0) {
+      const exportedTo = exportResults.filter((r) => !r.error).map((r) => r.id);
+      if (exportedTo.length > 0) updatePlaylist(playlistId, { lastExportedTo: exportedTo });
+    }
 
     // Auto-open DJ apps that exported successfully (skip m3u)
     for (const r of exportResults) {
@@ -256,6 +271,33 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
               />
             </div>
 
+            {/* Save to library toggle */}
+            <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+              style={{
+                background: saveToLibrary ? "rgba(217,83,64,0.08)" : "rgba(255,255,255,0.02)",
+                border: saveToLibrary ? "1px solid rgba(217,83,64,0.25)" : "1px solid rgba(255,255,255,0.05)",
+              }}
+            >
+              <div
+                className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all"
+                style={{
+                  borderColor: saveToLibrary ? "#D95340" : "rgba(255,255,255,0.12)",
+                  background: saveToLibrary ? "#D95340" : "transparent",
+                }}
+                onClick={() => setSaveToLibrary((v) => !v)}
+              >
+                {saveToLibrary && (
+                  <svg width="9" height="7" viewBox="0 0 9 7" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 3.5L3.5 6L8 1"/>
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-[12px] font-medium" style={{ color: "#C2BEBC" }}>Salvar na biblioteca do TagWave</p>
+                <p className="text-[10px]" style={{ color: "#605A55" }}>Aparece na aba Playlists da sidebar</p>
+              </div>
+            </label>
+
             {/* Software list */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest block mb-2" style={{ color: "#8F8883" }}>
@@ -287,11 +329,11 @@ export default function CreatePlaylistModal({ tracks, onClose }: Props) {
               </button>
               <button
                 onClick={handleExport}
-                disabled={exporting || !name.trim() || selected.size === 0}
+                disabled={exporting || !name.trim() || (!saveToLibrary && selected.size === 0)}
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-40"
                 style={{ background: "#D95340", color: "white" }}
               >
-                {btnLabel()}
+                {exporting ? "Salvando…" : saveToLibrary && selected.size === 0 ? "Salvar" : btnLabel()}
               </button>
             </div>
           </div>

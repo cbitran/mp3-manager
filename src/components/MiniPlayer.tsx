@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore, consumeAutoPlay } from "../store";
 
-const PLAYER_BARS = 130;
+const PLAYER_BARS = 180;
 const waveCache = new Map<string, number[]>();
 
 function strHash(s: string): number {
@@ -97,20 +97,23 @@ export default function MiniPlayer() {
           const W = canvas.width; const H = canvas.height;
           const bw = W / PLAYER_BARS;
           const bars = waveBarsRef.current;
+          const { playerProgress: pp, playerDuration: pd } = useAppStore.getState();
+          const playedFrac = pd > 0 ? pp / pd : 0;
           for (let i = 0; i < PLAYER_BARS; i++) {
+            const barFrac = i / PLAYER_BARS;
+            if (barFrac < playedFrac) continue; // skip played section
             const s = Math.floor(i * step), e2 = Math.floor((i + 1) * step);
             let sum = 0;
             for (let j = s; j < e2; j++) sum += freqData[j];
             const beatAmp = sum / Math.max(1, e2 - s) / 255;
-            if (beatAmp < 0.012) continue;
-            // Shape the beat bars using the actual waveform profile
+            if (beatAmp < 0.015) continue;
             const waveBase = bars.length > i ? bars[i] : 0.5;
-            const finalAmp = waveBase * (0.3 + beatAmp * 0.7);
-            const bh = Math.max(1.5, finalAmp * H * 0.92);
-            const x = i * bw + bw * 0.12;
+            const finalAmp = waveBase * (0.4 + beatAmp * 0.6);
+            const bh = Math.max(1.5, finalAmp * H * 0.85);
+            const x = i * bw + bw * 0.15;
             const y = (H - bh) / 2;
-            const w2 = bw * 0.76;
-            c.fillStyle = `rgba(255, 148, 128, ${0.14 + finalAmp * 0.72})`;
+            const w2 = bw * 0.7;
+            c.fillStyle = `rgba(255, 130, 110, ${0.25 + finalAmp * 0.65})`;
             c.beginPath();
             if (c.roundRect) c.roundRect(x, y, w2, bh, 1);
             else c.rect(x, y, w2, bh);
@@ -354,11 +357,11 @@ export default function MiniPlayer() {
   const pct = duration > 0 ? (progress / duration) * 100 : 0;
   const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
 
-  const BAR_W    = 2;
-  const BAR_GAP  = 0.8;
+  const BAR_W    = 1.0;
+  const BAR_GAP  = 2.0;
   const BAR_STRIDE = BAR_W + BAR_GAP;
   const VB_W    = PLAYER_BARS * BAR_STRIDE;
-  const VB_H    = 44;
+  const VB_H    = 40;
 
   // Volume icon: muted/low/high
   const volMuted = volume === 0;
@@ -468,7 +471,8 @@ export default function MiniPlayer() {
           </span>
 
           <div
-            className="relative flex-1 h-11 cursor-pointer group"
+            className="relative flex-1 cursor-pointer group"
+            style={{ height: 40 }}
             onClick={handleSeek}
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -484,12 +488,11 @@ export default function MiniPlayer() {
               className="absolute inset-0"
             >
               {displayBars.map((amp, i) => {
-                const barH   = Math.max(1.5, amp * (VB_H - 2));
+                const barH   = Math.max(2, amp * (VB_H - 4));
                 const y      = (VB_H - barH) / 2;
                 const barPct = i / PLAYER_BARS;
                 const played  = pct > 0 && barPct < pct / 100;
-                const hovered = hoverPct !== null && barPct < hoverPct && !played;
-                // Beatport pattern: unplayed = vivo, played = apagado
+                const hovered = hoverPct !== null && barPct >= pct / 100 && barPct < hoverPct;
                 return (
                   <rect
                     key={i}
@@ -497,31 +500,36 @@ export default function MiniPlayer() {
                     y={y}
                     width={BAR_W}
                     height={barH}
-                    rx={0.5}
-                    fill={played ? "#D95340" : hovered ? "#E07364" : "#D95340"}
+                    rx={0.6}
+                    fill="#D95340"
                     opacity={
-                      played  ? 0.18 + amp * 0.22 :   // tocado → apagado
-                      hovered ? 0.7  + amp * 0.3  :   // hover → realçado
-                      0.5 + amp * 0.5                  // não tocado → vivo
+                      played  ? 0.55 + amp * 0.45  :   // tocado → brilhante (já percorrido)
+                      hovered ? 0.25 + amp * 0.20  :   // hover na zona não tocada
+                      0.05 + amp * 0.12              // não tocado → escuro (a percorrer)
                     }
                   />
                 );
               })}
             </svg>
 
-            {/* Live beat canvas — bars shaped by waveform profile */}
+            {/* Live beat canvas — pulsa em cima das barras não tocadas */}
             <canvas
               ref={liveCanvasRef}
               className="absolute inset-0 w-full h-full pointer-events-none"
-              width={PLAYER_BARS * 5}
-              height={36}
+              width={PLAYER_BARS * 4}
+              height={VB_H}
             />
 
-            {/* Playhead */}
+            {/* Playhead — linha branca nítida */}
             {pct > 0 && (
               <div
-                className="absolute top-0 bottom-0 pointer-events-none"
-                style={{ left: `${pct}%`, width: "2px", background: "rgba(255,255,255,0.9)", boxShadow: "0 0 4px rgba(255,255,255,0.5)" }}
+                className="absolute top-1 bottom-1 pointer-events-none rounded-full"
+                style={{
+                  left: `calc(${pct}% - 1px)`,
+                  width: "2px",
+                  background: "white",
+                  boxShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 2px white",
+                }}
               />
             )}
 

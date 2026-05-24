@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { useAppStore } from "../store";
+import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 
 interface SidebarProps {
@@ -17,15 +17,20 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const playlists      = useAppStore((s) => s.playlists);
+  const activePlaylistId = useAppStore((s) => s.activePlaylistId);
+  const setActivePlaylistId = useAppStore((s) => s.setActivePlaylistId);
+  const deletePlaylist = useAppStore((s) => s.deletePlaylist);
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [subfolderMap, setSubfolderMap] = useState<Record<string, string[]>>({});
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites">("recent");
+  const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites" | "playlists">("recent");
   const [isDragOver, setIsDragOver] = useState(false);
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
+  const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
   const dragCounterRef = useRef(0);
 
   useEffect(() => {
@@ -146,83 +151,110 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
         </div>
       )}
 
-      {/* Abas Recentes / Favoritos */}
-      {(recentFolders.length > 0 || favoriteFolders.length > 0) && (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex px-3 pt-2 gap-0 border-b border-white/[0.05]">
-            {(["recent", "favorites"] as const).map((tab) => {
-              const label = tab === "recent" ? "Recentes" : "Favoritos";
-              const count = tab === "recent" ? recentFolders.length : favoriteFolders.length;
-              const active = sidebarTab === tab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setSidebarTab(tab)}
-                  className={`flex items-center gap-1.5 px-2 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
-                    active
-                      ? "text-[#F5F5F4] border-[#D95340]"
-                      : "text-[#605A55] border-transparent hover:text-[#8F8883]"
-                  }`}
-                >
-                  {label}
-                  {count > 0 && (
-                    <span className={`text-[9px] font-mono tabular-nums px-1 py-px rounded-sm ${
-                      active ? "bg-[#D95340]/20 text-[#D95340]" : "bg-white/[0.05] text-[#605A55]"
-                    }`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Tab content */}
-          <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
-            {sidebarTab === "recent" && (
-              recentFolders.length > 0
-                ? recentFolders.map((f) => (
-                    <FolderRow
-                      key={f}
-                      path={f}
-                      isSelected={lastFolder === f}
-                      isFavorite={isFavorite(f)}
-                      isExpanded={expandedFolders.has(f)}
-                      subfolders={subfolderMap[f] ?? null}
-                      onOpen={() => onFolderSelect(f)}
-                      onToggleExpand={() => toggleExpand(f)}
-                      onToggleFavorite={() => toggleFavorite(f)}
-                      onContextMenu={(e) => handleContextMenu(e, f)}
-                      onFolderSelect={onFolderSelect}
-                      lastFolder={lastFolder}
-                    />
-                  ))
-                : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
-            )}
-            {sidebarTab === "favorites" && (
-              favoriteFolders.length > 0
-                ? favoriteFolders.map((f) => (
-                    <FolderRow
-                      key={f}
-                      path={f}
-                      isSelected={lastFolder === f}
-                      isFavorite={isFavorite(f)}
-                      isExpanded={expandedFolders.has(f)}
-                      subfolders={subfolderMap[f] ?? null}
-                      onOpen={() => onFolderSelect(f)}
-                      onToggleExpand={() => toggleExpand(f)}
-                      onToggleFavorite={() => toggleFavorite(f)}
-                      onContextMenu={(e) => handleContextMenu(e, f)}
-                      onFolderSelect={onFolderSelect}
-                      lastFolder={lastFolder}
-                    />
-                  ))
-                : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhum favorito ainda — marque uma pasta com ★</p>
-            )}
-          </div>
+      {/* Abas Recentes / Favoritos / Playlists */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Tab bar */}
+        <div className="flex px-2 pt-2 gap-0 border-b border-white/[0.05]">
+          {([
+            { id: "recent",    label: "Recentes",  count: recentFolders.length },
+            { id: "favorites", label: "Favoritos", count: favoriteFolders.length },
+            { id: "playlists", label: "Playlists", count: playlists.length },
+          ] as const).map((tab) => {
+            const active = sidebarTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setSidebarTab(tab.id);
+                  if (tab.id !== "playlists") setActivePlaylistId(null);
+                }}
+                className={`flex items-center gap-1 px-1.5 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
+                  active
+                    ? "text-[#F5F5F4] border-[#D95340]"
+                    : "text-[#605A55] border-transparent hover:text-[#8F8883]"
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`text-[9px] font-mono tabular-nums px-1 py-px rounded-sm ${
+                    active ? "bg-[#D95340]/20 text-[#D95340]" : "bg-white/[0.05] text-[#605A55]"
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
-      )}
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
+          {sidebarTab === "recent" && (
+            recentFolders.length > 0
+              ? recentFolders.map((f) => (
+                  <FolderRow
+                    key={f}
+                    path={f}
+                    isSelected={lastFolder === f}
+                    isFavorite={isFavorite(f)}
+                    isExpanded={expandedFolders.has(f)}
+                    subfolders={subfolderMap[f] ?? null}
+                    onOpen={() => onFolderSelect(f)}
+                    onToggleExpand={() => toggleExpand(f)}
+                    onToggleFavorite={() => toggleFavorite(f)}
+                    onContextMenu={(e) => handleContextMenu(e, f)}
+                    onFolderSelect={onFolderSelect}
+                    lastFolder={lastFolder}
+                  />
+                ))
+              : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
+          )}
+          {sidebarTab === "favorites" && (
+            favoriteFolders.length > 0
+              ? favoriteFolders.map((f) => (
+                  <FolderRow
+                    key={f}
+                    path={f}
+                    isSelected={lastFolder === f}
+                    isFavorite={isFavorite(f)}
+                    isExpanded={expandedFolders.has(f)}
+                    subfolders={subfolderMap[f] ?? null}
+                    onOpen={() => onFolderSelect(f)}
+                    onToggleExpand={() => toggleExpand(f)}
+                    onToggleFavorite={() => toggleFavorite(f)}
+                    onContextMenu={(e) => handleContextMenu(e, f)}
+                    onFolderSelect={onFolderSelect}
+                    lastFolder={lastFolder}
+                  />
+                ))
+              : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhum favorito ainda — marque uma pasta com ★</p>
+          )}
+          {sidebarTab === "playlists" && (
+            playlists.length > 0
+              ? playlists.map((pl) => (
+                  <PlaylistRow
+                    key={pl.id}
+                    pl={pl}
+                    isActive={activePlaylistId === pl.id}
+                    onOpen={() => setActivePlaylistId(pl.id)}
+                    onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
+                  />
+                ))
+              : (
+                <div className="px-2 py-4 flex flex-col items-center gap-2 text-center">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="3" width="16" height="14" rx="2"/>
+                    <path d="M7 8h6M7 12h4"/>
+                    <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
+                    <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
+                  </svg>
+                  <p className="text-[10px] text-[#4C4743]">Nenhuma playlist ainda</p>
+                  <p className="text-[9px] text-[#373331]">Clique com botão direito em faixas → Criar Playlist</p>
+                </div>
+              )
+          )}
+        </div>
+      </div>
 
       {/* Dispositivos (volumes montados) */}
       {volumes.length > 0 && (
@@ -261,6 +293,31 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
           })()}
         </p>
       </div>
+
+      {/* Playlist context menu */}
+      {playlistCtx && (
+        <div
+          className="fixed z-50 bg-[#1c1715] border border-white/10 rounded-lg shadow-2xl py-1 min-w-[160px]"
+          style={{ left: playlistCtx.x, top: playlistCtx.y }}
+          onClick={() => setPlaylistCtx(null)}
+        >
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={() => { setActivePlaylistId(playlistCtx.pl.id); setPlaylistCtx(null); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
+            Abrir playlist
+          </button>
+          <div className="h-px bg-white/10 my-1" />
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
+            onClick={() => { deletePlaylist(playlistCtx.pl.id); setPlaylistCtx(null); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-70"><path d="M4 1h3a1 1 0 011 1v.5H2.5V2A1 1 0 014 1zM1 3h9l-.8 6.5A1 1 0 018.2 10H2.8a1 1 0 01-.997-.9L1 3z"/></svg>
+            Excluir playlist
+          </button>
+        </div>
+      )}
 
       {/* Duplicate folder dialog */}
       {dupDialog && (
@@ -477,5 +534,47 @@ function FolderRow({
         </div>
       )}
     </div>
+  );
+}
+
+// MARK: - PlaylistRow
+
+const DJ_BADGE: Record<string, string> = {
+  serato: "S", rekordbox: "R", traktor: "T", vdj: "V", djay: "D", m3u: "M3U",
+};
+
+function PlaylistRow({
+  pl, isActive, onOpen, onContextMenu,
+}: {
+  pl: Playlist;
+  isActive: boolean;
+  onOpen: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      onClick={onOpen}
+      onContextMenu={onContextMenu}
+      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors group
+        ${isActive
+          ? "bg-[#D95340]/15 text-[#F5F5F4] border border-[#D95340]/20"
+          : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
+        }`}
+    >
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50 text-[#D95340]">
+        <rect x="1" y="1" width="9" height="2" rx="0.5"/>
+        <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
+        <rect x="1" y="8" width="5" height="2" rx="0.5"/>
+      </svg>
+      <span className="flex-1 truncate text-[11px]">{pl.name}</span>
+      <span className={`text-[9px] font-mono tabular-nums ${isActive ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
+        {pl.trackPaths.length}
+      </span>
+      {pl.lastExportedTo && pl.lastExportedTo.length > 0 && (
+        <span className="text-[8px] font-bold px-1 rounded bg-white/[0.04] text-[#4C4743]">
+          {DJ_BADGE[pl.lastExportedTo[0]] ?? pl.lastExportedTo[0]}
+        </span>
+      )}
+    </button>
   );
 }
