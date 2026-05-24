@@ -2,10 +2,17 @@ import { fetch as tFetch } from "@tauri-apps/plugin-http";
 
 const DEFAULT_CLIENT_ID = "b1c574848d0b491eb75f94f515e9c7de";
 const DEFAULT_CLIENT_SECRET = "e5593f4ca9644a4c8ea03ec0b3178913";
+const FETCH_TIMEOUT_MS = 8000;
 
 let cachedToken: string | null = null;
 let tokenExpiry = 0;
 let cachedCredKey = "";
+
+function fetchWithTimeout(url: string, options: Parameters<typeof tFetch>[1] = {}, ms = FETCH_TIMEOUT_MS) {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), ms);
+  return tFetch(url, { ...options, signal: abort.signal }).finally(() => clearTimeout(timer));
+}
 
 function getSpotifyCreds() {
   const id = localStorage.getItem("tagwave_spotify_id") || DEFAULT_CLIENT_ID;
@@ -19,7 +26,7 @@ async function getToken(): Promise<string> {
   if (credKey !== cachedCredKey) { cachedToken = null; tokenExpiry = 0; cachedCredKey = credKey; }
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken!;
   const creds = btoa(credKey);
-  const res = await tFetch("https://accounts.spotify.com/api/token", {
+  const res = await fetchWithTimeout("https://accounts.spotify.com/api/token", {
     method: "POST",
     headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials",
@@ -47,12 +54,20 @@ export interface SpotifyInfo {
   year: string;
   coverUrl: string;
   features: SpotifyFeatures | null;
+  matchPhase?: "exact" | "fuzzy";
 }
 
-async function searchTrackId(title: string, artist: string, token: string): Promise<{ id: string; album: string; year: string; coverUrl: string } | null> {
-  const clean = title.replace(/\.(mp3|flac|wav|aiff?)$/i, "").trim();
+const VERSION_PATTERN = /\s*[\[(](extended|radio|club|original|dub|instrumental|remix|mix|edit|version|vocal|acapella|live|acoustic|reprise|remaster\w*|feat\.?|ft\.?)(\s+[^\])]*)?[\])]\s*$/gi;
+const VERSION_DASH    = /\s+-\s+(extended|radio|club|original|dub|instrumental|remix|mix|edit|version|vocal|live|acoustic)\s*$/gi;
+
+function stripVersionInfo(title: string): string {
+  return title.replace(VERSION_PATTERN, "").replace(VERSION_DASH, "").trim();
+}
+
+async function querySpotify(term: string, artist: string, token: string): Promise<{ id: string; album: string; year: string; coverUrl: string } | null> {
+  const clean = term.replace(/\.(mp3|flac|wav|aiff?)$/i, "").trim();
   const q = artist ? `${clean} artist:${artist}` : clean;
-  const res = await tFetch(
+  const res = await fetchWithTimeout(
     `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -67,12 +82,31 @@ async function searchTrackId(title: string, artist: string, token: string): Prom
   };
 }
 
+async function searchTrackId(
+  title: string,
+  artist: string,
+  token: string,
+): Promise<{ id: string; album: string; year: string; coverUrl: string; matchPhase: "exact" | "fuzzy" } | null> {
+  // Fase 1 — nome completo (com versão)
+  const hit1 = await querySpotify(title, artist, token);
+  if (hit1) return { ...hit1, matchPhase: "exact" };
+
+  // Fase 2 — sem info de versão
+  const stripped = stripVersionInfo(title);
+  if (stripped && stripped !== title) {
+    const hit2 = await querySpotify(stripped, artist, token);
+    if (hit2) return { ...hit2, matchPhase: "fuzzy" };
+  }
+
+  return null;
+}
+
 async function getAudioFeatures(trackId: string, token: string): Promise<SpotifyFeatures | null> {
   try {
-    const res = await tFetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
+    const res = await fetchWithTimeout(`https://api.spotify.com/v1/audio-features/${trackId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.status === 403) return null; // deprecated for apps created after Nov 2024
+    if (res.status === 403) return null;
     const f = await res.json();
     if (typeof f.key !== "number" || f.key < 0) return null;
     return {
@@ -93,13 +127,12 @@ export async function enrichTrackFull(title: string, artist: string): Promise<Sp
     const track = await searchTrackId(title, artist, token);
     if (!track) return null;
     const features = await getAudioFeatures(track.id, token);
-    return { album: track.album, year: track.year, coverUrl: track.coverUrl, features };
+    return { album: track.album, year: track.year, coverUrl: track.coverUrl, features, matchPhase: track.matchPhase };
   } catch {
     return null;
   }
 }
 
-// Legacy - kept for backwards compatibility
 export async function enrichTrack(title: string, artist: string): Promise<SpotifyFeatures | null> {
   const info = await enrichTrackFull(title, artist);
   return info?.features ?? null;

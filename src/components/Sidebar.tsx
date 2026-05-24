@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAppStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
+  onAnalyzeBpmFolder?: (folderPath: string) => void;
 }
 
 interface DeleteDialogState {
@@ -11,7 +12,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder }: SidebarProps) {
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
@@ -20,6 +21,10 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
   const [subfolderMap, setSubfolderMap] = useState<Record<string, string[]>>({});
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites">("recent");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
+  const dragCounterRef = useRef(0);
 
   const clearFolderTracks = (path: string) => {
     if (path === lastFolder) {
@@ -76,80 +81,134 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
 
   const closeContextMenu = () => setContextMenu(null);
 
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounterRef.current++;
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+    // @ts-expect-error — Tauri expõe .path em File
+    const droppedPath: string = files[0].path;
+    if (!droppedPath) return;
+    // Verifica se a pasta já existe na lista
+    if (recentFolders.includes(droppedPath)) {
+      const name = droppedPath.split(/[\\/]/).filter(Boolean).pop() ?? droppedPath;
+      setDupDialog({ path: droppedPath, name });
+    } else {
+      onFolderSelect(droppedPath);
+    }
+  }
+
   return (
     <div
-      className="w-52 shrink-0 flex flex-col border-r border-white/[0.05] bg-[#0E0D0C] overflow-y-auto no-scrollbar"
+      className="w-full flex flex-col border-r border-white/[0.05] bg-[#0E0D0C] overflow-y-auto no-scrollbar relative"
       onClick={closeContextMenu}
+      onDragEnter={handleDragEnter}
+      onDragOver={(e) => e.preventDefault()}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      {/* Pasta atual */}
-      {lastFolder && (
-        <div className="px-3 pt-3 pb-2">
-          <p className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest mb-1.5">
-            Pasta atual
-          </p>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-[#a09890] truncate flex-1 flex items-center gap-1.5" title={lastFolder}>
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
-              {lastFolder.split(/[\\/]/).filter(Boolean).pop()}
-            </span>
-            <button
-              onClick={() => toggleFavorite(lastFolder)}
-              title={isFavorite(lastFolder) ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-              className="shrink-0 text-sm hover:scale-110 transition-transform text-[#D95340]"
-            >
-              {isFavorite(lastFolder) ? "★" : "☆"}
-            </button>
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 bg-[#0E0D0C]/90 border-2 border-dashed border-[#D95340]/60 rounded-sm pointer-events-none">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+            <path d="M3 7a2 2 0 012-2h3l2 3h9a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+          </svg>
+          <span className="text-[11px] font-semibold text-[#D95340]/80 text-center px-3">
+            Solte para adicionar pasta
+          </span>
+        </div>
+      )}
+
+      {/* Abas Recentes / Favoritos */}
+      {(recentFolders.length > 0 || favoriteFolders.length > 0) && (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Tab bar */}
+          <div className="flex px-3 pt-2 gap-0 border-b border-white/[0.05]">
+            {(["recent", "favorites"] as const).map((tab) => {
+              const label = tab === "recent" ? "Recentes" : "Favoritos";
+              const count = tab === "recent" ? recentFolders.length : favoriteFolders.length;
+              const active = sidebarTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setSidebarTab(tab)}
+                  className={`flex items-center gap-1.5 px-2 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
+                    active
+                      ? "text-[#F5F5F4] border-[#D95340]"
+                      : "text-[#605A55] border-transparent hover:text-[#8F8883]"
+                  }`}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span className={`text-[9px] font-mono tabular-nums px-1 py-px rounded-sm ${
+                      active ? "bg-[#D95340]/20 text-[#D95340]" : "bg-white/[0.05] text-[#605A55]"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </div>
-      )}
 
-      {lastFolder && <div className="h-px bg-white/[0.06] mx-3 my-1" />}
-
-      {/* Favoritos */}
-      {favoriteFolders.length > 0 && (
-        <div className="px-2 pt-2">
-          <p className="px-2 mb-1 text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest">
-            Favoritos
-          </p>
-          {favoriteFolders.map((f) => (
-            <FolderRow
-              key={f}
-              path={f}
-              isSelected={lastFolder === f}
-              isFavorite={isFavorite(f)}
-              isExpanded={expandedFolders.has(f)}
-              subfolders={subfolderMap[f] ?? null}
-              onOpen={() => onFolderSelect(f)}
-              onToggleExpand={() => toggleExpand(f)}
-              onContextMenu={(e) => handleContextMenu(e, f)}
-              onFolderSelect={onFolderSelect}
-              lastFolder={lastFolder}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Recentes */}
-      {recentFolders.length > 0 && (
-        <div className="px-2 pt-2">
-          <p className="px-2 mb-1 text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest">
-            Recentes
-          </p>
-          {recentFolders.map((f) => (
-            <FolderRow
-              key={f}
-              path={f}
-              isSelected={lastFolder === f}
-              isFavorite={isFavorite(f)}
-              isExpanded={expandedFolders.has(f)}
-              subfolders={subfolderMap[f] ?? null}
-              onOpen={() => onFolderSelect(f)}
-              onToggleExpand={() => toggleExpand(f)}
-              onContextMenu={(e) => handleContextMenu(e, f)}
-              onFolderSelect={onFolderSelect}
-              lastFolder={lastFolder}
-            />
-          ))}
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
+            {sidebarTab === "recent" && (
+              recentFolders.length > 0
+                ? recentFolders.map((f) => (
+                    <FolderRow
+                      key={f}
+                      path={f}
+                      isSelected={lastFolder === f}
+                      isFavorite={isFavorite(f)}
+                      isExpanded={expandedFolders.has(f)}
+                      subfolders={subfolderMap[f] ?? null}
+                      onOpen={() => onFolderSelect(f)}
+                      onToggleExpand={() => toggleExpand(f)}
+                      onToggleFavorite={() => toggleFavorite(f)}
+                      onContextMenu={(e) => handleContextMenu(e, f)}
+                      onFolderSelect={onFolderSelect}
+                      lastFolder={lastFolder}
+                    />
+                  ))
+                : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
+            )}
+            {sidebarTab === "favorites" && (
+              favoriteFolders.length > 0
+                ? favoriteFolders.map((f) => (
+                    <FolderRow
+                      key={f}
+                      path={f}
+                      isSelected={lastFolder === f}
+                      isFavorite={isFavorite(f)}
+                      isExpanded={expandedFolders.has(f)}
+                      subfolders={subfolderMap[f] ?? null}
+                      onOpen={() => onFolderSelect(f)}
+                      onToggleExpand={() => toggleExpand(f)}
+                      onToggleFavorite={() => toggleFavorite(f)}
+                      onContextMenu={(e) => handleContextMenu(e, f)}
+                      onFolderSelect={onFolderSelect}
+                      lastFolder={lastFolder}
+                    />
+                  ))
+                : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhum favorito ainda — marque uma pasta com ★</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -169,6 +228,32 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
           })()}
         </p>
       </div>
+
+      {/* Duplicate folder dialog */}
+      {dupDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
+            <h3 className="text-sm font-semibold text-[#F5F5F4] mb-2">Pasta já existe</h3>
+            <p className="text-xs text-[#8F8883] mb-5">
+              <span className="text-[#C2BEBC] font-medium">"{dupDialog.name}"</span> já está na sua lista de pastas recentes. Deseja recarregá-la?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="w-full py-2 rounded-lg bg-[#D95340] hover:bg-[#E07364] text-white text-sm font-medium transition-colors"
+                onClick={() => { onFolderSelect(dupDialog.path); setDupDialog(null); }}
+              >
+                Sim, recarregar
+              </button>
+              <button
+                className="w-full py-2 rounded-lg bg-transparent hover:bg-white/5 text-[#756D67] text-sm transition-colors"
+                onClick={() => setDupDialog(null)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -190,6 +275,17 @@ export default function Sidebar({ onFolderSelect }: SidebarProps) {
             <span className="text-[#D95340]">{isFavorite(contextMenu.path) ? "☆" : "★"}</span>
             {isFavorite(contextMenu.path) ? "Remover dos Favoritos" : "Adicionar aos Favoritos"}
           </button>
+          {onAnalyzeBpmFolder && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={() => { onAnalyzeBpmFolder(contextMenu.path); closeContextMenu(); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60">
+                <path d="M1 5.5a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-2a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-5a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 8a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0-4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm2-2a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5zm0 4a.5.5 0 01.5-.5h1a.5.5 0 010 1h-1a.5.5 0 01-.5-.5z"/>
+              </svg>
+              Analisar BPM da pasta
+            </button>
+          )}
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
@@ -258,14 +354,15 @@ interface FolderRowProps {
   subfolders: string[] | null;
   onOpen: () => void;
   onToggleExpand: () => void;
+  onToggleFavorite?: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onFolderSelect: (path: string) => void;
   lastFolder: string | null;
 }
 
 function FolderRow({
-  path, isSelected, isExpanded, subfolders,
-  onOpen, onToggleExpand, onContextMenu, onFolderSelect, lastFolder
+  path, isSelected, isFavorite, isExpanded, subfolders,
+  onOpen, onToggleExpand, onToggleFavorite, onContextMenu, onFolderSelect, lastFolder
 }: FolderRowProps) {
   const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const hasSubs = subfolders === null || subfolders.length > 0;
@@ -290,7 +387,7 @@ function FolderRow({
         <button
           onClick={onOpen}
           onContextMenu={onContextMenu}
-          className={`flex-1 flex items-center gap-1.5 px-1.5 py-1.5 rounded-md text-xs transition-colors text-left truncate
+          className={`flex-1 flex items-center gap-1.5 px-1.5 py-1.5 rounded-md text-xs transition-colors text-left min-w-0
             ${isSelected
               ? "bg-[#D95340]/15 text-[#F5F5F4] border border-[#D95340]/20"
               : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
@@ -298,8 +395,21 @@ function FolderRow({
           title={path}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
-          {name}
+          <span className="truncate flex-1">{name}</span>
         </button>
+        {onToggleFavorite && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+            title={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+            className={`shrink-0 w-5 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
+              isFavorite ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#D95340]"
+            }`}
+          >
+            <svg width="10" height="10" viewBox="0 0 12 12" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+              <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Subfolders */}

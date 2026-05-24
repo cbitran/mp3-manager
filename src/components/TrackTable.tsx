@@ -14,7 +14,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Track } from "../store";
 import { setAutoPlayOnLoad } from "../store";
-import WaveformCell from "./WaveformCell";
+import { openPath } from "@tauri-apps/plugin-opener";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { queuedInvoke } from "../lib/ipcQueue";
 
@@ -70,21 +70,29 @@ function CoverCell({ path, hasCover }: { path: string; hasCover: boolean }) {
       .catch(() => setSrc(null));
   }, [path, hasCover]);
   if (!src) return (
-    <div className="w-7 h-7 rounded-sm bg-white/[0.04] border border-white/[0.05] flex items-center justify-center">
+    <div className="w-7 h-7 rounded-sm bg-white/[0.04] border border-white/[0.05] flex items-center justify-center mx-auto">
       <svg width="9" height="9" viewBox="0 0 11 11" fill="currentColor" className="text-[#373331]"><path d="M1 2.5A1.5 1.5 0 012.5 1h6A1.5 1.5 0 0110 2.5v6A1.5 1.5 0 018.5 10h-6A1.5 1.5 0 011 8.5v-6zM4 4a1 1 0 100-2 1 1 0 000 2zm-2 4l2-2 1 1 2-3 2 4H2z"/></svg>
     </div>
   );
-  return <img src={src} alt="" className="w-7 h-7 rounded-sm object-cover shrink-0" />;
+  return <img src={src} alt="" className="w-7 h-7 rounded-sm object-cover mx-auto block" />;
 }
+
+const LEFT_COLS = new Set(["title_artist", "album", "artist", "comment"]);
 
 export default function TrackTable({
   tracks,
   compact = false,
   hasFolder = false,
+  onVideoPlay,
+  enrichingIds,
+  enrichDoneIds,
 }: {
   tracks: Track[];
   compact?: boolean;
   hasFolder?: boolean;
+  onVideoPlay?: (track: Track) => void;
+  enrichingIds?: Set<string>;
+  enrichDoneIds?: Set<string>;
 }) {
   const {
     selectedIds,
@@ -101,6 +109,8 @@ export default function TrackTable({
     removeTracks,
   } = useAppStore();
 
+  const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
+
   const anchorIdRef = useRef<string | null>(null);
   const sortedRowsRef = useRef<Array<{id: string}>>([]);
 
@@ -111,9 +121,27 @@ export default function TrackTable({
     } catch { return []; }
   });
 
+  const COL_MIN_SIZES: Record<string, number> = {
+    title_artist: 200, album: 140, genre: 90, artist: 100,
+    year_col: 52, status: 36, file_size: 52, key: 56, bpm: 64,
+    rating: 56, duration_secs: 60, bitrate: 56, tipo: 50,
+    adicionada: 80, comment: 100, favorite: 28, select: 32, capa: 52,
+  };
+
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
-    try { return JSON.parse(localStorage.getItem("tagwave_col_sizes") ?? "{}"); }
-    catch { return {}; }
+    try {
+      const saved = JSON.parse(localStorage.getItem("tagwave_col_sizes") ?? "{}") as ColumnSizingState;
+      // Reseta tamanhos abaixo do mínimo permitido
+      const validated: ColumnSizingState = {};
+      let changed = false;
+      for (const [id, size] of Object.entries(saved)) {
+        const min = COL_MIN_SIZES[id] ?? 40;
+        if (size >= min) { validated[id] = size; }
+        else { changed = true; }
+      }
+      if (changed) localStorage.setItem("tagwave_col_sizes", JSON.stringify(validated));
+      return validated;
+    } catch { return {}; }
   });
 
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
@@ -124,6 +152,7 @@ export default function TrackTable({
   });
   const dragColIdRef = useRef<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
+  const [draggingColId, setDraggingColId] = useState<string | null>(null);
 
   const DEFAULT_VISIBILITY: VisibilityState = {
     tipo: false,
@@ -133,8 +162,6 @@ export default function TrackTable({
 
   const mergedVisibility: VisibilityState = { ...DEFAULT_VISIBILITY, ...columnVisibility };
 
-  const [showColPicker, setShowColPicker] = useState(false);
-  const colPickerRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; track: Track } | null>(null);
   const contextRef = useRef<HTMLDivElement>(null);
   const [playlistTracks, setPlaylistTracks] = useState<Track[] | null>(null);
@@ -199,7 +226,11 @@ export default function TrackTable({
       col.display({
         id: "favorite",
         enableHiding: false,
-        header: () => null,
+        header: () => (
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" className="text-[#8F8883] mx-auto">
+            <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
+          </svg>
+        ),
         cell: ({ row }) => (
           <button
             onClick={(e) => { e.stopPropagation(); toggleTrackFavorite(row.original.path); }}
@@ -244,8 +275,7 @@ export default function TrackTable({
         id: "capa",
         header: () => <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Capa</span>,
         cell: ({ row }) => <CoverCell path={row.original.path} hasCover={row.original.has_cover} />,
-        size: 44,
-        enableResizing: false,
+        size: 60, minSize: 52,
       }),
 
       // TÍTULO / ARTISTA (stacked com cleanup badge inline)
@@ -259,8 +289,8 @@ export default function TrackTable({
           const hasIssues = issues.length > 0;
           return (
             <div className="min-w-0">
-              <div className="flex items-start gap-2 min-w-0">
-                <span className={`leading-snug [overflow-wrap:anywhere] ${
+              <div className="flex items-start justify-between gap-2 min-w-0">
+                <span className={`min-w-0 leading-snug [overflow-wrap:anywhere] ${
                   title
                     ? "text-[13px] font-medium text-[#F5F5F4]"
                     : "text-xs italic text-[#4C4743]"
@@ -281,7 +311,7 @@ export default function TrackTable({
             </div>
           );
         },
-        size: 280,
+        size: 280, minSize: 200,
       }),
 
       // ÁLBUM
@@ -302,13 +332,13 @@ export default function TrackTable({
         header: "Gênero",
         cell: (i) =>
           i.getValue() ? (
-            <span className="inline-block px-1.5 py-px rounded-sm text-[10px] uppercase tracking-wide bg-white/[0.06] text-[#a09890]">
+            <span className="inline-block px-1.5 py-px rounded-sm text-[10px] uppercase tracking-wide bg-white/[0.06] text-[#a09890] whitespace-nowrap truncate max-w-full">
               {i.getValue()}
             </span>
           ) : (
             <span className="text-[#605A55] text-xs">—</span>
           ),
-        size: 110,
+        size: 110, minSize: 90,
       }),
 
       // ARTISTA standalone
@@ -321,7 +351,7 @@ export default function TrackTable({
           ) : (
             <span className="text-[#605A55] text-xs">—</span>
           ),
-        size: 140,
+        size: 140, minSize: 100,
       }),
 
       // ANO
@@ -334,13 +364,13 @@ export default function TrackTable({
           ) : (
             <span className="text-[#605A55] text-xs">—</span>
           ),
-        size: 56,
+        size: 60, minSize: 52,
       }),
 
       // STATUS ●
       col.accessor("issues", {
         id: "status",
-        header: "●",
+        header: () => null,
         cell: (i) => {
           const n = i.getValue().length;
           const color = n === 0 ? "#5BA055" : n > 2 ? "#D95340" : "#E07364";
@@ -352,7 +382,7 @@ export default function TrackTable({
             />
           );
         },
-        size: 36,
+        size: 40, minSize: 36,
       }),
 
       // TAMANHO (MB)
@@ -367,15 +397,7 @@ export default function TrackTable({
             </span>
           );
         },
-        size: 56,
-      }),
-
-      // WAVE
-      col.display({
-        id: "waveform",
-        header: "Onda",
-        cell: ({ row }) => <WaveformCell path={row.original.path} />,
-        size: 110,
+        size: 64, minSize: 52,
       }),
 
       // TOM (Camelot)
@@ -396,7 +418,7 @@ export default function TrackTable({
             </span>
           );
         },
-        size: 60,
+        size: 68, minSize: 56,
       }),
 
       // BPM
@@ -408,7 +430,7 @@ export default function TrackTable({
           if (!val) return <span className="text-[#605A55] text-xs">—</span>;
           return (
             <span
-              className={`text-[12px] font-mono tabular-nums flex items-center gap-1 ${
+              className={`text-[12px] font-mono tabular-nums flex items-center justify-center gap-1 ${
                 compat ? "text-[#5BA055] font-bold" : "text-[#c9bfb8]"
               }`}
             >
@@ -419,17 +441,17 @@ export default function TrackTable({
             </span>
           );
         },
-        size: 72,
+        size: 80, minSize: 64,
       }),
 
       // RATING
       col.accessor("rating", {
-        header: "★",
+        header: "Nota",
         cell: (i) => {
           const r = i.getValue();
           if (!r || r === 0) return <span className="text-[#605A55] text-[10px]">—</span>;
           return (
-            <span className="flex gap-px">
+            <span className="flex gap-px justify-center">
               {Array.from({ length: 5 }).map((_, idx) => (
                 <svg key={idx} width="8" height="8" viewBox="0 0 12 12" fill={idx < r ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" className={idx < r ? "text-[#D95340]" : "text-[#4C4743]"}>
                   <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
@@ -438,7 +460,7 @@ export default function TrackTable({
             </span>
           );
         },
-        size: 60,
+        size: 68, minSize: 56,
       }),
 
       // DURAÇÃO
@@ -455,7 +477,27 @@ export default function TrackTable({
             </span>
           );
         },
-        size: 60,
+        size: 72, minSize: 60,
+      }),
+
+      // BITRATE (kbps)
+      col.accessor("bitrate_kbps", {
+        id: "bitrate",
+        header: "kbps",
+        cell: (i) => {
+          const v = i.getValue();
+          if (!v) return <span className="text-[#605A55] text-xs">—</span>;
+          const color = v >= 320 ? "#5BA055" : v >= 192 ? "#C9A84C" : "#D95340";
+          return (
+            <span
+              className="text-[11px] font-mono tabular-nums font-semibold"
+              style={{ color }}
+            >
+              {v}
+            </span>
+          );
+        },
+        size: 68, minSize: 56,
       }),
 
       // TIPO (formato do arquivo)
@@ -465,7 +507,7 @@ export default function TrackTable({
         cell: (i) => i.getValue()
           ? <span className="px-1 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-white/[0.04] text-[#605A55]">{i.getValue()}</span>
           : <span className="text-[#605A55] text-xs">—</span>,
-        size: 56,
+        size: 60, minSize: 50,
       }),
 
       // ADICIONADA (data de modificação)
@@ -478,7 +520,7 @@ export default function TrackTable({
           const d = new Date(ts * 1000);
           return <span className="text-[11px] font-mono text-[#8F8883]">{d.toLocaleDateString("pt-BR")}</span>;
         },
-        size: 90,
+        size: 96, minSize: 80,
       }),
 
       // COMENTÁRIO
@@ -565,12 +607,20 @@ export default function TrackTable({
     [toggleSelect, selectAll, clearSelection]
   );
 
+  const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);
+
   const handleRowDoubleClick = useCallback(
     (id: string) => {
+      const track = allTracks.find((t) => t.id === id);
+      if (track && VIDEO_EXTS.has((track.format ?? "").toLowerCase())) {
+        if (onVideoPlay) { onVideoPlay(track); return; }
+        openPath(track.path).catch(() => {});
+        return;
+      }
       setAutoPlayOnLoad();
       setPlayerTrack(id);
     },
-    [setPlayerTrack]
+    [setPlayerTrack, allTracks, onVideoPlay]
   );
 
   const handleContextMenu = useCallback(
@@ -592,16 +642,6 @@ export default function TrackTable({
     };
   }, [contextMenu]);
 
-  useEffect(() => {
-    if (!showColPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
-        setShowColPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showColPicker]);
 
   if (tracks.length === 0) {
     return (
@@ -616,30 +656,39 @@ export default function TrackTable({
 
   const rowH = compact ? "py-1" : "py-2.5";
 
-  const hideableColumns = table.getAllColumns().filter((c) => c.getCanHide());
 
   return (
     <>
     <div className="flex-1 overflow-auto select-none">
-      <table className="w-full text-sm border-collapse table-fixed">
+      <table className="text-sm border-collapse table-fixed" style={{ width: "100%", minWidth: table.getTotalSize() + 40 }}>
         <thead className="sticky top-0 z-10 bg-[#0E0D0C]">
           <tr>
             {/* Row number header */}
-            <th className="w-10 px-3 py-2.5 text-right border-b border-white/[0.05]">
+            <th className="w-10 px-3 py-2.5 text-center border-b border-white/[0.05]"
+              style={{ boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)' }}>
               <span className="text-[10px] font-bold text-[#8F8883] uppercase tracking-wider">#</span>
             </th>
             {table.getHeaderGroups()[0]?.headers.map((header) => (
               <th
                 key={header.id}
                 data-col-id={header.id}
-                style={{ width: header.getSize(), position: 'relative' }}
-                className={`px-3 py-2.5 text-left text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] cursor-pointer select-none whitespace-nowrap transition-colors ${
-                  dragOverColId === header.id ? 'border-l-2 border-l-[#D95340] bg-white/[0.02]' : ''
+                style={{
+                  width: header.getSize(),
+                  position: 'relative',
+                  opacity: draggingColId === header.id ? 0.35 : 1,
+                  transition: 'opacity 0.15s',
+                  boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)',
+                }}
+                className={`px-3 py-2.5 text-[10px] font-bold text-[#8F8883] uppercase tracking-wider border-b border-white/[0.05] select-none whitespace-nowrap ${
+                  LEFT_COLS.has(header.id) ? 'text-left' : 'text-center'
+                } ${
+                  dragOverColId === header.id
+                    ? 'border-l-2 border-l-[#D95340] bg-[#D95340]/[0.06]'
+                    : 'border-l border-l-transparent'
                 }`}
                 onClick={header.column.getToggleSortingHandler()}
                 onMouseDown={(e) => {
                   if (e.button !== 0) return;
-                  // Don't start col-drag if clicking the resize handle
                   if ((e.target as HTMLElement).closest('[data-resize]')) return;
 
                   const startX = e.clientX;
@@ -648,9 +697,11 @@ export default function TrackTable({
 
                   const onMove = (mv: MouseEvent) => {
                     if (!dragging) {
-                      if (Math.abs(mv.clientX - startX) > 5 || Math.abs(mv.clientY - startY) > 5) {
+                      if (Math.abs(mv.clientX - startX) > 6 || Math.abs(mv.clientY - startY) > 6) {
                         dragging = true;
                         dragColIdRef.current = header.id;
+                        setDraggingColId(header.id);
+                        document.body.style.cursor = 'grabbing';
                       }
                     }
                     if (!dragging) return;
@@ -663,8 +714,9 @@ export default function TrackTable({
                   const onUp = (up: MouseEvent) => {
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    setDraggingColId(null);
                     if (!dragging) { dragColIdRef.current = null; return; }
-                    // Block the click event that fires after mouseup from triggering sort
                     document.addEventListener('click', (ce) => ce.stopPropagation(), { once: true, capture: true });
                     const el = document.elementFromPoint(up.clientX, up.clientY);
                     const th = el?.closest('th[data-col-id]');
@@ -689,14 +741,23 @@ export default function TrackTable({
                   document.addEventListener('mouseup', onUp);
                 }}
               >
-                <span className="flex items-center gap-1">
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                  {header.column.getIsSorted() === "asc" && (
-                    <span className="text-[#D95340]">↑</span>
-                  )}
-                  {header.column.getIsSorted() === "desc" && (
-                    <span className="text-[#D95340]">↓</span>
-                  )}
+                <span className={`flex items-center gap-1.5 cursor-grab group ${LEFT_COLS.has(header.id) ? 'justify-start' : 'justify-center'}`}>
+                  {/* Handle de drag — visível no hover */}
+                  <span className="opacity-0 group-hover:opacity-40 transition-opacity text-[#8F8883] text-[9px] leading-none select-none" style={{ letterSpacing: '-1px' }}>
+                    ⠿
+                  </span>
+                  <span
+                    className="flex items-center gap-1 cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); header.column.getToggleSortingHandler()?.(e); }}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === "asc" && (
+                      <span className="text-[#D95340]">↑</span>
+                    )}
+                    {header.column.getIsSorted() === "desc" && (
+                      <span className="text-[#D95340]">↓</span>
+                    )}
+                  </span>
                 </span>
                 {header.column.getCanResize() && (
                   <div
@@ -710,96 +771,29 @@ export default function TrackTable({
                 )}
               </th>
             ))}
-            {/* Column picker button */}
-            <th className="border-b border-white/[0.05] pr-2 text-right w-8">
-              <div className="relative inline-block" ref={colPickerRef}>
-                <button
-                  onClick={() => setShowColPicker((v) => !v)}
-                  title="Gerenciar colunas"
-                  className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                    showColPicker
-                      ? "bg-white/[0.08] text-[#D95340]"
-                      : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.04]"
-                  }`}
-                >
-                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                    <rect x="1" y="1" width="3" height="3" rx="0.5"/>
-                    <rect x="1" y="7" width="3" height="3" rx="0.5"/>
-                    <rect x="7" y="1" width="3" height="3" rx="0.5"/>
-                    <rect x="7" y="7" width="3" height="3" rx="0.5"/>
-                  </svg>
-                </button>
-                {showColPicker && (
-                  <div className="absolute right-0 top-full mt-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl py-2 z-[200] min-w-[160px]">
-                    <p className="px-3 pb-1.5 text-[9px] font-bold text-[#605A55] uppercase tracking-widest border-b border-white/[0.05]">
-                      Colunas
-                    </p>
-                    <div className="py-1">
-                      {hideableColumns.map((col) => (
-                        <label
-                          key={col.id}
-                          className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-white/[0.04] transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={col.getIsVisible()}
-                            onChange={col.getToggleVisibilityHandler()}
-                            className="accent-[#D95340]"
-                          />
-                          <span className="text-[11px] text-[#C2BEBC] capitalize">
-                            {col.id === "title_artist" ? "Título / Artista"
-                              : col.id === "duration_secs" ? "Duração"
-                              : col.id === "waveform" ? "Onda"
-                              : col.id === "key" ? "Tom"
-                              : col.id === "genre" ? "Gênero"
-                              : col.id === "album" ? "Álbum"
-                              : col.id === "rating" ? "Rating"
-                              : col.id === "artist" ? "Artista"
-                              : col.id === "year_col" ? "Ano"
-                              : col.id === "status" ? "Status"
-                              : col.id === "file_size" ? "Tamanho"
-                              : col.id === "capa" ? "Capa"
-                              : col.id === "tipo" ? "Tipo"
-                              : col.id === "adicionada" ? "Adicionada"
-                              : col.id === "comment" ? "Comentário"
-                              : col.id}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="border-t border-white/[0.05] pt-1.5 px-3 mt-0.5">
-                      <button
-                        onClick={() => {
-                          const reset: VisibilityState = {};
-                          hideableColumns.forEach((c) => { reset[c.id] = true; });
-                          setColumnVisibility(reset);
-                        }}
-                        className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
-                      >
-                        Mostrar todas
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </th>
           </tr>
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row, i) => {
             const selected = selectedIds.has(row.id);
             const isPlaying = playerTrackId === row.id;
+            const isEnriching = enrichingIds?.has(row.id) ?? false;
+            const isEnrichDone = enrichDoneIds?.has(row.id) ?? false;
             return (
               <tr
                 key={row.id}
                 onClick={(e) => handleRowClick(row.id, i, e)}
                 onDoubleClick={() => handleRowDoubleClick(row.id)}
                 onContextMenu={(e) => handleContextMenu(e, row.original)}
-                className={`border-b cursor-pointer transition-all duration-100 ${
-                  isPlaying
+                className={`cursor-pointer transition-all duration-150 border-b ${
+                  isEnriching
+                    ? "bg-[#D95340]/[0.07] border-[#D95340]/[0.10]"
+                    : isEnrichDone
+                    ? "bg-[#D95340]/[0.13] border-[#D95340]/[0.15]"
+                    : isPlaying
                     ? "bg-[#D95340]/[0.05] border-[#D95340]/[0.08]"
                     : selected
-                    ? "bg-white/[0.035] border-white/[0.04]"
+                    ? "track-row-selected border-white/[0.04]"
                     : "border-white/[0.03] hover:bg-white/[0.015]"
                 }`}
               >
@@ -827,9 +821,11 @@ export default function TrackTable({
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
-                    className={`px-3 ${rowH} max-w-0 overflow-hidden align-middle`}
+                    className={`px-2 ${rowH} overflow-hidden align-middle`}
                   >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    <div className={`flex items-center min-w-0 ${LEFT_COLS.has(cell.column.id) ? 'justify-start' : 'justify-center'}`}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
                   </td>
                 ))}
               </tr>
@@ -849,11 +845,54 @@ export default function TrackTable({
       >
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
-          onClick={() => { setPlayerTrack(contextMenu.track.id); setContextMenu(null); }}
+          onClick={() => {
+            const isVideo = VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase());
+            if (isVideo) {
+              if (onVideoPlay) { onVideoPlay(contextMenu.track); }
+              else { openPath(contextMenu.track.path).catch(() => {}); }
+            } else {
+              setPlayerTrack(contextMenu.track.id);
+            }
+            setContextMenu(null);
+          }}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
-          Tocar
+          {VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) ? "Reproduzir vídeo" : "Tocar"}
         </button>
+        {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
+        {!VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) && (
+          <button
+            className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2 disabled:opacity-40"
+            disabled={analyzingBpmId === contextMenu.track.id}
+            onClick={async () => {
+              const track = contextMenu.track;
+              setContextMenu(null);
+              setAnalyzingBpmId(track.id);
+              try {
+                const bpm = await invoke<number | null>("analyze_bpm", {
+                  path: track.path,
+                  durationSecs: track.duration_secs ?? 0,
+                });
+                if (bpm !== null) {
+                  const bpmStr = bpm.toFixed(1).replace(".0", "");
+                  await invoke("save_tags", {
+                    path: track.path, title: track.title ?? null, artist: track.artist ?? null,
+                    album: track.album ?? null, genre: track.genre ?? null, year: track.year ?? null,
+                    trackNumber: track.track_number ?? null, bpm: bpmStr,
+                    key: track.key ?? null, rating: track.rating ?? null,
+                  });
+                  useAppStore.getState().updateTrack({ ...track, bpm: bpmStr });
+                }
+              } catch { /* silencioso */ }
+              finally { setAnalyzingBpmId(null); }
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-70">
+              <path d="M1 8l2-4 2 2.5 2-5 2 3 1-2"/>
+            </svg>
+            {analyzingBpmId === contextMenu.track.id ? "Analisando…" : "Analisar BPM"}
+          </button>
+        )}
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
           onClick={() => {

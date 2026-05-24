@@ -32,6 +32,7 @@ rayon = "1"
 sha2 = "0.10"
 trash = "3"
 reqwest = { version = "0.12", features = ["rustls-tls", "json"], default-features = false }
+tokio = { version = "1", features = ["time"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"

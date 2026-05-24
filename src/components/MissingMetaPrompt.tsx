@@ -21,7 +21,7 @@ export default function MissingMetaPrompt({
           </div>
           <div>
             <p className="text-sm font-bold text-[#F5F5F4]">Metadados Incompletos</p>
-            <p className="text-xs text-[#4C4743]">{totalTracks} faixas carregadas</p>
+            <p className="text-xs text-[#756D67]">{totalTracks} faixas carregadas</p>
           </div>
         </div>
 
@@ -78,15 +78,16 @@ function MetaRow({
         className="w-1.5 h-1.5 rounded-full shrink-0"
         style={{ backgroundColor: `rgba(220,85,71,${opacity})` }}
       />
-      <span className="text-[11px] text-[#605A55] w-12 shrink-0">{label}</span>
+      <span className="text-[11px] text-[#A8A3A0] w-12 shrink-0">{label}</span>
       <div className="flex-1 h-0.5 bg-white/[0.06] rounded-full overflow-hidden">
         <div
           className="h-full rounded-full"
           style={{ width: `${pct}%`, backgroundColor: `rgba(220,85,71,${opacity})` }}
         />
       </div>
-      <span className="text-[10px] text-[#373331] w-16 text-right shrink-0 font-mono tabular-nums">
-        {count} de {total}
+      <span className="text-[10px] text-right shrink-0 font-mono tabular-nums whitespace-nowrap">
+        <span className="text-[#D95340] font-bold">{count}</span>
+        <span className="text-[#8F8883]"> de {total}</span>
       </span>
     </div>
   );

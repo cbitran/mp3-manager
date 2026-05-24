@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
-  const { setTracks, clearSelection } = useAppStore();
+  const { setTracks, clearSelection, recentFolders, removeRecentFolder, lastFolder, setLastFolder } = useAppStore();
   const allTracks = useAppStore((s) => s.tracks);
 
   const title =
@@ -29,8 +29,19 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
 
   function removeFromState() {
     const ids = new Set(tracks.map((t) => t.id));
-    setTracks(allTracks.filter((t) => !ids.has(t.id)));
+    const remaining = allTracks.filter((t) => !ids.has(t.id));
+    setTracks(remaining);
     clearSelection();
+
+    // Se uma pasta ficou sem nenhuma faixa, remove-a dos recentes
+    for (const folder of recentFolders) {
+      const hasTrack = remaining.some((t) => t.path.startsWith(folder));
+      if (!hasTrack) {
+        removeRecentFolder(folder);
+        if (lastFolder === folder) setLastFolder(null);
+      }
+    }
+
     onClose();
   }
 

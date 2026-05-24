@@ -43,8 +43,8 @@ function Field({ label, value, onChange, disabled, placeholder, mono, multiline 
   );
 }
 
-export default function Inspector() {
-  const { selectedIds, tracks, updateTrack, setPlayerTrack, playerTrackId, isPlayingGlobal } = useAppStore();
+export default function Inspector({ onClose, embedded }: { onClose?: () => void; embedded?: boolean } = {}) {
+  const { selectedIds, tracks, updateTrack, playerTrackId, isPlayingGlobal, clearSelection } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
@@ -137,11 +137,12 @@ export default function Inspector() {
         }
       }
     } catch { /* silent */ }
-
-    setEnriching(false);
-    setEnrichSummary(
-      gained.length > 0 ? `✓ ${gained.join(" · ")}` : "Nenhum dado novo encontrado"
-    );
+    finally {
+      setEnriching(false);
+      setEnrichSummary(
+        gained.length > 0 ? `✓ ${gained.join(" · ")}` : "Nenhum dado novo encontrado"
+      );
+    }
   }
 
   async function handleSave() {
@@ -194,117 +195,148 @@ export default function Inspector() {
   if (!first) return null;
 
   return (
-    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto no-scrollbar">
+    <div className={`${embedded ? "flex-1 flex flex-col overflow-hidden" : "w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C]"}`}>
+      {/* Área scrollável */}
+      <div className="flex-1 overflow-y-auto no-scrollbar">
 
-      {/* NOW SELECTED header */}
-      <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
-        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-2">
-          {isBatch ? `${selectedArr.length} selecionadas` : "Selecionado"}
-        </p>
-        {!isBatch && (
-          <>
-            <p className="text-sm font-semibold text-[#F5F5F4] leading-snug truncate">
-              {first.title ?? first.filename}
+      {/* Header — só quando não embedded */}
+      {!embedded && (
+        <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em]">
+              {isBatch ? `${selectedArr.length} selecionadas` : "Selecionado"}
             </p>
-            {first.artist && (
-              <p className="text-[11px] text-[#8F8883] mt-0.5 truncate">{first.artist}</p>
-            )}
-          </>
-        )}
-      </div>
+            <button
+              onClick={() => { clearSelection(); onClose?.(); }}
+              title="Fechar"
+              className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="1" y1="1" x2="7" y2="7"/>
+                <line x1="7" y1="1" x2="1" y2="7"/>
+              </svg>
+            </button>
+          </div>
+          {!isBatch && (
+            <>
+              <p className="text-sm font-semibold text-[#F5F5F4] leading-snug truncate">
+                {first.title ?? first.filename}
+              </p>
+              {first.artist && (
+                <p className="text-[11px] text-[#8F8883] mt-0.5 truncate">{first.artist}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Track info quando embedded */}
+      {embedded && !isBatch && (
+        <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
+          <p className="text-sm font-semibold text-[#F5F5F4] leading-snug truncate">
+            {first.title ?? first.filename}
+          </p>
+          {first.artist && (
+            <p className="text-[11px] text-[#8F8883] mt-0.5 truncate">{first.artist}</p>
+          )}
+        </div>
+      )}
+      {embedded && isBatch && (
+        <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
+          <p className="text-[11px] text-[#8F8883]">{selectedArr.length} faixas selecionadas</p>
+        </div>
+      )}
 
       {/* Disco de vinil */}
       {!isBatch && (
-        <div
-          className="mx-3 mt-3 relative group"
-          style={{ aspectRatio: "1/1" }}
-        >
-          {/* Wrapper com folga para o disco não cortar nas bordas */}
-          <div className="absolute" style={{ inset: "6px" }}>
-          {/* Disco — gira apenas quando tocando */}
+        <div>
           <div
-            className="absolute inset-0 rounded-full overflow-hidden"
-            style={{
-              background: "#100e0d",
-              animation: isVinylPlaying ? "vinyl-spin 4s linear infinite" : undefined,
-            }}
+            className="mx-8 mt-3 relative group"
+            style={{ aspectRatio: "1/1" }}
           >
-            {/* Ranhuras SVG — alta visibilidade */}
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
-              {/* Groove tracks: 20 rings de r=47.5 até r=29, passo ~1px */}
-              {Array.from({ length: 20 }, (_, i) => {
-                const r = 47.5 - i * 0.95;
-                return (
-                  <g key={i}>
-                    <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.42" />
-                    <circle cx="50" cy="50" r={r - 0.38} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="0.3" />
-                  </g>
-                );
-              })}
-              {/* Anel separador do label — destaque visual */}
-              <circle cx="50" cy="50" r="28.5" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7" />
-              <circle cx="50" cy="50" r="27.5" fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="0.5" />
-            </svg>
+            {/* Wrapper com folga para o disco não cortar nas bordas */}
+            <div className="absolute" style={{ inset: "6px" }}>
+              {/* Disco — gira apenas quando tocando */}
+              <div
+                className="absolute inset-0 rounded-full overflow-hidden"
+                style={{
+                  background: "#100e0d",
+                  animation: isVinylPlaying ? "vinyl-spin 4s linear infinite" : undefined,
+                }}
+              >
+                {/* Ranhuras SVG — alta visibilidade */}
+                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
+                  {Array.from({ length: 20 }, (_, i) => {
+                    const r = 47.5 - i * 0.95;
+                    return (
+                      <g key={i}>
+                        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="0.42" />
+                        <circle cx="50" cy="50" r={r - 0.38} fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="0.3" />
+                      </g>
+                    );
+                  })}
+                  <circle cx="50" cy="50" r="28.5" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7" />
+                  <circle cx="50" cy="50" r="27.5" fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="0.5" />
+                </svg>
 
-            {/* Label central com a capa */}
-            <div
-              className="absolute rounded-full overflow-hidden"
-              style={{ width: "53%", height: "53%", top: "23.5%", left: "23.5%" }}
-            >
-              {coverDataUrl ? (
-                <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center" style={{ background: "#1c1714" }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#4C4743">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                  </svg>
+                {/* Label central com a capa */}
+                <div
+                  className="absolute rounded-full overflow-hidden"
+                  style={{ width: "53%", height: "53%", top: "23.5%", left: "23.5%" }}
+                >
+                  {coverDataUrl ? (
+                    <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center" style={{ background: "#1c1714" }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#4C4743">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                      </svg>
+                    </div>
+                  )}
                 </div>
+
+                {/* Buraco central */}
+                <div
+                  className="absolute rounded-full"
+                  style={{
+                    width: "7%", height: "7%",
+                    top: "46.5%", left: "46.5%",
+                    background: "#080706",
+                    boxShadow: "inset 0 1px 3px rgba(0,0,0,1)",
+                    zIndex: 10,
+                  }}
+                />
+              </div>
+
+              {/* Reflexo estático */}
+              <div
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{
+                  background: "radial-gradient(ellipse at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 52%)",
+                }}
+              />
+
+              {/* Sombra e brilho coral quando tocando */}
+              <div
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{
+                  boxShadow: isVinylPlaying
+                    ? "0 0 30px rgba(217,83,64,0.22), 0 6px 24px rgba(0,0,0,0.7)"
+                    : "0 5px 20px rgba(0,0,0,0.6)",
+                  transition: "box-shadow 0.5s ease",
+                }}
+              />
+
+              {isVinylPlaying && (
+                <div
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
+                />
               )}
             </div>
-
-            {/* Buraco central — sobre o label */}
-            <div
-              className="absolute rounded-full"
-              style={{
-                width: "7%", height: "7%",
-                top: "46.5%", left: "46.5%",
-                background: "#080706",
-                boxShadow: "inset 0 1px 3px rgba(0,0,0,1)",
-                zIndex: 10,
-              }}
-            />
           </div>
 
-          {/* Reflexo estático (não gira) — dá profundidade 3D */}
-          <div
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{
-              background: "radial-gradient(ellipse at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 52%)",
-            }}
-          />
-
-          {/* Sombra e brilho coral quando tocando */}
-          <div
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{
-              boxShadow: isVinylPlaying
-                ? "0 0 30px rgba(217,83,64,0.22), 0 6px 24px rgba(0,0,0,0.7)"
-                : "0 5px 20px rgba(0,0,0,0.6)",
-              transition: "box-shadow 0.5s ease",
-            }}
-          />
-
-          {/* Pulso quando tocando */}
-          {isVinylPlaying && (
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{ animation: "vinyl-pulse 2s ease-in-out infinite" }}
-            />
-          )}
-
-          </div>{/* fim wrapper inset */}
-
-          {/* Botão alterar capa */}
+          {/* Botão de capa — abaixo do disco */}
           <button
             onClick={async () => {
               const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
@@ -314,35 +346,10 @@ export default function Inspector() {
                 updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
               } catch { /* silent */ }
             }}
-            className="absolute bottom-2 right-2 px-2 py-1 rounded text-[10px] font-semibold bg-black/70 text-white hover:bg-black/90 transition-colors opacity-0 group-hover:opacity-100 z-20"
+            className="mx-3 mt-2.5 w-[calc(100%-24px)] py-1.5 rounded-lg text-[11px] font-semibold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white transition-colors flex items-center justify-center gap-1.5"
           >
-            {coverDataUrl ? "Alterar Capa" : "+ Capa"}
+            {coverDataUrl ? "Alterar capa" : "+ Adicionar capa"}
           </button>
-        </div>
-      )}
-
-      {/* Player controls inline */}
-      {!isBatch && (
-        <div className="mx-3 mt-2 flex items-center gap-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
-          <button
-            onClick={() => setPlayerTrack(playerTrackId === first.id ? null : first.id)}
-            className="w-6 h-6 rounded-full flex items-center justify-center transition-colors bg-[#D95340] hover:bg-[#E07364] shrink-0"
-          >
-            {isVinylPlaying ? (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><rect x="1" y="1" width="2" height="6" rx="0.5"/><rect x="5" y="1" width="2" height="6" rx="0.5"/></svg>
-            ) : (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="white"><path d="M2 1.5l5 2.5-5 2.5V1.5z"/></svg>
-            )}
-          </button>
-          <div className="flex-1 text-[10px] font-mono text-[#605A55]">
-            {isVinylPlaying ? "tocando…" : first.duration_secs
-              ? `${Math.floor(first.duration_secs / 60)}:${String(Math.floor(first.duration_secs % 60)).padStart(2, "0")}`
-              : "—"
-            }
-          </div>
-          {first.rating != null && first.rating > 0 && (
-            <span className="text-[10px] font-mono text-[#605A55]">{first.rating}/5</span>
-          )}
         </div>
       )}
 
@@ -397,14 +404,6 @@ export default function Inspector() {
         </div>
       )}
 
-      {/* Arquivo */}
-      {!isBatch && (
-        <div className="mx-3 mt-2 px-3 py-2 rounded-md bg-white/[0.02] border border-white/[0.04]">
-          <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-1">Arquivo</p>
-          <p className="text-[11px] text-[#C2BEBC] leading-tight break-all">{first.filename}</p>
-          <p className="text-[10px] text-[#605A55] mt-0.5 leading-tight break-all font-mono">{first.path.replace(first.filename, "")}</p>
-        </div>
-      )}
 
       {/* Issues */}
       {!isBatch && first.issues.length > 0 && (
@@ -483,12 +482,17 @@ export default function Inspector() {
           <Field label="Tom" value={key} onChange={setKey} mono />
         </div>
         <Field label="Comentário" value={comment} onChange={setComment} placeholder="—" multiline />
+      </div>
 
+      </div>{/* fim área scrollável */}
+
+      {/* Footer fixo — Enriquecer + Salvar */}
+      <div className="shrink-0 border-t border-white/[0.05] px-3 pt-3 pb-4 flex flex-col gap-2">
         {/* Enriquecer */}
         <button
           onClick={enrichAll}
           disabled={enriching}
-          className="w-full rounded-lg disabled:opacity-60 overflow-hidden mt-1"
+          className="w-full rounded-lg disabled:opacity-60 overflow-hidden"
           style={{
             background: enriching
               ? "rgba(220,85,71,0.15)"
@@ -523,10 +527,8 @@ export default function Inspector() {
             )}
           </div>
         </button>
-      </div>
 
-      {/* Save */}
-      <div className="px-3 pb-4 mt-auto">
+        {/* Salvar Tags */}
         <button
           onClick={handleSave}
           disabled={saving}

@@ -1,5 +1,7 @@
 import { fetch as tFetch } from "@tauri-apps/plugin-http";
 
+const FETCH_TIMEOUT_MS = 8000;
+
 export interface iTunesResult {
   genre: string;
   year: string;
@@ -7,12 +9,26 @@ export interface iTunesResult {
   artworkUrl: string;
   artistName: string;
   trackName: string;
+  matchPhase?: "exact" | "fuzzy";
 }
 
-export async function searchTrack(title: string, artist: string): Promise<iTunesResult | null> {
+const VERSION_PATTERN = /\s*[\[(](extended|radio|club|original|dub|instrumental|remix|mix|edit|version|vocal|acapella|live|acoustic|reprise|remaster\w*|feat\.?|ft\.?)(\s+[^\])]*)?[\])]\s*$/gi;
+const VERSION_DASH    = /\s+-\s+(extended|radio|club|original|dub|instrumental|remix|mix|edit|version|vocal|live|acoustic)\s*$/gi;
+
+function stripVersionInfo(title: string): string {
+  return title.replace(VERSION_PATTERN, "").replace(VERSION_DASH, "").trim();
+}
+
+function fetchWithTimeout(url: string, ms = FETCH_TIMEOUT_MS) {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), ms);
+  return tFetch(url, { signal: abort.signal }).finally(() => clearTimeout(timer));
+}
+
+async function queryiTunes(title: string, artist: string): Promise<iTunesResult | null> {
   const term = artist ? `${artist} ${title}` : title;
   try {
-    const res = await tFetch(
+    const res = await fetchWithTimeout(
       `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&media=music&limit=5`
     );
     const data = await res.json();
@@ -46,4 +62,19 @@ export async function searchTrack(title: string, artist: string): Promise<iTunes
   } catch {
     return null;
   }
+}
+
+export async function searchTrack(title: string, artist: string): Promise<iTunesResult | null> {
+  // Fase 1 — nome completo (com versão)
+  const hit1 = await queryiTunes(title, artist);
+  if (hit1) return { ...hit1, matchPhase: "exact" };
+
+  // Fase 2 — sem info de versão
+  const stripped = stripVersionInfo(title);
+  if (stripped && stripped !== title) {
+    const hit2 = await queryiTunes(stripped, artist);
+    if (hit2) return { ...hit2, matchPhase: "fuzzy" };
+  }
+
+  return null;
 }

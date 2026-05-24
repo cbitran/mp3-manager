@@ -37,6 +37,7 @@ export default function MiniPlayer() {
   const loadedPath   = useRef<string | null>(null);
   const audioCtxRef  = useRef<AudioContext | null>(null);
   const analyserRef  = useRef<AnalyserNode | null>(null);
+  const gainNodeRef  = useRef<GainNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const waveBarsRef  = useRef<number[]>([]);   // always current waveform data for animation loop
@@ -68,11 +69,15 @@ export default function MiniPlayer() {
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.78;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = volume;
       const src = ctx.createMediaElementSource(audioRef.current);
       src.connect(analyser);
-      analyser.connect(ctx.destination);
+      analyser.connect(gainNode);
+      gainNode.connect(ctx.destination);
       audioCtxRef.current = ctx;
       analyserRef.current = analyser;
+      gainNodeRef.current = gainNode;
     } catch { /* silent */ }
   }
 
@@ -126,8 +131,19 @@ export default function MiniPlayer() {
   }
 
   // ── Load track ────────────────────────────────────────────────────
+  const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);
+
   useEffect(() => {
     if (!audioRef.current) return;
+    // Nunca tocar faixas de vídeo no MiniPlayer — vídeo tem player próprio
+    if (activeTrack && VIDEO_EXTS.has((activeTrack.format ?? "").toLowerCase())) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      loadedPath.current = null;
+      setIsPlaying(false);
+      stopLiveAnim();
+      return;
+    }
     if (!activeTrack) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -295,6 +311,9 @@ export default function MiniPlayer() {
       const rect = trackEl.getBoundingClientRect();
       const v = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
       setVolume(v);
+      // GainNode é o controle primário (funciona com Web Audio API no WKWebView)
+      if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+      // Fallback para quando o AudioContext ainda não foi criado
       if (audioRef.current) audioRef.current.volume = v;
     };
     applyVolume(e.clientY);
@@ -379,7 +398,7 @@ export default function MiniPlayer() {
             <p className="text-[11px] font-semibold text-[#DCDAD8] truncate leading-tight tracking-[-0.01em]">
               {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#373331] font-normal italic">sem faixa</span>}
             </p>
-            <p className="text-[9px] text-[#605A55] truncate leading-none mt-[3px] tracking-wide uppercase">
+            <p className="text-[9px] text-[#8F8883] truncate leading-none mt-[3px] tracking-wide uppercase">
               {activeTrack?.artist ?? ""}
             </p>
           </div>
@@ -516,14 +535,14 @@ export default function MiniPlayer() {
         <div className="flex items-center gap-3 pl-5 shrink-0">
           {activeTrack?.bpm && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-mono tabular-nums text-[#4C4743]">
+              <span className="text-[9px] font-mono tabular-nums text-[#8F8883]">
                 {parseFloat(activeTrack.bpm).toFixed(0)}
               </span>
-              <span className="text-[8px] text-[#373331] uppercase tracking-widest">bpm</span>
+              <span className="text-[8px] text-[#605A55] uppercase tracking-widest">bpm</span>
             </div>
           )}
           {activeTrack?.key && (
-            <span className="text-[9px] font-mono font-bold text-[#605A55]">
+            <span className="text-[9px] font-mono font-bold text-[#8F8883]">
               {activeTrack.key}
             </span>
           )}

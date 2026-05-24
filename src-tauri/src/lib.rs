@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use tauri::Emitter;
+use std::sync::{Arc, OnceLock};
+use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 
 // ── Track ────────────────────────────────────────────────────────────────────
@@ -42,6 +42,12 @@ pub struct Track {
     pub modified_at: Option<i64>,
     pub comment: Option<String>,
     pub total_tracks: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CacheData {
+    tracks: Vec<Track>,
+    last_folder: String,
 }
 
 const AUDIO_EXTENSIONS: &[&str] = &[
@@ -232,7 +238,8 @@ fn save_tags(
 
 #[tauri::command]
 async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
-    let cover_data = reqwest::get(&cover_url).await.map_err(|e| e.to_string())?
+    let client = cover_client();
+    let cover_data = client.get(&cover_url).send().await.map_err(|e| e.to_string())?
         .bytes().await.map_err(|e| e.to_string())?.to_vec();
     let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
     tag.remove("APIC");
@@ -273,6 +280,12 @@ fn read_cover_base64(path: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn read_file_base64(path: String) -> Result<String, String> {
+    let data = fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&data))
+}
+
+#[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -302,6 +315,11 @@ fn trash_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn dir_exists(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
+#[tauri::command]
 fn list_subfolders(path: String) -> Result<Vec<String>, String> {
     let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
     let mut subs: Vec<String> = entries
@@ -322,41 +340,279 @@ fn list_subfolders(path: String) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn generate_waveform(path: String, bars: usize) -> Result<Vec<f32>, String> {
-    let data = fs::read(&path).map_err(|e| e.to_string())?;
+    use std::io::{Read, Seek, SeekFrom};
 
-    let audio_start = if data.len() > 10 && &data[..3] == b"ID3" {
-        let size = ((data[6] as usize & 0x7F) << 21)
-            | ((data[7] as usize & 0x7F) << 14)
-            | ((data[8] as usize & 0x7F) << 7)
-            | (data[9] as usize & 0x7F);
-        (10 + size).min(data.len())
+    if bars == 0 { return Ok(vec![]); }
+
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let file_len = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())? as usize;
+
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    let mut hdr = [0u8; 10];
+    let audio_start = if file.read(&mut hdr).ok() == Some(10) && &hdr[..3] == b"ID3" {
+        let sz = ((hdr[6] as usize & 0x7F) << 21)
+               | ((hdr[7] as usize & 0x7F) << 14)
+               | ((hdr[8] as usize & 0x7F) << 7)
+               | (hdr[9] as usize & 0x7F);
+        (10 + sz).min(file_len)
+    } else { 0 };
+
+    let audio_len = file_len.saturating_sub(audio_start);
+    if audio_len < bars { return Ok(vec![0.3; bars]); }
+
+    const SAMPLE_BYTES: usize = 4096;
+    let bar_span = audio_len / bars;
+    let mut buf = vec![0u8; SAMPLE_BYTES];
+    let mut result = vec![0.0f32; bars];
+
+    for i in 0..bars {
+        let pos = audio_start + i * bar_span;
+        if file.seek(SeekFrom::Start(pos as u64)).is_err() { continue; }
+        let n = file.read(&mut buf).unwrap_or(0);
+        if n == 0 { continue; }
+        let sum: u64 = buf[..n].iter()
+            .map(|&b| (b as i16 - 128).unsigned_abs() as u64)
+            .sum();
+        result[i] = sum as f32 / (n as f32 * 128.0);
+    }
+
+    let max = result.iter().cloned().fold(0.0f32, f32::max);
+    if max > 0.0 { result.iter_mut().for_each(|v| *v /= max); }
+    Ok(result)
+}
+
+/// Estima o BPM via detecção de picos na envoltória de energia do áudio.
+/// `duration_secs`: duração real da faixa (em segundos), necessária para calibrar o tempo por janela.
+#[tauri::command]
+fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let fname = path.split('/').last().unwrap_or(&path).to_string();
+
+    if duration_secs <= 0.0 {
+        eprintln!("[BPM] {} — SKIP: duration_secs={}", fname, duration_secs);
+        return Ok(None);
+    }
+
+    const BARS: usize = 2048; // alta resolução temporal
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let file_len = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())? as usize;
+
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    let mut hdr = [0u8; 12];
+    let _ = file.read(&mut hdr);
+
+    // Detecta cabeçalho por magic bytes e calcula audio_start
+    let audio_start = if &hdr[..3] == b"ID3" {
+        // MP3 com tag ID3v2: tamanho codificado em sincronia segura
+        let sz = ((hdr[6] as usize & 0x7F) << 21)
+               | ((hdr[7] as usize & 0x7F) << 14)
+               | ((hdr[8] as usize & 0x7F) << 7)
+               | (hdr[9] as usize & 0x7F);
+        eprintln!("[BPM] {} — formato: MP3/ID3, skip {} bytes", fname, 10 + sz);
+        (10 + sz).min(file_len)
+    } else if &hdr[..4] == b"fLaC" {
+        // FLAC: pula metadados até encontrar blocos de áudio
+        // Heurística: os metadados FLAC raramente ultrapassam 128 KB
+        let skip = (128 * 1024).min(file_len / 4);
+        eprintln!("[BPM] {} — formato: FLAC, skip heurístico {} bytes", fname, skip);
+        skip
+    } else if &hdr[..4] == b"RIFF" && &hdr[8..12] == b"WAVE" {
+        // WAV: procura o chunk 'data'
+        let mut pos: usize = 12;
+        let mut data_start = pos;
+        file.seek(SeekFrom::Start(pos as u64)).ok();
+        let mut chunk_hdr = [0u8; 8];
+        while pos + 8 < file_len {
+            if file.read_exact(&mut chunk_hdr).is_err() { break; }
+            let chunk_id = &chunk_hdr[..4];
+            let chunk_sz = u32::from_le_bytes([chunk_hdr[4], chunk_hdr[5], chunk_hdr[6], chunk_hdr[7]]) as usize;
+            if chunk_id == b"data" {
+                data_start = pos + 8;
+                break;
+            }
+            pos += 8 + chunk_sz;
+            if file.seek(SeekFrom::Start(pos as u64)).is_err() { break; }
+        }
+        eprintln!("[BPM] {} — formato: WAV, data chunk em {} bytes", fname, data_start);
+        data_start
+    } else if &hdr[4..8] == b"ftyp" {
+        // M4A / AAC / MP4 container — pula para mdat heuristicamente
+        let skip = (4 * 1024).min(file_len / 4);
+        eprintln!("[BPM] {} — formato: M4A/MP4, skip heurístico {} bytes", fname, skip);
+        skip
+    } else {
+        eprintln!("[BPM] {} — formato desconhecido (magic={:?}), começa em 0", fname, &hdr[..4]);
+        0
+    };
+
+    let audio_len = file_len.saturating_sub(audio_start);
+    if audio_len < BARS {
+        eprintln!("[BPM] {} — SKIP: audio_len={} < {}", fname, audio_len, BARS);
+        return Ok(None);
+    }
+
+    let bar_span = audio_len / BARS;
+    let secs_per_bar = duration_secs / BARS as f32;
+
+    const SAMPLE_BYTES: usize = 2048;
+    let mut buf = vec![0u8; SAMPLE_BYTES];
+    let mut energy = vec![0.0f32; BARS];
+
+    for i in 0..BARS {
+        let pos = audio_start + i * bar_span;
+        if file.seek(SeekFrom::Start(pos as u64)).is_err() { continue; }
+        let n = file.read(&mut buf).unwrap_or(0);
+        if n == 0 { continue; }
+        let sum: u64 = buf[..n].iter().map(|&b| {
+            let v = b as i32 - 128;
+            (v * v) as u64
+        }).sum();
+        energy[i] = (sum as f32 / n as f32).sqrt();
+    }
+
+    // Onset strength: diferença positiva entre frames adjacentes
+    let onset: Vec<f32> = energy.windows(2)
+        .map(|w| (w[1] - w[0]).max(0.0))
+        .collect();
+
+    let mean_onset = onset.iter().sum::<f32>() / onset.len() as f32;
+
+    // Encontra picos com gap mínimo de 200ms
+    // Threshold mais permissivo (1.4x) para funcionar em mais formatos
+    let min_gap = ((0.20 / secs_per_bar) as usize).max(4);
+    let threshold = mean_onset * 1.4;
+
+    let mut peaks: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while i < onset.len() {
+        if onset[i] > threshold {
+            let end = (i + min_gap).min(onset.len());
+            let local_max_idx = onset[i..end].iter().enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(j, _)| i + j)
+                .unwrap_or(i);
+            peaks.push(local_max_idx);
+            i = local_max_idx + min_gap;
+        } else {
+            i += 1;
+        }
+    }
+
+    eprintln!("[BPM] {} — picos={} mean_onset={:.4} threshold={:.4}", fname, peaks.len(), mean_onset, threshold);
+
+    if peaks.len() < 6 {
+        eprintln!("[BPM] {} — SKIP: poucos picos ({})", fname, peaks.len());
+        return Ok(None);
+    }
+
+    // Intervalos em segundos entre picos consecutivos
+    let mut intervals: Vec<f32> = peaks.windows(2)
+        .map(|w| (w[1] - w[0]) as f32 * secs_per_bar)
+        .filter(|&d| d > 0.18 && d < 2.5) // 24–333 BPM brutos
+        .collect();
+
+    if intervals.is_empty() {
+        eprintln!("[BPM] {} — SKIP: sem intervalos válidos", fname);
+        return Ok(None);
+    }
+
+    // Mediana dos intervalos
+    intervals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = intervals[intervals.len() / 2];
+
+    let mut bpm = 60.0 / median;
+
+    // Ajusta oitavas (half/double time)
+    while bpm < 70.0  { bpm *= 2.0; }
+    while bpm > 200.0 { bpm /= 2.0; }
+
+    // Arredonda para 0.5 BPM
+    let bpm = (bpm * 2.0).round() / 2.0;
+
+    eprintln!("[BPM] {} — RESULTADO: {}", fname, bpm);
+    Ok(Some(bpm))
+}
+
+// Retorna Vec de tamanho bars*3: [amp, bass, treble, ...]
+// Usa seek para ler apenas ~4 KB por barra — sem carregar o arquivo inteiro.
+#[tauri::command]
+fn generate_waveform_rgb(path: String, bars: usize) -> Result<Vec<f32>, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    if bars == 0 {
+        return Ok(vec![]);
+    }
+
+    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let file_len = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())? as usize;
+
+    // Detectar e pular cabeçalho ID3 (primeiros 10 bytes)
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    let mut hdr = [0u8; 10];
+    let audio_start = if file.read(&mut hdr).ok() == Some(10) && &hdr[..3] == b"ID3" {
+        let sz = ((hdr[6] as usize & 0x7F) << 21)
+               | ((hdr[7] as usize & 0x7F) << 14)
+               | ((hdr[8] as usize & 0x7F) << 7)
+               | (hdr[9] as usize & 0x7F);
+        (10 + sz).min(file_len)
     } else {
         0
     };
 
-    let audio = &data[audio_start..];
-    if audio.is_empty() || bars == 0 {
-        return Ok(vec![0.3; bars]);
+    let audio_len = file_len.saturating_sub(audio_start);
+    if audio_len < bars {
+        return Ok(vec![0.3, 0.5, 0.5].into_iter().cycle().take(bars * 3).collect());
     }
 
-    let chunk = (audio.len() / bars).max(1);
-    let mut result: Vec<f32> = (0..bars)
-        .map(|i| {
-            let s = i * chunk;
-            let e = ((i + 1) * chunk).min(audio.len());
-            let slice = &audio[s..e];
-            let sum: u64 = slice.iter()
-                .map(|&b| (b as i16 - 128).unsigned_abs() as u64)
-                .sum();
-            sum as f32 / (slice.len() as f32 * 128.0)
-        })
-        .collect();
+    // Lê SAMPLE_BYTES por barra via seek — nunca carrega o arquivo inteiro
+    const SAMPLE_BYTES: usize = 4096;
+    let bar_span = audio_len / bars;
 
-    let max = result.iter().cloned().fold(0.0f32, f32::max);
-    if max > 0.0 {
-        result.iter_mut().for_each(|v| *v /= max);
+    let mut amps    = vec![0.0f32; bars];
+    let mut basses  = vec![0.0f32; bars];
+    let mut trebles = vec![0.0f32; bars];
+    let mut buf = vec![0u8; SAMPLE_BYTES];
+
+    for i in 0..bars {
+        let pos = audio_start + i * bar_span;
+        if file.seek(SeekFrom::Start(pos as u64)).is_err() { continue; }
+        let n = file.read(&mut buf).unwrap_or(0);
+        if n < 2 { continue; }
+        let slice = &buf[..n];
+
+        let sum_abs: u64 = slice.iter()
+            .map(|&b| (b as i16 - 128).unsigned_abs() as u64)
+            .sum();
+        amps[i] = sum_abs as f32 / (n as f32 * 128.0);
+
+        let dec_sum: f32 = slice.iter().step_by(8)
+            .map(|&b| { let v = (b as f32 - 128.0) / 128.0; v * v })
+            .sum();
+        let dec_n = (n / 8).max(1) as f32;
+        basses[i] = (dec_sum / dec_n).sqrt();
+
+        let diff_sq: f32 = slice.windows(2)
+            .map(|w| { let d = w[1] as f32 - w[0] as f32; d * d })
+            .sum();
+        trebles[i] = (diff_sq / (n - 1) as f32).sqrt() / 256.0;
     }
-    Ok(result)
+
+    let norm = |v: &mut Vec<f32>| {
+        let mx = v.iter().cloned().fold(1e-9f32, f32::max);
+        v.iter_mut().for_each(|x| *x /= mx);
+    };
+    norm(&mut amps);
+    norm(&mut basses);
+    norm(&mut trebles);
+
+    let mut out = Vec::with_capacity(bars * 3);
+    for i in 0..bars {
+        out.push(amps[i]);
+        out.push(basses[i]);
+        out.push(trebles[i]);
+    }
+    Ok(out)
 }
 
 // ── Filename Cleanup ──────────────────────────────────────────────────────────
@@ -715,7 +971,236 @@ fn export_m3u(tracks: Vec<Track>, output_path: String) -> Result<usize, String> 
     Ok(tracks.len())
 }
 
+// ── CSV Export ────────────────────────────────────────────────────────────────
+
+fn csv_escape(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+#[tauri::command]
+fn export_csv(tracks: Vec<Track>, output_path: String) -> Result<usize, String> {
+    let mut csv = String::from("Title,Artist,Album,Genre,Year,BPM,Key,Rating,Duration,Bitrate,Path\n");
+    for track in &tracks {
+        let title    = csv_escape(track.title.as_deref().unwrap_or(""));
+        let artist   = csv_escape(track.artist.as_deref().unwrap_or(""));
+        let album    = csv_escape(track.album.as_deref().unwrap_or(""));
+        let genre    = csv_escape(track.genre.as_deref().unwrap_or(""));
+        let year     = track.year.map(|y| y.to_string()).unwrap_or_default();
+        let bpm      = track.bpm.as_deref().unwrap_or("").to_string();
+        let key      = csv_escape(track.key.as_deref().unwrap_or(""));
+        let rating   = track.rating.map(|r| r.to_string()).unwrap_or_default();
+        let duration = track.duration_secs.map(|d| format!("{:.0}", d)).unwrap_or_default();
+        let bitrate  = track.bitrate_kbps.map(|b| b.to_string()).unwrap_or_default();
+        let path     = csv_escape(&track.path);
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{}\n",
+            title, artist, album, genre, year, bpm, key, rating, duration, bitrate, path
+        ));
+    }
+    fs::write(&output_path, "\u{FEFF}".to_string() + &csv).map_err(|e| e.to_string())?;
+    Ok(tracks.len())
+}
+
+// ── Traktor NML Export ────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn export_traktor_nml(tracks: Vec<Track>, output_path: String) -> Result<usize, String> {
+    let mut nml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    nml.push_str("<NML VERSION=\"19\">\n");
+    nml.push_str("  <HEAD COMPANY=\"Native Instruments GmbH\" PROGRAM=\"Traktor Pro 3\"/>\n");
+    nml.push_str(&format!("  <COLLECTION ENTRIES=\"{}\">\n", tracks.len()));
+
+    for track in &tracks {
+        let path_obj = Path::new(&track.path);
+        let filename = xml_escape(
+            &path_obj.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default()
+        );
+        // Traktor format: /: + path segments joined with /:  ending with /:
+        let dir_raw = path_obj.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let dir = if dir_raw.is_empty() {
+            "/:".to_string()
+        } else {
+            format!("/:{}/:", dir_raw.trim_start_matches('/').replace('/', "/:"))
+        };
+
+        let title   = xml_escape(track.title.as_deref().unwrap_or(filename.as_str()));
+        let artist  = xml_escape(track.artist.as_deref().unwrap_or(""));
+        let album   = xml_escape(track.album.as_deref().unwrap_or(""));
+        let genre   = xml_escape(track.genre.as_deref().unwrap_or(""));
+        let key     = xml_escape(track.key.as_deref().unwrap_or(""));
+        let bpm     = track.bpm.as_deref().and_then(|b| b.parse::<f64>().ok()).unwrap_or(0.0);
+        let dur     = track.duration_secs.unwrap_or(0.0);
+        let bitrate = track.bitrate_kbps.map(|b| b * 1000).unwrap_or(0);
+        let rating  = track.rating.unwrap_or(0);
+        let tn      = track.track_number.unwrap_or(0);
+
+        nml.push_str(&format!(
+            "    <ENTRY TITLE=\"{}\" ARTIST=\"{}\">\n\
+             <LOCATION DIR=\"{}\" FILE=\"{}\" VOLUME=\"\" VOLUMEID=\"\"/>\n\
+             <ALBUM TRACK=\"{}\" TITLE=\"{}\"/>\n\
+             <INFO BITRATE=\"{}\" GENRE=\"{}\" RATING=\"{}\" PLAYTIME=\"{}\" PLAYTIME_FLOAT=\"{:.6}\" KEY=\"{}\"/>\n\
+             <TEMPO BPM=\"{:.6}\" BPM_QUALITY=\"100\"/>\n\
+             </ENTRY>\n",
+            title, artist,
+            dir, filename,
+            tn, album,
+            bitrate, genre, rating, dur as u32, dur, key,
+            bpm
+        ));
+    }
+
+    nml.push_str("  </COLLECTION>\n</NML>\n");
+    fs::write(&output_path, nml).map_err(|e| e.to_string())?;
+    Ok(tracks.len())
+}
+
+// ── HTTP Clients (reutilizados entre chamadas para evitar reconexão TLS) ─────
+
+static ITUNES_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static COVER_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn itunes_client() -> &'static reqwest::Client {
+    ITUNES_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+fn cover_client() -> &'static reqwest::Client {
+    COVER_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(12))
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 // ── Batch Enrichment (iTunes Search) ─────────────────────────────────────────
+
+fn strip_version_info(title: &str) -> String {
+    const KW: &[&str] = &[
+        "extended", "radio", "club", "original", "dub", "instrumental",
+        "remix", "mix", "edit", "version", "vocal", "acapella", "live",
+        "acoustic", "reprise", "remaster", "feat.", "ft.",
+    ];
+    let lower = title.to_lowercase();
+
+    // trailing (…) or […] starting with a version keyword
+    for &open in &['(', '['] {
+        if let Some(pos) = title.rfind(open) {
+            let inner = &lower[pos + 1..];
+            if KW.iter().any(|kw| inner.starts_with(kw)) {
+                let trimmed = title[..pos].trim();
+                if !trimmed.is_empty() { return trimmed.to_string(); }
+            }
+        }
+    }
+
+    // trailing " - keyword"
+    if let Some(pos) = title.rfind(" - ") {
+        let after = &lower[pos + 3..];
+        if KW.iter().any(|kw| after.starts_with(kw)) {
+            let trimmed = title[..pos].trim();
+            if !trimmed.is_empty() { return trimmed.to_string(); }
+        }
+    }
+
+    title.to_string()
+}
+
+fn tokens_overlap(a: &str, b: &str) -> f32 {
+    let ta: std::collections::HashSet<&str> = a.split_whitespace().collect();
+    let tb: std::collections::HashSet<&str> = b.split_whitespace().collect();
+    if ta.is_empty() || tb.is_empty() { return 0.0; }
+    let common = ta.intersection(&tb).count() as f32;
+    common / ta.len().min(tb.len()) as f32
+}
+
+async fn query_itunes(
+    client: &reqwest::Client,
+    title: &str,
+    artist: &str,
+    path: &str,
+) -> Option<EnrichResult> {
+    let term = if !artist.is_empty() {
+        format!("{} {}", artist, title)
+    } else {
+        title.to_string()
+    };
+    let url = format!(
+        "https://itunes.apple.com/search?term={}&media=music&limit=5&country=BR",
+        urlencoding::encode(&term)
+    );
+
+    eprintln!("[iTunes] Buscando: {:?}  |  arquivo: {}", term, path.split('/').last().unwrap_or(path));
+
+    let resp = match client.get(&url).send().await {
+        Ok(r) => r,
+        Err(e) => { eprintln!("[iTunes] ERRO de rede: {}", e); return None; }
+    };
+    let status = resp.status();
+    eprintln!("[iTunes] HTTP {}", status);
+    if !status.is_success() { return None; }
+
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(e) => { eprintln!("[iTunes] ERRO parse JSON: {}", e); return None; }
+    };
+    let results = json["results"].as_array()?;
+    eprintln!("[iTunes] {} resultado(s) recebido(s)", results.len());
+
+    for (i, r) in results.iter().enumerate() {
+        eprintln!("  [{}] \"{}\" — \"{}\"",
+            i,
+            r["trackName"].as_str().unwrap_or("?"),
+            r["artistName"].as_str().unwrap_or("?"),
+        );
+    }
+
+    // Encontra o resultado que melhor corresponde ao artista/título buscados.
+    // Sem fallback para results.first() — aceitar resultados não confirmados causa
+    // dados incorretos (ex.: Janet Jackson "Runaway" aplicado a faixas não relacionadas).
+    let search_title  = title.to_lowercase();
+    let search_artist = artist.to_lowercase();
+    let r = results.iter().find(|r| {
+        let returned_artist = r["artistName"].as_str().unwrap_or("").to_lowercase();
+        let returned_title  = r["trackName"].as_str().unwrap_or("").to_lowercase();
+        let artist_ok = search_artist.is_empty()
+            || returned_artist.contains(&search_artist)
+            || search_artist.contains(&returned_artist)
+            || tokens_overlap(&returned_artist, &search_artist) >= 0.5;
+        let title_ok  = returned_title.contains(&search_title)
+            || search_title.contains(&returned_title)
+            || tokens_overlap(&returned_title, &search_title) >= 0.5;
+        artist_ok && title_ok
+    });
+
+    if r.is_none() {
+        eprintln!("[iTunes] Nenhum resultado passou no filtro de correspondência para \"{} - {}\"", artist, title);
+    } else {
+        eprintln!("[iTunes] Match aceito: \"{}\" — \"{}\"",
+            r.unwrap()["trackName"].as_str().unwrap_or("?"),
+            r.unwrap()["artistName"].as_str().unwrap_or("?"),
+        );
+    }
+    let r = r?;
+
+    let genre = r["primaryGenreName"].as_str().map(|s| s.to_string());
+    let album = r["collectionName"].as_str().map(|s| s.to_string());
+    let year = r["releaseDate"].as_str()
+        .and_then(|d| d.split('-').next())
+        .and_then(|y| y.parse::<u32>().ok());
+    let cover_url = r["artworkUrl100"].as_str()
+        .map(|s| s.replace("100x100", "600x600"));
+    Some(EnrichResult { path: path.to_string(), genre, album, year, cover_url })
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EnrichRequest {
@@ -733,42 +1218,82 @@ struct EnrichResult {
     cover_url: Option<String>,
 }
 
+// Processa todas as faixas sequencialmente com delay controlado por Tokio (mais preciso que
+// setTimeout JS) e emite eventos de progresso para o frontend atualizar o highlight em tempo real.
+// Uma única invocação JS para N faixas — elimina o overhead de múltiplos round-trips IPC.
 #[tauri::command]
-async fn batch_enrich_itunes(tracks: Vec<EnrichRequest>) -> Vec<EnrichResult> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
-        .unwrap_or_default();
-
+async fn batch_enrich_all(
+    tracks: Vec<EnrichRequest>,
+    app: tauri::AppHandle,
+) -> Vec<EnrichResult> {
+    let client = itunes_client();
     let mut results = Vec::new();
-    for t in &tracks {
-        let term = match (&t.artist, &t.title) {
-            (Some(a), Some(ti)) => format!("{} {}", a, ti),
-            (Some(a), None) => a.clone(),
-            (None, Some(ti)) => ti.clone(),
-            _ => { results.push(EnrichResult { path: t.path.clone(), genre: None, album: None, year: None, cover_url: None }); continue; }
+
+    for (idx, t) in tracks.iter().enumerate() {
+        eprintln!("\n[Enrich] === Faixa {}/{} ===", idx + 1, tracks.len());
+        eprintln!("[Enrich] título: {:?}  artista: {:?}", t.title, t.artist);
+
+        // Notifica JS ANTES do delay para o highlight aparecer imediatamente
+        let _ = app.emit("enrich_track_start", serde_json::json!({
+            "path": t.path, "idx": idx, "total": tracks.len()
+        }));
+
+        // 3,5 s entre chamadas — seguro para o rate-limit da Apple (~20 req/min)
+        if idx > 0 {
+            eprintln!("[Enrich] Aguardando 3,5 s (rate-limit)…");
+            tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
+        }
+
+        let result = match &t.title {
+            None => EnrichResult { path: t.path.clone(), genre: None, album: None, year: None, cover_url: None },
+            Some(title) => {
+                let artist = t.artist.as_deref().unwrap_or("");
+                let hit = query_itunes(client, title, artist, &t.path).await;
+                if let Some(h) = hit {
+                    h
+                } else {
+                    let stripped = strip_version_info(title);
+                    if !stripped.is_empty() && stripped.as_str() != title.as_str() {
+                        query_itunes(client, &stripped, artist, &t.path).await
+                            .unwrap_or_else(|| EnrichResult { path: t.path.clone(), genre: None, album: None, year: None, cover_url: None })
+                    } else {
+                        EnrichResult { path: t.path.clone(), genre: None, album: None, year: None, cover_url: None }
+                    }
+                }
+            }
         };
-        let url = format!(
-            "https://itunes.apple.com/search?term={}&media=music&limit=3&country=US",
-            urlencoding::encode(&term)
+
+        let found = result.genre.is_some() || result.album.is_some() || result.year.is_some();
+        eprintln!("[Enrich] Resultado: {} | gênero={:?} álbum={:?} ano={:?} capa={}",
+            if found { "ENCONTRADO" } else { "NÃO ENCONTRADO" },
+            result.genre, result.album, result.year,
+            if result.cover_url.is_some() { "sim" } else { "não" }
         );
-        let result = (async {
-            let resp = client.get(&url).send().await.ok()?;
-            let json: serde_json::Value = resp.json().await.ok()?;
-            let results = json["results"].as_array()?;
-            let r = results.first()?;
-            let genre = r["primaryGenreName"].as_str().map(|s| s.to_string());
-            let album = r["collectionName"].as_str().map(|s| s.to_string());
-            let year = r["releaseDate"].as_str()
-                .and_then(|d| d.split('-').next())
-                .and_then(|y| y.parse::<u32>().ok());
-            let cover_url = r["artworkUrl100"].as_str()
-                .map(|s| s.replace("100x100", "600x600"));
-            Some(EnrichResult { path: t.path.clone(), genre, album, year, cover_url })
-        }).await;
-        results.push(result.unwrap_or_else(|| EnrichResult { path: t.path.clone(), genre: None, album: None, year: None, cover_url: None }));
+        let _ = app.emit("enrich_track_done", serde_json::json!({
+            "path": t.path, "idx": idx + 1, "total": tracks.len(), "found": found
+        }));
+
+        results.push(result);
     }
+
     results
+}
+
+// Mantido para compatibilidade com chamadas legacy (não usado pelo batchEnrich principal)
+#[tauri::command]
+async fn enrich_single_itunes(path: String, title: Option<String>, artist: Option<String>) -> EnrichResult {
+    let client = itunes_client();
+    let (t, a) = match (&title, &artist) {
+        (Some(ti), Some(a)) => (ti.as_str(), a.as_str()),
+        (Some(ti), None)    => (ti.as_str(), ""),
+        _ => return EnrichResult { path, genre: None, album: None, year: None, cover_url: None },
+    };
+    if let Some(hit) = query_itunes(client, t, a, &path).await { return hit; }
+    let stripped = strip_version_info(t);
+    if !stripped.is_empty() && stripped != t {
+        if let Some(hit2) = query_itunes(client, &stripped, a, &path).await { return hit2; }
+    }
+    EnrichResult { path, genre: None, album: None, year: None, cover_url: None }
 }
 
 // ── DJ Software Detection & Playlist Export ───────────────────────────────────
@@ -1037,7 +1562,63 @@ fn open_dj_app(software_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// ── Cache ─────────────────────────────────────────────────────────────────────
+
+// Encerra o processo imediatamente — usado pelo handler onCloseRequested
+// após salvar cache, para evitar o loop close→onCloseRequested→close.
+#[tauri::command]
+fn quit_app() {
+    std::process::exit(0);
+}
+
+#[tauri::command]
+fn save_cache(app: tauri::AppHandle, tracks: Vec<Track>, last_folder: String) -> Result<(), String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let cache = CacheData { tracks, last_folder };
+    let json = serde_json::to_string(&cache).map_err(|e| e.to_string())?;
+    fs::write(dir.join("cache.json"), json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_cache(app: tauri::AppHandle) -> Result<Option<CacheData>, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = dir.join("cache.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let cache: CacheData = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(Some(cache))
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
+
+/// Retorna paths de arquivos de áudio na pasta que NÃO estão em `known_paths`.
+#[tauri::command]
+fn find_new_files(folder: String, known_paths: Vec<String>) -> Vec<String> {
+    let known: std::collections::HashSet<String> = known_paths.into_iter().collect();
+    WalkDir::new(&folder)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension()
+                    .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
+                    .unwrap_or(false)
+        })
+        .map(|e| e.path().to_string_lossy().to_string())
+        .filter(|p| !known.contains(p))
+        .collect()
+}
+
+/// Escaneia metadados de uma lista específica de paths (sem progress event).
+#[tauri::command]
+fn scan_specific_files(paths: Vec<String>) -> Vec<Track> {
+    paths.par_iter()
+        .filter_map(|p| read_track(Path::new(p)))
+        .collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -1052,10 +1633,14 @@ pub fn run() {
             save_cover,
             save_cover_from_file,
             read_cover_base64,
+            read_file_base64,
             trash_file,
             trash_folder,
             list_subfolders,
+            dir_exists,
             generate_waveform,
+            generate_waveform_rgb,
+            analyze_bpm,
             count_audio_files,
             reveal_in_finder,
             analyze_filename_issues,
@@ -1066,10 +1651,18 @@ pub fn run() {
             normalize_tags,
             export_rekordbox,
             export_m3u,
-            batch_enrich_itunes,
+            export_csv,
+            export_traktor_nml,
+            batch_enrich_all,
+            enrich_single_itunes,
             detect_dj_software,
             export_playlist_to_dj,
             open_dj_app,
+            quit_app,
+            save_cache,
+            load_cache,
+            find_new_files,
+            scan_specific_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

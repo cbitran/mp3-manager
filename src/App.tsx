@@ -1,8 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { enrichTrackFull } from "./services/SpotifyService";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
@@ -11,15 +13,23 @@ import Sidebar from "./components/Sidebar";
 import MiniPlayer from "./components/MiniPlayer";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
 import MissingMetaPrompt from "./components/MissingMetaPrompt";
-import TrialBanner from "./components/TrialBanner";
 import TrialExpiredModal from "./components/TrialExpiredModal";
 import FilenamePrompt, { type FilenameIssue } from "./components/FilenamePrompt";
+import FilenameMetaPrompt, { type FilenameMetaIssue } from "./components/FilenameMetaPrompt";
 import DuplicatePrompt, { type DuplicateGroup } from "./components/DuplicatePrompt";
 import ToastContainer, { toast } from "./components/Toast";
 import ParenReviewPrompt, { type ParenIssue } from "./components/ParenReviewPrompt";
 import LibraryStats from "./components/LibraryStats";
 import Onboarding, { shouldShowOnboarding } from "./components/Onboarding";
 import Settings from "./components/Settings";
+import TrialInfoModal from "./components/TrialInfoModal";
+
+function loadingLabel(mode: "startup" | "closing"): string {
+  const lang = navigator.language.toLowerCase();
+  if (lang.startsWith("pt")) return mode === "startup" ? "carregando…" : "salvando…";
+  if (lang.startsWith("es")) return mode === "startup" ? "cargando…"   : "guardando…";
+  return mode === "startup" ? "loading…" : "saving…";
+}
 
 export default function App() {
   const {
@@ -38,7 +48,46 @@ export default function App() {
     recordScan,
     genreFilter,
     setGenreFilter,
+    isTrialActivated,
+    daysRemaining,
+    theme,
   } = useAppStore();
+
+  // Aplica data-theme no <html> usando a API nativa do Tauri para detectar o tema do macOS/Windows
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    async function apply() {
+      if (theme === "dark") {
+        document.documentElement.removeAttribute("data-theme");
+      } else if (theme === "light") {
+        document.documentElement.setAttribute("data-theme", "light");
+      } else {
+        // auto: lê o tema real do sistema via Tauri (mais confiável que CSS media query em webviews)
+        try {
+          const sysTheme = await getCurrentWindow().theme();
+          document.documentElement.setAttribute("data-theme", sysTheme === "light" ? "light" : "dark");
+        } catch {
+          const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+        }
+        // Escuta mudanças de tema do SO em tempo real
+        unlisten = await getCurrentWindow().onThemeChanged(({ payload }) => {
+          document.documentElement.setAttribute("data-theme", payload === "light" ? "light" : "dark");
+        });
+      }
+    }
+
+    apply();
+    return () => { unlisten?.(); };
+  }, [theme]);
+
+  // Bloqueia o menu de contexto nativo do WebView (Reload / Inspect Element)
+  useEffect(() => {
+    const block = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
+  }, []);
 
   const allTracks = useAppStore((s) => s.tracks);
   const playerTrackId = useAppStore((s) => s.playerTrackId);
@@ -97,14 +146,72 @@ export default function App() {
   const recentCutoff  = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
   const recentCount   = allTracks.filter((t) => (t.modified_at ?? 0) >= recentCutoff).length;
 
+  const { columnVisibility, setColumnVisibility } = useAppStore();
+
+  const HIDEABLE_COLS = [
+    { id: "capa",         label: "Capa" },
+    { id: "album",        label: "Álbum" },
+    { id: "genre",        label: "Gênero" },
+    { id: "artist",       label: "Artista" },
+    { id: "year_col",     label: "Ano" },
+    { id: "status",       label: "Status" },
+    { id: "file_size",    label: "Tamanho" },
+    { id: "key",          label: "Tom" },
+    { id: "bpm",          label: "BPM" },
+    { id: "rating",       label: "Nota" },
+    { id: "duration_secs",label: "Duração" },
+    { id: "bitrate",      label: "Bitrate" },
+    { id: "tipo",         label: "Tipo" },
+    { id: "adicionada",   label: "Adicionada" },
+    { id: "comment",      label: "Comentário" },
+  ];
+  const DEFAULT_HIDDEN_COLS = new Set(["tipo", "adicionada", "comment"]);
+  const isColVisible = (id: string) =>
+    id in columnVisibility ? columnVisibility[id] : !DEFAULT_HIDDEN_COLS.has(id);
+
+  const [showColPicker, setShowColPicker] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showColPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setShowColPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showColPicker]);
+
+  const [sidebarWidth, setSidebarWidth]     = useState(208);
+  const [rightPanelTab, setRightPanelTab]   = useState<"selected" | "library">("library");
+  const [mediaTab, setMediaTab]             = useState<"audio" | "video">("audio");
+
+  const VIDEO_FORMATS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);
+  const isVideo = (t: { format?: string | null }) =>
+    VIDEO_FORMATS.has((t.format ?? "").toLowerCase());
+
+  const videoCount = allTracks.filter(isVideo).length;
+  const hasVideos  = videoCount > 0;
+
+  // Filtra por aba de mídia (Áudio / Vídeo)
+  const tracksForMedia = useMemo(() =>
+    mediaTab === "video" ? tracks.filter(isVideo) : tracks.filter((t) => !isVideo(t)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tracks, mediaTab]
+  );
+
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [showSettings, setShowSettings]     = useState(false);
   const [compact, setCompact]               = useState(false);
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [newTrackIds, setNewTrackIds]       = useState<Set<string>>(new Set());
   const [showSidebar, setShowSidebar]       = useState(true);
   const [missingMeta, setMissingMeta]       = useState<{
     missingGenre: number; missingYear: number; missingAlbum: number;
   } | null>(null);
   const [filenameIssues, setFilenameIssues] = useState<FilenameIssue[]>([]);
+  const [filenameMetaIssues, setFilenameMetaIssues] = useState<FilenameMetaIssue[]>([]);
   const [parenIssues, setParenIssues] = useState<ParenIssue[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [normalizing, setNormalizing]     = useState(false);
@@ -115,6 +222,15 @@ export default function App() {
   const [scanDone, setScanDone]         = useState<number>(0);
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
+  const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
+  const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
+  const [enrichingIds, setEnrichingIds]         = useState<Set<string>>(new Set());
+  const [enrichDoneIds, setEnrichDoneIds]       = useState<Set<string>>(new Set());
+  const [enrichUndoSnapshot, setEnrichUndoSnapshot] = useState<Track[] | null>(null);
+  const [analyzingBpmIds, setAnalyzingBpmIds]   = useState<Set<string>>(new Set());
+  const [bpmDoneIds, setBpmDoneIds]             = useState<Set<string>>(new Set());
+  const [analyzingBpm, setAnalyzingBpm]         = useState(false);
+  const [bpmProgress, setBpmProgress]           = useState<{ done: number; total: number } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
   const isBusyRef = useRef(false);
 
@@ -225,56 +341,387 @@ export default function App() {
     }
   }
 
+  async function exportCsv() {
+    if (allTracks.length === 0) return;
+    const outPath = await save({
+      defaultPath: "TagWave_Export.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (!outPath) return;
+    setExporting(true);
+    try {
+      const count = await invoke<number>("export_csv", { tracks: allTracks, outputPath: outPath });
+      toast(`CSV exportado · ${count} faixas`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function exportTraktorNml() {
+    if (allTracks.length === 0) return;
+    const outPath = await save({
+      defaultPath: "TagWave_Traktor.nml",
+      filters: [{ name: "Traktor NML", extensions: ["nml"] }],
+    });
+    if (!outPath) return;
+    setExporting(true);
+    try {
+      const count = await invoke<number>("export_traktor_nml", { tracks: allTracks, outputPath: outPath });
+      toast(`Traktor NML exportado · ${count} faixas`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Parseia "Artista - Título [Ano].mp3" → { artist, title, year }
+  function parseFilenamePattern(filename: string) {
+    const base = filename.replace(/\.[^.]+$/, ""); // remove extensão
+    const dashIdx = base.indexOf(" - ");
+    if (dashIdx === -1) return null;
+    const artist = base.slice(0, dashIdx).trim();
+    let rest = base.slice(dashIdx + 3).trim();
+    const yearMatch = rest.match(/\s*\[(\d{4})\]\s*$/);
+    const year = yearMatch ? parseInt(yearMatch[1]) : null;
+    const title = rest.replace(/\s*\[\d{4}\]\s*$/, "").trim();
+    if (!artist || !title) return null;
+    return { artist, title, year };
+  }
+
+  const [restoringFromName, setRestoringFromName] = useState(false);
+
+  async function restoreFromFilename() {
+    const targets = selectedIds.size > 0
+      ? allTracks.filter((t) => selectedIds.has(t.id))
+      : allTracks;
+    const parseable = targets.filter((t) => parseFilenamePattern(t.filename) !== null);
+    if (parseable.length === 0) {
+      toast("Nenhuma faixa com padrão 'Artista - Título' no nome", "info");
+      return;
+    }
+    setRestoringFromName(true);
+    let restored = 0;
+    const restoredIds = new Set<string>();
+    try {
+      for (const track of parseable) {
+        const parsed = parseFilenamePattern(track.filename)!;
+        await invoke("save_tags", {
+          path: track.path,
+          title: parsed.title,
+          artist: parsed.artist,
+          album: null,
+          genre: null,
+          year: parsed.year,
+          trackNumber: null, bpm: null, key: null, rating: null,
+        }).catch(() => {});
+        const updatedIssues = track.issues.filter((issue) => {
+          if (issue === "sem artista" && parsed.artist) return false;
+          if (issue === "sem título" && parsed.title) return false;
+          return true;
+        });
+        useAppStore.getState().updateTrack({
+          ...track,
+          title: parsed.title,
+          artist: parsed.artist,
+          year: parsed.year ?? track.year,
+          issues: updatedIssues,
+        });
+        restoredIds.add(track.id);
+        restored++;
+      }
+      // Desseleciona as faixas que foram restauradas
+      useAppStore.setState((s) => ({
+        selectedIds: new Set([...s.selectedIds].filter((id) => !restoredIds.has(id))),
+      }));
+      toast(`${restored} faixa${restored !== 1 ? "s" : ""} restaurada${restored !== 1 ? "s" : ""} a partir dos nomes`, "success");
+    } finally {
+      setRestoringFromName(false);
+    }
+  }
+
+  async function undoEnrich() {
+    if (!enrichUndoSnapshot) return;
+    const snapshot = enrichUndoSnapshot;
+    setEnrichUndoSnapshot(null);
+    setEnriching(true);
+    try {
+      for (const orig of snapshot) {
+        await invoke("save_tags", {
+          path: orig.path, title: orig.title ?? null, artist: orig.artist ?? null,
+          album: orig.album ?? null, genre: orig.genre ?? null, year: orig.year ?? null,
+          trackNumber: orig.track_number ?? null, bpm: orig.bpm ?? null,
+          key: orig.key ?? null, rating: orig.rating ?? null,
+        }).catch(() => {});
+        useAppStore.getState().updateTrack(orig);
+      }
+      toast(`${snapshot.length} faixa${snapshot.length !== 1 ? "s" : ""} restaurada${snapshot.length !== 1 ? "s" : ""}`, "success");
+    } finally {
+      setEnriching(false);
+    }
+  }
+
   async function batchEnrich() {
     const selected = allTracks.filter((t) => selectedIds.has(t.id));
-    const targets = selected.length > 0
+    const isExplicitSelection = selected.length > 0;
+    const targets = isExplicitSelection
       ? selected
       : allTracks.filter((t) => !t.genre || !t.album || !t.year);
     if (targets.length === 0) { toast("Todas as faixas já têm metadados completos", "info"); return; }
+
+    setEnrichUndoSnapshot([...targets]);
     setEnriching(true);
     setEnrichProgress({ done: 0, total: targets.length });
-    let enriched = 0;
-    const CHUNK = 5;
+
+    type ItunesResult = { path: string; genre: string | null; album: string | null; year: number | null; cover_url: string | null };
+
+    // Mapa path → id para atualizar highlights via eventos Rust
+    const pathToId = new Map(targets.map((t) => [t.path, t.id]));
+
+    // Registra listeners para eventos de progresso emitidos pelo Rust
+    const unlistenStart = await listen<{ path: string; idx: number; total: number }>(
+      "enrich_track_start",
+      ({ payload }) => {
+        const id = pathToId.get(payload.path);
+        if (id) setEnrichingIds(new Set([id]));
+      }
+    );
+    const unlistenDone = await listen<{ path: string; idx: number; total: number }>(
+      "enrich_track_done",
+      ({ payload }) => {
+        const id = pathToId.get(payload.path);
+        setEnrichingIds(new Set());
+        if (id) {
+          setEnrichDoneIds((prev) => new Set([...prev, id]));
+          setTimeout(() => {
+            setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+          }, 700);
+        }
+        setEnrichProgress({ done: payload.idx, total: payload.total });
+      }
+    );
+
     try {
-      for (let i = 0; i < targets.length; i += CHUNK) {
-        const chunk = targets.slice(i, i + CHUNK);
-        const req = chunk.map((t) => ({ path: t.path, title: t.title ?? null, artist: t.artist ?? null }));
-        const results = await invoke<{ path: string; genre: string | null; album: string | null; year: number | null; cover_url: string | null }[]>("batch_enrich_itunes", { tracks: req });
-        for (const r of results) {
-          const track = useAppStore.getState().tracks.find((t) => t.path === r.path);
-          if (!track) continue;
-          const hasMetaChange = (r.genre && !track.genre) || (r.album && !track.album) || (r.year && !track.year);
-          let updated = { ...track };
-          if (hasMetaChange) {
-            updated = { ...updated, genre: r.genre ?? track.genre, album: r.album ?? track.album, year: r.year ?? track.year };
+      // ── Fase 1: Rust processa todas as faixas com delay controlado por Tokio ──
+      // Uma única invocação — sem risco de timing drift do setTimeout JS
+      const queryResults = await invoke<ItunesResult[]>("batch_enrich_all", {
+        tracks: targets.map((t) => ({
+          path: t.path,
+          title: t.title ?? null,
+          artist: t.artist ?? null,
+        })),
+      });
+
+      // ── Fase 2: salvar tags (rápido, sem rate-limit) ──────────────────────────
+      let enriched = 0;
+      for (let i = 0; i < targets.length; i++) {
+        const r = queryResults[i];
+        if (!r) continue;
+        const currentTrack = useAppStore.getState().tracks.find((t) => t.path === r.path);
+        if (!currentTrack) continue;
+
+        const apiFoundSomething = r.genre !== null || r.album !== null || r.year !== null;
+        const hasGap = (r.genre && !currentTrack.genre) || (r.album && !currentTrack.album) || (r.year && !currentTrack.year);
+        if (isExplicitSelection ? apiFoundSomething : hasGap) {
+          const updated = {
+            ...currentTrack,
+            genre: r.genre ?? currentTrack.genre,
+            album: r.album ?? currentTrack.album,
+            year: r.year ?? currentTrack.year,
+          };
+          await invoke("save_tags", {
+            path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null,
+            album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null,
+            trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null,
+            key: updated.key ?? null, rating: updated.rating ?? null,
+          }).catch(() => {});
+          useAppStore.getState().updateTrack(updated);
+          enriched++;
+        }
+      }
+
+      // ── Fase 2.5: Spotify como fallback para faixas que iTunes não encontrou ──
+      const itunesNotFound = targets.filter((_, i) => {
+        const r = queryResults[i];
+        return !r || (r.genre === null && r.album === null && r.year === null && r.cover_url === null);
+      });
+
+      for (const track of itunesNotFound) {
+        try {
+          const sp = await enrichTrackFull(track.title ?? track.filename, track.artist ?? "");
+          if (!sp) continue;
+          const cur = useAppStore.getState().tracks.find((t) => t.path === track.path);
+          if (!cur) continue;
+          const newAlbum = sp.album || null;
+          const newYear  = sp.year ? parseInt(sp.year) : null;
+          const newBpm   = sp.features?.bpm ?? null;
+          const newKey   = sp.features?.key ?? null;
+          const hasNew   = isExplicitSelection
+            ? (newAlbum || newYear || newBpm || newKey)
+            : ((newAlbum && !cur.album) || (newYear && !cur.year) || (newBpm && !cur.bpm) || (newKey && !cur.key));
+          if (hasNew) {
+            const updated = {
+              ...cur,
+              album: newAlbum ?? cur.album,
+              year:  newYear  ?? cur.year,
+              bpm:   newBpm   ?? cur.bpm,
+              key:   newKey   ?? cur.key,
+            };
             await invoke("save_tags", {
-              path: track.path, title: updated.title ?? null, artist: updated.artist ?? null,
+              path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null,
               album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null,
               trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null,
               key: updated.key ?? null, rating: updated.rating ?? null,
             }).catch(() => {});
+            useAppStore.getState().updateTrack(updated);
             enriched++;
           }
-          // Download cover if missing
-          if (!track.has_cover && r.cover_url) {
-            const ok = await invoke("save_cover", { path: track.path, coverUrl: r.cover_url }).then(() => true).catch(() => false);
+          // Capa via Spotify se faixa ainda não tem
+          if (!cur.has_cover && sp.coverUrl && (isExplicitSelection || !cur.has_cover)) {
+            const ok = await Promise.race([
+              invoke("save_cover", { path: track.path, coverUrl: sp.coverUrl }).then(() => true).catch(() => false),
+              new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
+            ]);
             if (ok) {
-              updated = {
-                ...updated,
-                has_cover: true,
-                cover_version: (updated.cover_version ?? 0) + 1,
-                issues: updated.issues.filter((i) => i !== "sem capa"),
-              };
+              const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
+              if (fresh) {
+                useAppStore.getState().updateTrack({ ...fresh, has_cover: true, cover_version: (fresh.cover_version ?? 0) + 1, issues: fresh.issues.filter((ii) => ii !== "sem capa") });
+              }
             }
           }
-          if (updated !== track) useAppStore.getState().updateTrack(updated);
-        }
-        setEnrichProgress({ done: Math.min(i + CHUNK, targets.length), total: targets.length });
+        } catch { /* pula */ }
+        await new Promise<void>((res) => setTimeout(res, 300)); // rate limit Spotify
       }
-      toast(enriched > 0 ? `${enriched} faixa${enriched !== 1 ? "s" : ""} enriquecida${enriched !== 1 ? "s" : ""} via iTunes` : "Nenhuma informação nova encontrada", enriched > 0 ? "success" : "info");
+
+      // ── Fase 3: baixar capas em paralelo (3 por vez) ──────────────────────────
+      const coverWork = targets
+        .map((track, i) => ({ track, r: queryResults[i] }))
+        .filter(({ track, r }) => r?.cover_url && (isExplicitSelection || !track.has_cover));
+
+      const COVER_BATCH = 3;
+      for (let i = 0; i < coverWork.length; i += COVER_BATCH) {
+        const batch = coverWork.slice(i, i + COVER_BATCH);
+        setEnrichingIds(new Set(batch.map(({ track }) => track.id)));
+
+        await Promise.all(batch.map(async ({ track, r }) => {
+          if (!r?.cover_url) return;
+          const ok = await Promise.race([
+            invoke("save_cover", { path: track.path, coverUrl: r.cover_url }).then(() => true).catch(() => false),
+            new Promise<boolean>((res) => setTimeout(() => res(false), 10000)),
+          ]);
+          if (ok) {
+            const fresh = useAppStore.getState().tracks.find((t) => t.path === track.path);
+            if (fresh) {
+              useAppStore.getState().updateTrack({
+                ...fresh,
+                has_cover: true,
+                cover_version: (fresh.cover_version ?? 0) + 1,
+                issues: fresh.issues.filter((ii) => ii !== "sem capa"),
+              });
+            }
+          }
+        }));
+
+        setEnrichingIds(new Set());
+        batch.forEach(({ track }) => {
+          setEnrichDoneIds((prev) => new Set([...prev, track.id]));
+          setTimeout(() => {
+            setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
+            useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
+          }, 700);
+        });
+      }
+
+      // Deseleciona faixas sem download de capa
+      const coveredIds = new Set(coverWork.map(({ track }) => track.id));
+      targets.forEach((track) => {
+        if (!coveredIds.has(track.id)) {
+          useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
+        }
+      });
+
+      toast(
+        enriched > 0
+          ? `${enriched} faixa${enriched !== 1 ? "s" : ""} enriquecida${enriched !== 1 ? "s" : ""} via iTunes`
+          : "Nenhuma informação nova encontrada",
+        enriched > 0 ? "success" : "info",
+        enriched > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+      );
     } finally {
+      unlistenStart();
+      unlistenDone();
       setEnriching(false);
       setEnrichProgress(null);
+      setEnrichingIds(new Set());
+    }
+  }
+
+  async function batchAnalyzeBpm(overrideTracks?: Track[]) {
+    const audioOnly = (t: Track) => !VIDEO_FORMATS.has((t.format ?? "").toLowerCase());
+    let targets: Track[];
+    if (overrideTracks) {
+      targets = overrideTracks.filter(audioOnly);
+    } else {
+      const selected = allTracks.filter((t) => selectedIds.has(t.id));
+      targets = (selected.length > 0 ? selected : allTracks).filter(audioOnly);
+    }
+
+    if (targets.length === 0) {
+      toast("Nenhuma faixa de áudio para analisar", "info");
+      return;
+    }
+
+    setAnalyzingBpm(true);
+    setBpmProgress({ done: 0, total: targets.length });
+    let analyzed = 0;
+
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const track = targets[i];
+
+        setAnalyzingBpmIds(new Set([track.id]));
+
+        try {
+          const bpm = await Promise.race([
+            invoke<number | null>("analyze_bpm", {
+              path: track.path,
+              durationSecs: track.duration_secs ?? 0,
+            }),
+            new Promise<null>((res) => setTimeout(() => res(null), 20000)),
+          ]);
+          if (bpm !== null) {
+            const bpmStr = bpm % 1 === 0 ? String(bpm) : bpm.toFixed(1);
+            await invoke("save_tags", {
+              path: track.path,
+              title: track.title ?? null, artist: track.artist ?? null,
+              album: track.album ?? null, genre: track.genre ?? null,
+              year: track.year ?? null, trackNumber: track.track_number ?? null,
+              bpm: bpmStr, key: track.key ?? null, rating: track.rating ?? null,
+            }).catch(() => {});
+            useAppStore.getState().updateTrack({ ...track, bpm: bpmStr });
+            analyzed++;
+          }
+        } catch { /* pula faixas com erro */ }
+
+        setAnalyzingBpmIds(new Set());
+        setBpmDoneIds((prev) => new Set([...prev, track.id]));
+        setTimeout(() => {
+          setBpmDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
+          useAppStore.setState((s) => ({
+            selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)),
+          }));
+        }, 700);
+
+        setBpmProgress({ done: i + 1, total: targets.length });
+      }
+      toast(
+        analyzed > 0
+          ? `BPM analisado em ${analyzed} faixa${analyzed !== 1 ? "s" : ""}`
+          : "Nenhum BPM detectado",
+        analyzed > 0 ? "success" : "info",
+      );
+    } finally {
+      setAnalyzingBpm(false);
+      setBpmProgress(null);
+      setAnalyzingBpmIds(new Set());
     }
   }
 
@@ -311,6 +758,31 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedIds, allTracks]);
 
+  function checkFilenameMetaIssues(loaded: Track[]) {
+    const issues: FilenameMetaIssue[] = [];
+    for (const track of loaded) {
+      if (track.artist && track.title) continue;
+      const basename = track.path.split("/").pop()?.split("\\").pop() ?? "";
+      const nameNoExt = basename.replace(/\.[^.]+$/, "");
+      const sep = nameNoExt.indexOf(" - ");
+      if (sep <= 0) continue;
+      const part1 = nameNoExt.slice(0, sep).trim();
+      const part2 = nameNoExt.slice(sep + 3).trim();
+      if (!part1 || !part2) continue;
+      issues.push({
+        path: track.path,
+        filename: basename,
+        extractedArtist: part1,
+        extractedTitle: part2,
+        missingArtist: !track.artist,
+        missingTitle: !track.title,
+      });
+    }
+    if (issues.length > 0) {
+      setTimeout(() => setFilenameMetaIssues(issues), 800);
+    }
+  }
+
   function checkMissingMeta(loaded: Track[]) {
     if (loaded.length < 5) return;
     const missingGenre  = loaded.filter((t) => !t.genre).length;
@@ -331,6 +803,7 @@ export default function App() {
     setScanTotal(null);
     setScanDone(0);
     setFilenameIssues([]);
+    setFilenameMetaIssues([]);
     setParenIssues([]);
     setDuplicateGroups([]);
     setGenreFilter(null);
@@ -339,6 +812,7 @@ export default function App() {
       setTracks(result);
       recordScan(result.length);
       checkMissingMeta(result);
+      checkFilenameMetaIssues(result);
 
       // Background analysis
       if (result.length > 0) {
@@ -364,8 +838,126 @@ export default function App() {
     await scanFolder(folder);
   }
 
+  const [appLoading, setAppLoading] = useState<"startup" | "closing" | null>("startup");
+  const [appVersion, setAppVersion] = useState("");
+  const [showTrialInfo, setShowTrialInfo] = useState(false);
+  const isSavingRef = useRef(false);
+
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+
+  // Reabre o painel e troca para aba "Selecionado" quando o usuário seleciona uma faixa
   useEffect(() => {
-    if (lastFolder) scanFolder(lastFolder);
+    if (selectedIds.size > 0) {
+      setShowRightPanel(true);
+      setRightPanelTab("selected");
+    }
+  }, [selectedIds.size]);
+
+  // Carrega cache na abertura e detecta músicas novas
+  useEffect(() => {
+    async function init() {
+      try {
+        // Verifica quais pastas em recentFolders ainda existem no disco
+        const storeState = useAppStore.getState();
+        const foldersToCheck = [...storeState.recentFolders];
+        const missing: string[] = [];
+        for (const folder of foldersToCheck) {
+          try {
+            const exists = await invoke<boolean>("dir_exists", { path: folder });
+            if (!exists) missing.push(folder);
+          } catch {
+            missing.push(folder);
+          }
+        }
+        // Mostra diálogo de confirmação; não remove automaticamente
+        if (missing.length > 0) {
+          setGhostFolders(missing);
+        }
+
+        // Carrega apenas as pastas válidas (excluindo as ausentes)
+        const validFolders = foldersToCheck.filter((f) => !missing.includes(f));
+
+        type CacheData = { tracks: Track[]; last_folder: string };
+        const cache = await invoke<CacheData | null>("load_cache");
+        if (cache && cache.tracks.length > 0) {
+          // Filtra tracks que pertencem a pastas válidas
+          const validTracks = cache.tracks.filter((t) =>
+            validFolders.some((f) => t.path.startsWith(f))
+          );
+
+          // Filtra adicionalmente por last_folder para mostrar apenas a pasta ativa
+          const lastF = cache.last_folder && validFolders.includes(cache.last_folder)
+            ? cache.last_folder
+            : validFolders[0] ?? null;
+
+          const activeTracks = lastF
+            ? validTracks.filter((t) => t.path.startsWith(lastF))
+            : [];
+
+          if (activeTracks.length === 0) {
+            setAppLoading(null);
+            return;
+          }
+
+          useAppStore.getState().setTracks(activeTracks);
+          // Seta lastFolder diretamente, sem re-inserir em recentFolders
+          useAppStore.setState({ lastFolder: lastF });
+          checkMissingMeta(activeTracks);
+
+          // Detecta arquivos novos adicionados desde a última sessão
+          try {
+            const knownPaths = activeTracks.map((t) => t.path);
+            const newPaths = await invoke<string[]>("find_new_files", {
+              folder: lastF,
+              knownPaths,
+            });
+            if (newPaths.length > 0) {
+              const newTracks = await invoke<Track[]>("scan_specific_files", { paths: newPaths });
+              if (newTracks.length > 0) {
+                const ids = new Set(newTracks.map((t) => t.id));
+                useAppStore.getState().setTracks([...newTracks, ...activeTracks]);
+                setNewTrackIds(ids);
+                checkMissingMeta(newTracks);
+              }
+            }
+          } catch {
+            // Detecção de novos é best-effort — não bloqueia a abertura
+          }
+        } else if (lastFolder) {
+          await scanFolder(lastFolder);
+        }
+      } catch {
+        if (lastFolder) await scanFolder(lastFolder);
+      } finally {
+        setAppLoading(null);
+      }
+    }
+    init();
+  }, []);
+
+  // Salva cache no fechamento
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    getCurrentWindow().onCloseRequested(async (event) => {
+      if (isSavingRef.current) return;
+      event.preventDefault();
+      isSavingRef.current = true;
+      setAppLoading("closing");
+
+      const tracks = useAppStore.getState().tracks;
+      const folder = useAppStore.getState().lastFolder;
+
+      // Dispara o save sem aguardar — quit_app fecha o processo depois de 1,5 s
+      if (tracks.length > 0 && folder) {
+        invoke("save_cache", { tracks, lastFolder: folder }).catch(() => {});
+      }
+
+      // Fecha via processo Rust após 1,5 s (evita loop close→onCloseRequested)
+      setTimeout(() => {
+        invoke("quit_app").catch(() => { window.close(); });
+      }, 1500);
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
   }, []);
 
   const cleanupCount = allTracks.filter((t) => t.issues.length > 0).length;
@@ -382,20 +974,28 @@ export default function App() {
       {/* Toolbar */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.05] bg-[#23201E]"
+        className="flex flex-col border-b border-white/[0.05] bg-[#23201E]"
         style={{ cursor: "default" }}
+        onDoubleClick={(e) => {
+          // Duplo clique em área vazia da toolbar → maximizar/restaurar (comportamento macOS)
+          const target = e.target as HTMLElement;
+          if (target.closest('button, input, select, a, [role="button"]')) return;
+          getCurrentWindow().toggleMaximize().catch(() => {});
+        }}
       >
+        {/* Linha principal */}
+        <div className="flex items-center gap-2 px-3 py-2">
+
         {/* Espaço para os traffic lights do macOS */}
         {/^Mac/.test(navigator.platform) && <div className="w-20 shrink-0" />}
 
-        {/* Logo — abre Configurações */}
-        <button
-          onClick={() => setShowSettings(true)}
-          title="Configurações (⌘,)"
-          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md hover:bg-white/[0.06] transition-colors"
-        >
-          <img src="/tagwave-logo.png" alt="TagWave" className="w-5 h-5 rounded-sm" />
-        </button>
+        {/* Logo — decorativo */}
+        <div className="shrink-0 flex items-center justify-center w-8 h-8">
+          <svg width="22" height="22" viewBox="0 0 100 100" fill="none">
+            <circle cx="50" cy="50" r="46" fill="#D95340"/>
+            <circle cx="50" cy="50" r="10" fill="#1A0D0B"/>
+          </svg>
+        </div>
 
         {/* Toggle sidebar */}
         <button
@@ -410,43 +1010,92 @@ export default function App() {
           </svg>
         </button>
 
-        {/* Abrir pasta */}
+        {/* Abrir pasta — ícone compacto */}
         <button
           onClick={pickFolder}
           disabled={isScanning}
-         
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] disabled:opacity-50 text-xs font-bold uppercase tracking-wide text-white transition-colors"
+          title="Abrir Pasta (⌘O)"
+          className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] disabled:opacity-50 transition-colors"
         >
           {isScanning ? (
-            <>
-              <svg className="animate-spin shrink-0" width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <circle cx="5.5" cy="5.5" r="4" strokeDasharray="20" strokeDashoffset="8" opacity="0.4"/>
-                <path d="M5.5 1.5a4 4 0 014 4"/>
-              </svg>
-              {scanTotal !== null ? `${scanDone}/${scanTotal}` : "Escaneando…"}
-            </>
+            <svg className="animate-spin" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="7" cy="7" r="5" strokeDasharray="25" strokeDashoffset="10" opacity="0.4"/>
+              <path d="M7 2a5 5 0 015 5"/>
+            </svg>
           ) : (
-            <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 3.5C1 2.67 1.67 2 2.5 2H4.5L5.5 3H9.5C10.33 3 11 3.67 11 4.5V8.5C11 9.33 10.33 10 9.5 10H2.5C1.67 10 1 9.33 1 8.5V3.5Z"/>
-              </svg>
-              Abrir Pasta
-            </>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 5.5C2 4.67 2.67 4 3.5 4H6L7 5H12.5C13.33 5 14 5.67 14 6.5V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V5.5Z"/>
+              <line x1="8" y1="7.5" x2="8" y2="11"/>
+              <line x1="6.25" y1="9.25" x2="9.75" y2="9.25"/>
+            </svg>
           )}
         </button>
 
+        {/* Scan progress */}
+        {isScanning && scanTotal !== null && (
+          <span className="text-[10px] font-mono text-[#8F8883] whitespace-nowrap shrink-0">
+            {scanDone}/{scanTotal}
+          </span>
+        )}
+
         {/* Quick actions */}
-        <div
-          className="flex items-center gap-1 ml-1"
-         
-        >
-          {cleanupCount > 0 && (
+        <div className="flex items-center gap-1 ml-1">
+          {/* Restaurar de Nomes — recupera Artista/Título/Ano do filename */}
+          {allTracks.length > 0 && (
             <button
-              onClick={autoSelectCleanup}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold border border-[#D95340]/30 text-[#D95340] hover:bg-[#D95340]/10 transition-colors whitespace-nowrap shrink-0"
+              onClick={restoreFromFilename}
+              disabled={restoringFromName || enriching || isScanning}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40 transition-colors whitespace-nowrap shrink-0 ${
+                selectedIds.size > 0
+                  ? "bg-[#D95340]/15 text-[#D95340] border border-[#D95340]/25 hover:bg-[#D95340]/25"
+                  : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
+              }`}
+              title="Restaurar Artista, Título e Ano a partir do nome do arquivo (padrão: Artista - Título [Ano].mp3)"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] inline-block shrink-0" />
-              {cleanupCount} precisam de enriquecimento
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 5.5A3.5 3.5 0 108.5 2.5L7 4"/><path d="M2 2.5v3h3"/>
+              </svg>
+              {restoringFromName
+                ? "Restaurando…"
+                : selectedIds.size > 0
+                  ? `Restaurar ${selectedIds.size}`
+                  : "Restaurar de Nomes"}
+            </button>
+          )}
+          {/* Botão Desfazer — aparece após enriquecimento enquanto snapshot está disponível */}
+          {enrichUndoSnapshot && (
+            <button
+              onClick={undoEnrich}
+              disabled={enriching}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#EAB308] hover:text-[#F59E0B] hover:bg-yellow-500/[0.08] border border-yellow-500/20 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+              title="Desfazer último enriquecimento"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 5.5A3.5 3.5 0 108.5 2.5L7 4"/>
+                <path d="M2 2.5v3h3"/>
+              </svg>
+              Desfazer
+            </button>
+          )}
+          {allTracks.length > 0 && (
+            <button
+              onClick={() => batchAnalyzeBpm()}
+              disabled={analyzingBpm || isScanning || enriching}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40 transition-all whitespace-nowrap shrink-0 ${
+                analyzingBpm
+                  ? "text-[#D95340] bg-[#D95340]/[0.08] border border-[#D95340]/[0.30]"
+                  : "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
+              }`}
+              title="Analisar BPM em lote de todas as faixas selecionadas"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <path d="M1 8l2-4 2 2.5 2-5 2 3 1-2"/>
+              </svg>
+              {analyzingBpm && bpmProgress
+                ? `BPM ${bpmProgress.done}/${bpmProgress.total}`
+                : selectedIds.size > 0
+                  ? `BPM (${selectedIds.size})`
+                  : "Analisar BPM"}
             </button>
           )}
           {allTracks.length > 0 && (
@@ -491,19 +1140,34 @@ export default function App() {
                 </svg>
                 {exporting ? "Exportando…" : "Exportar"}
               </button>
-              <div className="absolute top-full left-0 mt-1 py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl hidden group-hover:block z-50 min-w-[140px]">
-                <button
-                  onClick={exportRekordbox}
-                  className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                >
-                  Rekordbox XML
-                </button>
-                <button
-                  onClick={exportM3U}
-                  className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                >
-                  Playlist M3U
-                </button>
+              {/* pt-1: padding transparente que cobre o gap e mantém o hover contínuo */}
+              <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
+                <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
+                  <button
+                    onClick={exportRekordbox}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    Rekordbox XML
+                  </button>
+                  <button
+                    onClick={exportTraktorNml}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    Traktor NML
+                  </button>
+                  <button
+                    onClick={exportM3U}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    M3U · Serato / djay / VirtualDJ
+                  </button>
+                  <button
+                    onClick={exportCsv}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                  >
+                    CSV Universal
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -511,10 +1175,7 @@ export default function App() {
 
         {/* Stats */}
         {allTracks.length > 0 && (
-          <span
-            className="text-[11px] text-[#605A55] font-mono ml-1"
-           
-          >
+          <span className="text-[11px] text-[#605A55] font-mono ml-1 whitespace-nowrap shrink-0">
             {allTracks.length.toLocaleString("pt-BR")} faixas
           </span>
         )}
@@ -560,9 +1221,6 @@ export default function App() {
         )}
 
         <div className="flex-1" />
-
-
-        <TrialBanner />
 
         {/* Compact toggle */}
         <button
@@ -727,16 +1385,215 @@ export default function App() {
             </button>
           </div>
         )}
+        </div>
+
+        {/* Sub-row: cleanup | trial + versão */}
+        <div className="flex items-center justify-between px-3 py-1 border-t border-white/[0.04]">
+          {cleanupCount > 0 ? (
+            <button
+              onClick={autoSelectCleanup}
+              className="flex items-center gap-1.5 group"
+              title="Selecionar faixas com problemas"
+              style={{ animation: 'cleanup-pulse 2.8s ease-in-out infinite' }}
+            >
+              <svg width="6" height="8" viewBox="0 0 6 8" fill="#D95340" className="shrink-0">
+                <path d="M0 0l6 4-6 4V0z"/>
+              </svg>
+              <span className="text-[10px] font-mono font-bold text-[#D95340] group-hover:text-[#E07364] transition-colors">{cleanupCount}</span>
+              <span className="text-[10px] font-semibold text-[#D95340]/70 group-hover:text-[#E07364] transition-colors">faixas para enriquecer</span>
+            </button>
+          ) : <span />}
+
+          <div className="flex items-center gap-2.5">
+            {!isTrialActivated() && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowTrialInfo(true)}
+                  className="text-[9px] font-bold font-mono text-[#D95340] hover:text-[#E07364] tabular-nums transition-colors"
+                  title={`Trial: ${daysRemaining()} dias restantes — clique para detalhes`}
+                >
+                  Trial · {daysRemaining()}d
+                </button>
+                <button
+                  onClick={() => setShowTrialInfo(true)}
+                  className="px-2 py-0.5 rounded text-[9px] font-bold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white transition-colors"
+                  title="Comprar licença completa"
+                >
+                  Upgrade
+                </button>
+              </div>
+            )}
+            {appVersion && (
+              <span className="text-[9px] font-mono text-[#756D67]">v{appVersion}</span>
+            )}
+            {/* Column picker */}
+            <div className="relative" ref={colPickerRef}>
+              <button
+                onClick={() => setShowColPicker((v) => !v)}
+                title="Gerenciar colunas"
+                className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
+                  showColPicker
+                    ? "bg-white/[0.08] text-[#D95340]"
+                    : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.06]"
+                }`}
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                  <rect x="1" y="1" width="3" height="3" rx="0.5"/>
+                  <rect x="1" y="7" width="3" height="3" rx="0.5"/>
+                  <rect x="7" y="1" width="3" height="3" rx="0.5"/>
+                  <rect x="7" y="7" width="3" height="3" rx="0.5"/>
+                </svg>
+              </button>
+              {showColPicker && (
+                <div className="absolute right-0 top-full mt-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl py-2 z-[200] min-w-[160px]">
+                  <p className="px-3 pb-1.5 text-[9px] font-bold text-[#605A55] uppercase tracking-widest border-b border-white/[0.05]">
+                    Colunas
+                  </p>
+                  <div className="py-1">
+                    {HIDEABLE_COLS.map((col) => (
+                      <label
+                        key={col.id}
+                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-white/[0.04] transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isColVisible(col.id)}
+                          onChange={() => setColumnVisibility({ ...columnVisibility, [col.id]: !isColVisible(col.id) })}
+                          className="accent-[#D95340]"
+                        />
+                        <span className="text-[11px] text-[#C2BEBC]">{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="border-t border-white/[0.05] pt-1.5 px-3 mt-0.5">
+                    <button
+                      onClick={() => {
+                        const reset: Record<string, boolean> = {};
+                        HIDEABLE_COLS.forEach((c) => { reset[c.id] = true; });
+                        setColumnVisibility(reset);
+                      }}
+                      className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
+                    >
+                      Mostrar todas
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Configurações (⌘,)"
+              className="flex items-center justify-center w-5 h-5 rounded text-[#D95340] hover:text-[#E07364] hover:bg-white/[0.06] transition-colors"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="5.5" cy="5.5" r="1.8"/>
+                <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.9 2.1l-.7.7M2.8 8.2l-.7.7"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {showSidebar && <Sidebar onFolderSelect={scanFolder} />}
+        {showSidebar && (
+          <div className="shrink-0 flex relative" style={{ width: sidebarWidth }}>
+            <Sidebar
+                onFolderSelect={scanFolder}
+                onAnalyzeBpmFolder={(folderPath) => {
+                  const folderTracks = allTracks.filter((t) => t.path.startsWith(folderPath + "/") || t.path.startsWith(folderPath + "\\"));
+                  if (folderTracks.length === 0) { toast("Nenhuma faixa nesta pasta", "info"); return; }
+                  batchAnalyzeBpm(folderTracks);
+                }}
+              />
+            {/* Drag handle */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-[#D95340]/30 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startW = sidebarWidth;
+                const onMove = (ev: MouseEvent) => {
+                  setSidebarWidth(Math.max(160, Math.min(420, startW + ev.clientX - startX)));
+                };
+                const onUp = () => {
+                  document.removeEventListener("mousemove", onMove);
+                  document.removeEventListener("mouseup", onUp);
+                };
+                document.addEventListener("mousemove", onMove);
+                document.addEventListener("mouseup", onUp);
+              }}
+            />
+          </div>
+        )}
 
         <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Abas Áudio / Vídeo — faixa centralizada abaixo do toolbar */}
+          {allTracks.length > 0 && (
+            <div className="flex items-center justify-center py-1.5 border-b border-white/[0.04] shrink-0">
+              <div className="flex items-center gap-px bg-white/[0.04] rounded-lg p-0.5 border border-white/[0.06]">
+                {(["audio", "video"] as const).map((tab) => {
+                  const isAudio = tab === "audio";
+                  const count = isAudio ? allTracks.length - videoCount : videoCount;
+                  const active = mediaTab === tab;
+                  const disabled = tab === "video" && !hasVideos;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => !disabled && setMediaTab(tab)}
+                      disabled={disabled}
+                      className={`flex items-center gap-1.5 px-4 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                        active
+                          ? "bg-[#D95340]/20 text-[#D95340] border border-[#D95340]/20"
+                          : disabled
+                          ? "text-[#373331] cursor-default"
+                          : "text-[#605A55] hover:text-[#8F8883]"
+                      }`}
+                    >
+                      {isAudio ? (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                          <path d="M3 2h4l1 1v4l-1 1H3L2 7V3l1-1zm1.5 2v2l1.5-.75V4.75L4.5 4z"/>
+                        </svg>
+                      ) : (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                          <rect x="1" y="2.5" width="6" height="5" rx="0.8"/>
+                          <path d="M7 4.5l2-1.5v4L7 5.5"/>
+                        </svg>
+                      )}
+                      {isAudio ? "Áudio" : "Vídeo"}
+                      {count > 0 && (
+                        <span className={`text-[9px] font-mono ${active ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Filename cleanup prompt */}
-          {(filenameIssues.length > 0 || parenIssues.length > 0 || duplicateGroups.length > 0) && (
+          {(filenameIssues.length > 0 || parenIssues.length > 0 || duplicateGroups.length > 0 || filenameMetaIssues.length > 0) && (
             <div className="pt-2 flex flex-col gap-0">
+              {filenameMetaIssues.length > 0 && (
+                <FilenameMetaPrompt
+                  issues={filenameMetaIssues}
+                  onDismiss={() => setFilenameMetaIssues([])}
+                  onApplied={(path, artist, title) => {
+                    const existing = useAppStore.getState().tracks.find((t) => t.path === path);
+                    if (existing) {
+                      useAppStore.getState().updateTrack({
+                        ...existing,
+                        artist: artist ?? existing.artist,
+                        title: title ?? existing.title,
+                      });
+                    }
+                    setFilenameMetaIssues((prev) => prev.filter((i) => i.path !== path));
+                  }}
+                />
+              )}
               {filenameIssues.length > 0 && (
                 <FilenamePrompt
                   issues={filenameIssues}
@@ -768,18 +1625,93 @@ export default function App() {
             </div>
           )}
           <div className="flex flex-1 overflow-hidden relative">
-            <TrackTable tracks={tracks} compact={compact} hasFolder={!!lastFolder} />
-            {selectedIds.size > 0 ? (
-              inspectorOverlay ? (
-                <div className="absolute inset-y-0 right-0 w-[280px] z-30 bg-[#23201E] border-l border-white/[0.06] shadow-2xl flex flex-col animate-[fade-in-right_0.15s_ease-out]">
-                  <Inspector />
+            {/* Conteúdo principal — split view quando há músicas novas */}
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {newTrackIds.size > 0 && (() => {
+                const newTracks = tracks.filter((t) => newTrackIds.has(t.id));
+                if (newTracks.length === 0) return null;
+                return (
+                  <div className="flex flex-col border-b-2 border-[#D95340]/25" style={{ maxHeight: "42%" }}>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-[#1a0f0e] border-b border-[#D95340]/20 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] shrink-0" style={{ animation: "pulse 2s ease-in-out infinite" }} />
+                      <span className="text-[9px] font-bold text-[#D95340] uppercase tracking-widest">
+                        {newTracks.length} {newTracks.length === 1 ? "música nova" : "músicas novas"}
+                      </span>
+                      <span className="text-[9px] text-[#605A55]">adicionadas desde a última sessão</span>
+                    </div>
+                    <TrackTable tracks={newTracks} compact={compact} hasFolder={true} />
+                  </div>
+                );
+              })()}
+              <TrackTable
+                tracks={tracksForMedia.filter((t) => !newTrackIds.has(t.id))}
+                compact={compact}
+                hasFolder={!!lastFolder}
+                onVideoPlay={mediaTab === "video" ? (t) => setVideoTrack(t) : undefined}
+                enrichingIds={new Set([...enrichingIds, ...analyzingBpmIds])}
+                enrichDoneIds={new Set([...enrichDoneIds, ...bpmDoneIds])}
+              />
+            </div>
+            {showRightPanel && allTracks.length > 0 && (() => {
+              const panel = (
+                <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C]">
+                  {/* Tab bar */}
+                  <div className="flex items-center border-b border-white/[0.05] px-3 pt-2 gap-0">
+                    <button
+                      onClick={() => setRightPanelTab("selected")}
+                      disabled={selectedIds.size === 0}
+                      className={`flex items-center gap-1.5 px-2 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
+                        rightPanelTab === "selected" && selectedIds.size > 0
+                          ? "text-[#F5F5F4] border-[#D95340]"
+                          : "text-[#605A55] border-transparent hover:text-[#8F8883] disabled:opacity-30 disabled:cursor-not-allowed"
+                      }`}
+                    >
+                      Selecionado
+                      {selectedIds.size > 0 && (
+                        <span className={`text-[9px] font-mono px-1 py-px rounded-sm ${
+                          rightPanelTab === "selected"
+                            ? "bg-[#D95340]/20 text-[#D95340]"
+                            : "bg-white/[0.05] text-[#605A55]"
+                        }`}>
+                          {selectedIds.size}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setRightPanelTab("library")}
+                      className={`flex items-center px-2 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
+                        rightPanelTab === "library"
+                          ? "text-[#F5F5F4] border-[#D95340]"
+                          : "text-[#605A55] border-transparent hover:text-[#8F8883]"
+                      }`}
+                    >
+                      Biblioteca
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      onClick={() => { useAppStore.getState().clearSelection(); setShowRightPanel(false); }}
+                      title="Fechar"
+                      className="w-4 h-4 mb-2 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
+                    >
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <line x1="1" y1="1" x2="7" y2="7"/>
+                        <line x1="7" y1="1" x2="1" y2="7"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Content */}
+                  {rightPanelTab === "selected" && selectedIds.size > 0
+                    ? <Inspector embedded />
+                    : <LibraryStats embedded />
+                  }
                 </div>
-              ) : (
-                <Inspector />
-              )
-            ) : allTracks.length > 0 ? (
-              <LibraryStats />
-            ) : null}
+              );
+
+              return inspectorOverlay && rightPanelTab === "selected" && selectedIds.size > 0
+                ? <div className="absolute inset-y-0 right-0 w-64 z-30 shadow-2xl flex flex-col animate-[fade-in-right_0.15s_ease-out]">{panel}</div>
+                : panel;
+            })()}
           </div>
         </div>
       </div>
@@ -797,7 +1729,116 @@ export default function App() {
         />
       )}
 
+      {/* Modal de vídeo — abre ao dar double-click em faixa de vídeo */}
+      {videoTrack && (
+        <div className="fixed inset-0 z-[700] flex items-center justify-center bg-black/75 backdrop-blur-sm"
+          onClick={() => setVideoTrack(null)}>
+          <div
+            className="relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/[0.08] flex flex-col"
+            style={{ width: "min(72vw, 860px)", maxHeight: "80vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-black/60 shrink-0">
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="#8F8883" strokeWidth="1.3" strokeLinecap="round">
+                <rect x="1" y="2.5" width="6" height="5" rx="0.8"/>
+                <path d="M7 4.5l2-1.5v4L7 5.5"/>
+              </svg>
+              <span className="text-[#C2BEBC] text-[12px] font-medium truncate flex-1">
+                {videoTrack.title || videoTrack.filename}
+              </span>
+              <button
+                onClick={() => setVideoTrack(null)}
+                className="w-6 h-6 flex items-center justify-center rounded-full text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
+              >
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/>
+                </svg>
+              </button>
+            </div>
+            {/* Vídeo */}
+            <video
+              key={videoTrack.path}
+              src={convertFileSrc(videoTrack.path)}
+              controls
+              autoPlay
+              playsInline
+              className="w-full flex-1 bg-black"
+              style={{ maxHeight: "calc(80vh - 44px)" }}
+              onError={() => {
+                import("@tauri-apps/plugin-opener").then(({ openPath }) => {
+                  openPath(videoTrack.path).catch(() => {});
+                });
+                setVideoTrack(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Diálogo: pastas que não existem mais no disco */}
+      {ghostFolders.length > 0 && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#1c1715] border border-white/[0.08] rounded-2xl shadow-2xl w-[400px] max-w-[90vw] p-6 flex flex-col gap-5">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0 w-9 h-9 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[#F5F5F4] font-semibold text-[13px] leading-snug">
+                  {ghostFolders.length === 1
+                    ? "Pasta não encontrada"
+                    : `${ghostFolders.length} pastas não encontradas`}
+                </p>
+                <p className="text-[#8F8883] text-[12px] mt-1 leading-relaxed">
+                  {ghostFolders.length === 1
+                    ? "Esta pasta não existe mais no disco. Deseja removê-la da lista?"
+                    : "Estas pastas não existem mais no disco. Deseja removê-las da lista?"}
+                </p>
+              </div>
+            </div>
+            <ul className="flex flex-col gap-1 max-h-40 overflow-y-auto no-scrollbar">
+              {ghostFolders.map((f) => (
+                <li key={f} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#605A55" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                  </svg>
+                  <span className="text-[#8F8883] text-[11px] font-mono truncate">{f.split(/[\\/]/).filter(Boolean).pop() ?? f}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setGhostFolders([])}
+                className="px-4 py-2 rounded-lg text-[12px] font-medium text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.04] transition-colors"
+              >
+                Agora não
+              </button>
+              <button
+                onClick={() => {
+                  const s = useAppStore.getState();
+                  for (const folder of ghostFolders) {
+                    s.removeRecentFolder(folder);
+                    if (folder === s.lastFolder) useAppStore.setState({ lastFolder: null });
+                  }
+                  setGhostFolders([]);
+                }}
+                className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-[#D95340]/15 text-[#D95340] border border-[#D95340]/20 hover:bg-[#D95340]/25 transition-colors"
+              >
+                Sim, remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TrialExpiredModal />
+      {showTrialInfo && !isTrialActivated() && (
+        <TrialInfoModal onClose={() => setShowTrialInfo(false)} />
+      )}
       {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       <ToastContainer />
@@ -828,6 +1869,43 @@ export default function App() {
             // TODO: trigger batch enrichment
           }}
         />
+      )}
+
+      {/* Loading overlay — abertura e fechamento */}
+      {appLoading && (
+        <div className="fixed inset-0 z-[1000] bg-[#0E0D0C] flex flex-col items-center justify-center gap-5 pointer-events-none">
+          <div className="relative" style={{ width: 80, height: 80 }}>
+            {/* Spinner: anel fino com cauda girando ao redor do disco */}
+            <svg
+              className="animate-[spin_1.6s_linear_infinite]"
+              viewBox="0 0 100 100" width="80" height="80"
+              style={{ position: 'absolute', inset: 0 }}
+            >
+              {/* Cauda longa e suave */}
+              <circle cx="50" cy="50" r="49" fill="none" stroke="#D95340" strokeWidth="1.5"
+                strokeLinecap="round" strokeDasharray="100 209" opacity="0.22"/>
+              {/* Arco principal brilhante */}
+              <circle cx="50" cy="50" r="49" fill="none" stroke="#D95340" strokeWidth="2"
+                strokeLinecap="round" strokeDasharray="48 261" opacity="0.9"/>
+            </svg>
+            {/* Disco estático — logo original */}
+            <svg viewBox="0 0 100 100" width="72" height="72"
+              style={{ position: 'absolute', top: 4, left: 4 }}>
+              <circle cx="50" cy="50" r="46" fill="#D95340"/>
+              <circle cx="50" cy="50" r="43.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.7"/>
+              <circle cx="50" cy="50" r="41"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.65"/>
+              <circle cx="50" cy="50" r="38.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.6"/>
+              <circle cx="50" cy="50" r="36"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.55"/>
+              <circle cx="50" cy="50" r="33.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.5"/>
+              <circle cx="50" cy="50" r="31"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.4"/>
+              {/* Buraco central */}
+              <circle cx="50" cy="50" r="27" fill="#0E0D0C"/>
+            </svg>
+          </div>
+          <span className="text-[11px] font-mono tracking-widest uppercase" style={{ color: '#605A55' }}>
+            {loadingLabel(appLoading)}
+          </span>
+        </div>
       )}
     </div>
   );

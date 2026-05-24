@@ -16,7 +16,7 @@ function Bar({ value }: { value: number }) {
   );
 }
 
-export default function LibraryStats() {
+export default function LibraryStats({ onClose, embedded }: { onClose?: () => void; embedded?: boolean }) {
   const { tracks, genreFilter, setGenreFilter } = useAppStore();
 
   const stats = useMemo(() => {
@@ -51,21 +51,47 @@ export default function LibraryStats() {
 
   if (!stats) {
     return (
-      <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] items-center justify-center">
+      <div className={embedded ? "flex-1 flex items-center justify-center" : "w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] items-center justify-center"}>
         <span className="text-[#605A55] text-[11px]">Nenhuma faixa carregada</span>
       </div>
     );
   }
 
   return (
-    <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto">
-      <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
-        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-1">Biblioteca</p>
-        <p className="text-[13px] font-semibold text-[#F5F5F4]">{stats.total.toLocaleString("pt-BR")} faixas</p>
-        <p className="text-[11px] text-[#8F8883] mt-0.5">
-          {stats.totalSizeGB.toFixed(1)} GB · {Math.floor(stats.totalDurationH)}h {Math.round((stats.totalDurationH % 1) * 60)}min
-        </p>
-      </div>
+    <div className={embedded ? "flex-1 overflow-y-auto no-scrollbar" : "w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-y-auto"}>
+      {!embedded && (
+        <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em]">Biblioteca</p>
+            {onClose && (
+              <button
+                onClick={onClose}
+                title="Fechar"
+                className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
+              >
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <line x1="1" y1="1" x2="7" y2="7"/>
+                  <line x1="7" y1="1" x2="1" y2="7"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          <p className="text-[13px] font-semibold text-[#F5F5F4]">{stats.total.toLocaleString("pt-BR")} faixas</p>
+          <p className="text-[11px] text-[#8F8883] mt-0.5">
+            {stats.totalSizeGB.toFixed(1)} GB · {Math.floor(stats.totalDurationH)}h {Math.round((stats.totalDurationH % 1) * 60)}min
+          </p>
+        </div>
+      )}
+
+      {/* Resumo compacto quando embedded */}
+      {embedded && (
+        <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
+          <p className="text-[13px] font-semibold text-[#F5F5F4]">{stats.total.toLocaleString("pt-BR")} faixas</p>
+          <p className="text-[11px] text-[#8F8883] mt-0.5">
+            {stats.totalSizeGB.toFixed(1)} GB · {Math.floor(stats.totalDurationH)}h {Math.round((stats.totalDurationH % 1) * 60)}min
+          </p>
+        </div>
+      )}
 
       <div className="px-4 py-3 border-b border-white/[0.05] space-y-2.5">
         <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-2">Cobertura de Metadados</p>

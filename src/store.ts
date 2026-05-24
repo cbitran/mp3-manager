@@ -229,7 +229,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     localStorage.setItem(LAST_FOLDER_KEY, path);
     const recents = get().recentFolders;
-    const next = [path, ...recents.filter((r) => r !== path)].slice(0, 10);
+    // Mantém posição se já existe; adiciona ao topo apenas se for pasta nova
+    const next = recents.includes(path)
+      ? recents
+      : [path, ...recents].slice(0, 10);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
     set({ lastFolder: path, recentFolders: next });
   },
@@ -279,7 +282,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return m === 0 ? `≈ ${h}h` : `≈ ${h}h ${m}min`;
+    return m === 0 ? `${h}h` : `${h}h ${m}min`;
   },
   recordScan: (count) => {
     if (count <= 0) return;
