@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
@@ -31,7 +32,14 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
+  const [devicesExpanded, setDevicesExpanded] = useState(true);
   const dragCounterRef = useRef(0);
+
+  // Contagem de faixas por pasta, calculada a partir das faixas atualmente carregadas
+  const folderTrackCount = (folderPath: string) => {
+    const prefix = folderPath.endsWith("/") || folderPath.endsWith("\\") ? folderPath : folderPath + "/";
+    return tracks.filter((t) => t.path.startsWith(prefix)).length;
+  };
 
   useEffect(() => {
     const refresh = () =>
@@ -199,12 +207,14 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
                     isFavorite={isFavorite(f)}
                     isExpanded={expandedFolders.has(f)}
                     subfolders={subfolderMap[f] ?? null}
+                    trackCount={folderTrackCount(f)}
                     onOpen={() => onFolderSelect(f)}
                     onToggleExpand={() => toggleExpand(f)}
                     onToggleFavorite={() => toggleFavorite(f)}
                     onContextMenu={(e) => handleContextMenu(e, f)}
                     onFolderSelect={onFolderSelect}
                     lastFolder={lastFolder}
+                    tracks={tracks}
                   />
                 ))
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
@@ -219,12 +229,14 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
                     isFavorite={isFavorite(f)}
                     isExpanded={expandedFolders.has(f)}
                     subfolders={subfolderMap[f] ?? null}
+                    trackCount={folderTrackCount(f)}
                     onOpen={() => onFolderSelect(f)}
                     onToggleExpand={() => toggleExpand(f)}
                     onToggleFavorite={() => toggleFavorite(f)}
                     onContextMenu={(e) => handleContextMenu(e, f)}
                     onFolderSelect={onFolderSelect}
                     lastFolder={lastFolder}
+                    tracks={tracks}
                   />
                 ))
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhum favorito ainda — marque uma pasta com ★</p>
@@ -259,11 +271,25 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
       {/* Dispositivos (volumes montados) */}
       {volumes.length > 0 && (
         <div className="px-3 pt-3 pb-1 border-t border-white/[0.05]">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743] px-1 mb-1.5">Dispositivos</p>
-          {volumes.map((v) => (
+          <button
+            onClick={() => setDevicesExpanded((x) => !x)}
+            className="w-full flex items-center gap-1.5 px-1 mb-1.5 group"
+          >
+            <svg
+              width="7" height="7" viewBox="0 0 8 8" fill="#4C4743"
+              style={{ transform: devicesExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.18s", flexShrink: 0 }}
+            >
+              <path d="M2 1l4 3-4 3V1z" />
+            </svg>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743] group-hover:text-[#8F8883] transition-colors">
+              Dispositivos
+            </span>
+          </button>
+          {devicesExpanded && volumes.map((v) => (
             <button
               key={v.path}
-              onClick={() => onFolderSelect(v.path)}
+              onClick={() => openPath(v.path).catch(() => {})}
+              title="Abrir no Finder"
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors hover:bg-white/[0.04] group"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-[#605A55] shrink-0">
@@ -272,6 +298,9 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
                 <circle cx="9" cy="6.5" r=".8" fill="currentColor" stroke="none"/>
               </svg>
               <span className="text-[11px] text-[#8F8883] group-hover:text-[#C2BEBC] transition-colors truncate">{v.name}</span>
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" className="text-[#4C4743] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+                <path d="M2 8L8 2M5 2h3v3"/>
+              </svg>
             </button>
           ))}
         </div>
@@ -453,6 +482,8 @@ interface FolderRowProps {
   isFavorite: boolean;
   isExpanded: boolean;
   subfolders: string[] | null;
+  trackCount?: number;
+  tracks?: import("../store").Track[];
   onOpen: () => void;
   onToggleExpand: () => void;
   onToggleFavorite?: () => void;
@@ -462,11 +493,17 @@ interface FolderRowProps {
 }
 
 function FolderRow({
-  path, isSelected, isFavorite, isExpanded, subfolders,
+  path, isSelected, isFavorite, isExpanded, subfolders, trackCount, tracks,
   onOpen, onToggleExpand, onToggleFavorite, onContextMenu, onFolderSelect, lastFolder
 }: FolderRowProps) {
   const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const hasSubs = subfolders === null || subfolders.length > 0;
+
+  const subTrackCount = (subPath: string) => {
+    if (!tracks) return 0;
+    const prefix = subPath.endsWith("/") || subPath.endsWith("\\") ? subPath : subPath + "/";
+    return tracks.filter((t) => t.path.startsWith(prefix)).length;
+  };
 
   return (
     <div>
@@ -495,8 +532,18 @@ function FolderRow({
             }`}
           title={path}
         >
-          <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
+          <svg
+            width="11" height="11" viewBox="0 0 11 11" fill="currentColor"
+            className={`shrink-0 transition-colors ${isSelected ? "text-[#D95340] opacity-90" : "opacity-50"}`}
+          >
+            <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/>
+          </svg>
           <span className="truncate flex-1">{name}</span>
+          {trackCount != null && trackCount > 0 && (
+            <span className={`text-[9px] font-mono tabular-nums shrink-0 ${isSelected ? "text-[#D95340]/70" : "text-[#4C4743]"}`}>
+              {trackCount}
+            </span>
+          )}
         </button>
         {onToggleFavorite && (
           <button
@@ -516,21 +563,35 @@ function FolderRow({
       {/* Subfolders */}
       {isExpanded && subfolders && subfolders.length > 0 && (
         <div className="pl-5">
-          {subfolders.map((sub) => (
-            <button
-              key={sub}
-              onClick={() => onFolderSelect(sub)}
-              className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors text-left truncate
-                ${lastFolder === sub
-                  ? "bg-[#D95340]/15 text-[#F5F5F4]"
-                  : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
-                }`}
-              title={sub}
-            >
-              <svg width="10" height="10" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-40"><path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/></svg>
-              {sub.split(/[\\/]/).filter(Boolean).pop()}
-            </button>
-          ))}
+          {subfolders.map((sub) => {
+            const subSelected = lastFolder === sub;
+            const cnt = subTrackCount(sub);
+            return (
+              <button
+                key={sub}
+                onClick={() => onFolderSelect(sub)}
+                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors text-left
+                  ${subSelected
+                    ? "bg-[#D95340]/15 text-[#F5F5F4]"
+                    : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
+                  }`}
+                title={sub}
+              >
+                <svg
+                  width="10" height="10" viewBox="0 0 11 11" fill="currentColor"
+                  className={`shrink-0 transition-colors ${subSelected ? "text-[#D95340] opacity-90" : "opacity-40"}`}
+                >
+                  <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/>
+                </svg>
+                <span className="truncate flex-1">{sub.split(/[\\/]/).filter(Boolean).pop()}</span>
+                {cnt > 0 && (
+                  <span className={`text-[9px] font-mono tabular-nums shrink-0 ${subSelected ? "text-[#D95340]/70" : "text-[#4C4743]"}`}>
+                    {cnt}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

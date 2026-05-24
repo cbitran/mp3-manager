@@ -130,6 +130,10 @@ interface AppState {
   djShowAll: boolean;
   setDjPrefs: (primary: string, autoImport: boolean, showAll: boolean) => void;
 
+  // Pastas onde enriquecimento já foi tentado — modal não reaparece
+  enrichedFolders: string[];
+  markFolderEnriched: (path: string) => void;
+
   // Pastas monitoradas para detecção de novos arquivos
   watchedFolders: string[];
   addWatchedFolder: (path: string) => void;
@@ -189,6 +193,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   favoriteFolders: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]"),
   recentFolders: JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"),
   favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
+
+  // Pastas onde enriquecimento já foi tentado
+  enrichedFolders: JSON.parse(localStorage.getItem("tagwave_enriched_folders") ?? "[]") as string[],
+  markFolderEnriched: (path) => {
+    const next = [...new Set([path, ...get().enrichedFolders])];
+    localStorage.setItem("tagwave_enriched_folders", JSON.stringify(next));
+    set({ enrichedFolders: next });
+  },
 
   // Pastas monitoradas
   watchedFolders: JSON.parse(localStorage.getItem(WATCHED_FOLDERS_KEY) ?? "[]") as string[],

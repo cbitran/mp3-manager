@@ -5,6 +5,13 @@ import { useAppStore, consumeAutoPlay } from "../store";
 const PLAYER_BARS = 180;
 const waveCache = new Map<string, number[]>();
 
+// No WebView2 (Windows), createMediaElementSource captura o output do <audio>
+// e o redireciona exclusivamente para o grafo Web Audio API, que não encaminha
+// para os alto-falantes do sistema. Resultado: áudio silencioso.
+// Solução: pular o AudioContext no Windows e usar playback nativo do HTML5.
+const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
+               navigator.userAgent.toLowerCase().includes("windows");
+
 function strHash(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
@@ -59,11 +66,12 @@ export default function MiniPlayer() {
 
   // ── Audio Context helpers ─────────────────────────────────────────
   async function setupAudioCtx() {
+    // Windows/WebView2: pula Web Audio API para evitar áudio silencioso.
+    // O playback e volume funcionam nativamente via audioRef.current.
+    if (IS_WIN) return;
     if (audioCtxRef.current || !audioRef.current) return;
     try {
       const ctx = new AudioContext();
-      // Await resume BEFORE connecting media element: prevents audio capture
-      // inside a suspended context (silent audio bug on Windows/WebView2)
       if (ctx.state === 'suspended') await ctx.resume();
       if (ctx.state !== 'running') { ctx.close().catch(() => {}); return; }
       const analyser = ctx.createAnalyser();
@@ -317,29 +325,6 @@ export default function MiniPlayer() {
     setProgress(t);
   }, [duration]);
 
-  // Vertical volume slider — drag com document listeners para não perder o mouse
-  const handleVolumeMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const trackEl = e.currentTarget;
-    const applyVolume = (clientY: number) => {
-      const rect = trackEl.getBoundingClientRect();
-      const v = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
-      setVolume(v);
-      // GainNode é o controle primário (funciona com Web Audio API no WKWebView)
-      if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
-      // Fallback para quando o AudioContext ainda não foi criado
-      if (audioRef.current) audioRef.current.volume = v;
-    };
-    applyVolume(e.clientY);
-    const onMove = (mv: MouseEvent) => applyVolume(mv.clientY);
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
 
   function fmt(s: number) {
     if (!isFinite(s) || s < 0) return "0:00";
@@ -466,7 +451,7 @@ export default function MiniPlayer() {
 
         {/* ── ZONA 3: Waveform seekável ─────────────────────────── */}
         <div className="flex items-center gap-3 flex-1 min-w-0 px-5">
-          <span className="text-[9px] text-[#756D67] font-mono tabular-nums shrink-0 w-7 text-right">
+          <span className="text-[10px] text-[#C97B40] font-mono tabular-nums shrink-0 w-7 text-right font-semibold">
             {fmt(progress)}
           </span>
 
@@ -544,19 +529,62 @@ export default function MiniPlayer() {
             )}
           </div>
 
-          <span className="text-[9px] text-[#756D67] font-mono tabular-nums shrink-0 w-7">
+          <span className="text-[10px] text-[#C97B40] font-mono tabular-nums shrink-0 w-7 font-semibold">
             {fmt(duration)}
           </span>
+
+          {/* Volume inline — ícone + slider horizontal */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-1" ref={volumePopupRef}>
+            <button
+              onClick={() => setShowVolume((v) => !v)}
+              className={`transition-colors ${showVolume ? "text-[#C97B40]" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              title={`Volume: ${Math.round(volume * 100)}%`}
+            >
+              {volIcon}
+            </button>
+
+            {/* Slider horizontal compacto */}
+            <div
+              className="relative w-14 cursor-pointer"
+              style={{ height: 12 }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const trackEl = e.currentTarget;
+                const applyV = (clientX: number) => {
+                  const rect = trackEl.getBoundingClientRect();
+                  const v = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                  setVolume(v);
+                  if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+                  if (audioRef.current) audioRef.current.volume = v;
+                };
+                applyV(e.clientX);
+                const onMove = (mv: MouseEvent) => applyV(mv.clientX);
+                const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                document.addEventListener("mousemove", onMove);
+                document.addEventListener("mouseup", onUp);
+              }}
+            >
+              <div className="absolute inset-y-[5px] inset-x-0 rounded-full bg-[#23201E]" />
+              <div
+                className="absolute inset-y-[5px] left-0 rounded-full bg-[#C97B40]/60 transition-none"
+                style={{ width: `${volume * 100}%` }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-[#C97B40] shadow-md transition-none"
+                style={{ left: `calc(${volume * 100}% - 5px)` }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Separador */}
         <div className="w-px h-6 bg-[#23201E] shrink-0" />
 
-        {/* ── ZONA 4: BPM · Tom · Volume ───────────────────────── */}
+        {/* ── ZONA 4: BPM · Tom ────────────────────────────────── */}
         <div className="flex items-center gap-3 pl-5 shrink-0">
           {activeTrack?.bpm && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-mono tabular-nums text-[#8F8883]">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-mono tabular-nums text-[#C97B40] font-semibold">
                 {parseFloat(activeTrack.bpm).toFixed(0)}
               </span>
               <span className="text-[8px] text-[#605A55] uppercase tracking-widest">bpm</span>
@@ -567,49 +595,6 @@ export default function MiniPlayer() {
               {activeTrack.key}
             </span>
           )}
-
-          {/* Volume icon + popup slider */}
-          <div className="relative" ref={volumePopupRef}>
-            <button
-              onClick={() => setShowVolume((v) => !v)}
-              className={`transition-colors ${showVolume ? "text-[#D95340]" : "text-[#756D67] hover:text-[#A8A3A0]"}`}
-              title={`Volume: ${Math.round(volume * 100)}%`}
-            >
-              {volIcon}
-            </button>
-
-            {showVolume && (
-              <div
-                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 px-2.5 py-3 rounded-xl shadow-2xl z-50"
-                style={{ background: "#1c1715", border: "1px solid rgba(255,255,255,0.08)" }}
-              >
-                {/* Percentage label */}
-                <span className="text-[9px] font-mono text-[#605A55] tabular-nums">
-                  {Math.round(volume * 100)}%
-                </span>
-
-                {/* Vertical track */}
-                <div
-                  className="relative w-3 cursor-pointer"
-                  style={{ height: 80 }}
-                  onMouseDown={handleVolumeMouseDown}
-                >
-                  {/* Track background */}
-                  <div className="absolute inset-x-[5px] inset-y-0 rounded-full bg-[#23201E]" />
-                  {/* Fill */}
-                  <div
-                    className="absolute inset-x-[5px] bottom-0 rounded-full bg-[#D95340] transition-none"
-                    style={{ height: `${volume * 100}%` }}
-                  />
-                  {/* Thumb */}
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white shadow-md transition-none"
-                    style={{ bottom: `calc(${volume * 100}% - 6px)` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
       </div>

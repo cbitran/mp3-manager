@@ -65,6 +65,7 @@ export default function App() {
 
   const promotePendingTracks = useAppStore((s) => s.promotePendingTracks);
   const addWatchedFolder = useAppStore((s) => s.addWatchedFolder);
+  const markFolderEnriched = useAppStore((s) => s.markFolderEnriched);
 
   // Aplica data-theme no <html> usando a API nativa do Tauri para detectar o tema do macOS/Windows
   useEffect(() => {
@@ -519,22 +520,44 @@ export default function App() {
     }
   }
 
-  async function batchEnrich(source: "all" | "itunes" | "spotify" = "all", folderPath?: string) {
+  async function batchEnrich(source: "all" | "itunes" | "spotify" = "all", folderPath?: string, explicitTrackId?: string) {
     if (!navigator.onLine) {
       setShowOfflineBanner(true);
       setTimeout(() => setShowOfflineBanner(false), 4000);
       return;
     }
 
-    // Lê do store no momento da chamada — evita closure stale quando chamado do context menu
-    const freshSelectedIds = useAppStore.getState().selectedIds;
     const freshTracks = useAppStore.getState().tracks;
+
+    // Prioridade 1: ID explícito de uma única faixa (context menu em faixa não selecionada)
+    if (explicitTrackId) {
+      const single = freshTracks.find((t) => t.id === explicitTrackId);
+      const targets = single ? [single] : [];
+      if (targets.length === 0) { toast("Faixa não encontrada", "info"); return; }
+      const isExplicitSelection = true;
+      return runEnrich(source, targets, isExplicitSelection, freshTracks, undefined);
+    }
+
+    // Prioridade 2: faixas selecionadas no store
+    const freshSelectedIds = useAppStore.getState().selectedIds;
     const selected = freshTracks.filter((t) => freshSelectedIds.has(t.id));
     const isExplicitSelection = selected.length > 0;
-    const targets = isExplicitSelection
-      ? selected
-      : freshTracks.filter((t) => !t.genre || !t.album || !t.year);
+
+    // Prioridade 3 (fallback): pasta específica ou faixas com metadados incompletos
+    let targets: Track[];
+    if (isExplicitSelection) {
+      targets = selected;
+    } else if (folderPath) {
+      const prefix = folderPath.endsWith("/") || folderPath.endsWith("\\") ? folderPath : folderPath + "/";
+      targets = freshTracks.filter((t) => t.path.startsWith(prefix) && (!t.genre || !t.album || !t.year));
+    } else {
+      targets = freshTracks.filter((t) => !t.genre || !t.album || !t.year);
+    }
     if (targets.length === 0) { toast("Todas as faixas já têm metadados completos", "info"); return; }
+    return runEnrich(source, targets, isExplicitSelection, freshTracks, folderPath);
+  }
+
+  async function runEnrich(source: "all" | "itunes" | "spotify", targets: Track[], isExplicitSelection: boolean, _freshTracks: Track[], folderPath?: string) {
 
     setEnrichUndoSnapshot([...targets]);
     setEnriching(true);
@@ -1012,6 +1035,9 @@ export default function App() {
 
   function checkMissingMeta(loaded: Track[]) {
     if (loaded.length < 5) return;
+    // Não mostra modal se enriquecimento já foi tentado nesta pasta
+    const folder = useAppStore.getState().lastFolder;
+    if (folder && useAppStore.getState().enrichedFolders.includes(folder)) return;
     const missingGenre  = loaded.filter((t) => !t.genre).length;
     const missingYear   = loaded.filter((t) => !t.year).length;
     const missingAlbum  = loaded.filter((t) => !t.album).length;
@@ -2069,7 +2095,7 @@ export default function App() {
                 enrichingIds={new Set([...enrichingIds, ...analyzingBpmIds])}
                 enrichDoneIds={new Set([...enrichDoneIds, ...bpmDoneIds])}
                 onOpenFolder={pickFolder}
-                onEnrich={() => batchEnrich("all")}
+                onEnrich={(trackId) => batchEnrich("all", undefined, trackId)}
               />
             </div>
             {showRightPanel && allTracks.length > 0 && (() => {
@@ -2292,6 +2318,8 @@ export default function App() {
           onDismiss={() => setMissingMeta(null)}
           onEnrich={() => {
             setMissingMeta(null);
+            const folder = useAppStore.getState().lastFolder;
+            if (folder) markFolderEnriched(folder);
             batchEnrich("all");
           }}
         />

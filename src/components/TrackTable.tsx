@@ -106,8 +106,8 @@ const CAMELOT_MAP: Record<string, [number, boolean]> = {
 
 function camelotHue(position: number, isMinor: boolean): string {
   const hue = ((position - 1) % 12) * 30;
-  const sat = isMinor ? 68 : 52;
-  const bri = isMinor ? 40 : 48;
+  const sat = isMinor ? 72 : 65;
+  const bri = isMinor ? 38 : 44;
   return `hsl(${hue}, ${sat}%, ${bri}%)`;
 }
 
@@ -178,14 +178,30 @@ const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
 
 // ---------------------------------------------------------------------------
 
+// Cache em nível de módulo — sobrevive a remounts causados pelo TanStack Table
+const coverCache = new Map<string, string>();
+
 const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { path: string; hasCover: boolean; coverVersion?: number }) {
-  const [src, setSrc] = useState<string | null>(null);
+  const cacheKey = `${path}::${coverVersion ?? 0}`;
+  const [src, setSrc] = useState<string | null>(coverCache.get(cacheKey) ?? null);
+
   useEffect(() => {
     if (!hasCover) { setSrc(null); return; }
+    const cached = coverCache.get(cacheKey);
+    if (cached) { setSrc(cached); return; }
     queuedInvoke<string | null>(() => invoke("read_cover_base64", { path }))
-      .then((b64) => setSrc(b64 ? `data:image/jpeg;base64,${b64}` : null))
-      .catch(() => setSrc(null));
-  }, [path, hasCover, coverVersion]);
+      .then((b64) => {
+        if (b64) {
+          const dataUrl = `data:image/jpeg;base64,${b64}`;
+          coverCache.set(cacheKey, dataUrl);
+          setSrc(dataUrl);
+        } else {
+          setSrc(null);
+        }
+      })
+      .catch(() => {});
+  }, [path, hasCover, cacheKey]);
+
   if (!src) return (
     <div className="w-7 h-7 rounded-sm bg-white/[0.04] border border-white/[0.05] flex items-center justify-center mx-auto">
       <svg width="9" height="9" viewBox="0 0 11 11" fill="currentColor" className="text-[#373331]"><path d="M1 2.5A1.5 1.5 0 012.5 1h6A1.5 1.5 0 0110 2.5v6A1.5 1.5 0 018.5 10h-6A1.5 1.5 0 011 8.5v-6zM4 4a1 1 0 100-2 1 1 0 000 2zm-2 4l2-2 1 1 2-3 2 4H2z"/></svg>
@@ -213,7 +229,7 @@ export default function TrackTable({
   enrichingIds?: Set<string>;
   enrichDoneIds?: Set<string>;
   onOpenFolder?: () => void;
-  onEnrich?: () => void;
+  onEnrich?: (trackId?: string) => void;
 }) {
   const {
     selectedIds,
@@ -641,8 +657,8 @@ export default function TrackTable({
           if (!val) return <span className="text-[#605A55] text-xs">—</span>;
           return (
             <span
-              className={`text-[12px] font-mono tabular-nums flex items-center justify-center gap-1 ${
-                compat ? "text-[#5BA055] font-bold" : "text-[#c9bfb8]"
+              className={`text-[12px] font-mono tabular-nums font-semibold flex items-center justify-center gap-1 ${
+                compat ? "text-[#5BA055]" : "text-[#C97B40]"
               }`}
             >
               {compat && (
@@ -859,7 +875,11 @@ export default function TrackTable({
   if (tracks.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
-        <img src="/tagwave-icon.png" alt="TagWave" className="w-14 h-14 opacity-10 mb-1" />
+        {/* Donut logo em laranja original */}
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" className="mb-1 opacity-70">
+          <circle cx="28" cy="28" r="27" fill="#D95340"/>
+          <circle cx="28" cy="28" r="15" fill="#0E0D0C"/>
+        </svg>
         {hasFolder ? (
           <>
             <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa encontrada</p>
@@ -1112,12 +1132,21 @@ export default function TrackTable({
         {onEnrich && (
           <button
             className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
-            onClick={() => { setContextMenu(null); onEnrich(); }}
+            onClick={() => {
+              const trackId = contextMenu.track.id;
+              // Se há múltiplas faixas selecionadas e essa é uma delas, enriquece a seleção.
+              // Caso contrário, enriquece só esta faixa (passa o ID explicitamente).
+              const passId = selectedIds.size > 1 && selectedIds.has(trackId) ? undefined : trackId;
+              setContextMenu(null);
+              onEnrich(passId);
+            }}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
-            {selectedIds.size > 1 ? `Enriquecer ${selectedIds.size} faixas` : "Enriquecer metadados"}
+            {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
+              ? `Enriquecer ${selectedIds.size} faixas`
+              : "Enriquecer metadados"}
           </button>
         )}
         {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
