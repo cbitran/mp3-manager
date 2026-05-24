@@ -886,6 +886,17 @@ export default function TrackTable({
             <p className="text-[11px] text-[#3a3533] leading-relaxed max-w-[260px]">
               Tente ajustar o filtro ou selecione outra pasta na barra lateral.
             </p>
+            {onOpenFolder && (
+              <button
+                onClick={onOpenFolder}
+                className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-[#8F8883] text-xs font-medium border border-white/[0.08] hover:border-white/[0.14] hover:text-[#C2BEBC] transition-colors"
+              >
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 5.5C2 4.67 2.67 4 3.5 4H6L7 5H12.5C13.33 5 14 5.67 14 6.5V11.5C14 12.33 13.33 13 12.5 13H3.5C2.67 13 2 12.33 2 11.5V5.5Z"/>
+                </svg>
+                Abrir outra pasta
+              </button>
+            )}
           </>
         ) : (
           <>
