@@ -28,7 +28,6 @@ export default function ToastContainer() {
   useEffect(() => {
     _dispatch = (msg) => {
       setItems((prev) => [...prev.slice(-3), msg]);
-      // Toasts com ação ficam mais tempo na tela
       setTimeout(() => remove(msg.id), msg.action ? 8000 : 3000);
     };
     return () => { _dispatch = null; };
@@ -37,18 +36,21 @@ export default function ToastContainer() {
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed bottom-14 right-4 z-[100] flex flex-col gap-1.5 pointer-events-none">
+    <div className="fixed top-10 left-1/2 z-[100] flex flex-col items-center gap-1.5 pointer-events-none"
+      style={{ transform: "translateX(-50%)" }}
+    >
       {items.map((msg) => (
         <div
           key={msg.id}
           className={`px-3.5 py-2 rounded-lg shadow-2xl border text-[12px] font-medium flex items-center gap-2
-            animate-[fade-in-up_0.2s_ease-out] pointer-events-auto ${
+            pointer-events-auto whitespace-nowrap ${
             msg.kind === "error"
               ? "bg-[#1c1110] border-[#D95340]/40 text-[#D95340]"
               : msg.kind === "info"
               ? "bg-[#23201E] border-white/[0.1] text-[#756D67]"
               : "bg-[#23201E] border-[#D95340]/30 text-[#F5F5F4]"
           }`}
+          style={{ animation: "slide-down-bounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" }}
         >
           {msg.kind === "error" ? (
             <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" className="shrink-0 opacity-80">

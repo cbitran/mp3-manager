@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Manager};
@@ -194,6 +195,21 @@ fn scan_folder(folder: String, app: tauri::AppHandle) -> Vec<Track> {
     tracks
 }
 
+// Remove flag imutável e bit read-only antes de escrever (exFAT mapeia seu atributo
+// read-only tanto para uchg quanto para as permissões Unix, então ambos precisam ser limpos).
+fn ensure_writable(path: &str) {
+    #[cfg(target_os = "macos")]
+    { let _ = Command::new("chflags").args(["nouchg", path]).output(); }
+    // Limpa o bit read-only via fs (cobre exFAT no macOS e arquivos somente-leitura no Windows)
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        if perms.readonly() {
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(path, perms);
+        }
+    }
+}
+
 #[tauri::command]
 fn save_tags(
     path: String, title: Option<String>, artist: Option<String>,
@@ -213,6 +229,7 @@ fn save_tags(
         if let Some(v) = year         { tag.set_year(v); }
         if let Some(v) = track_number { tag.set_track(v); }
         if let Some(v) = total_tracks { tag.set_track_total(v); }
+        ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     } else {
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
@@ -243,6 +260,7 @@ fn save_tags(
                 tag.add_frame(Id3Comment { lang: "por".to_string(), description: String::new(), text: v });
             }
         }
+        ensure_writable(&path);
         tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -261,6 +279,7 @@ async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
         description: String::new(),
         data: cover_data,
     });
+    ensure_writable(&path);
     tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
 }
 
@@ -280,6 +299,7 @@ fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> 
         description: String::new(),
         data: cover_data,
     });
+    ensure_writable(&path);
     tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
 }
 
@@ -375,10 +395,21 @@ fn list_volumes() -> Vec<serde_json::Value> {
         if let Ok(entries) = fs::read_dir("/Volumes") {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    vols.push(serde_json::json!({ "path": path.to_string_lossy(), "name": name }));
-                }
+                // Ignora symlinks (ex: "Macintosh HD" aponta para "/", não é volume real para música)
+                if path.is_symlink() { continue; }
+                if !path.is_dir() { continue; }
+                let name = entry.file_name().to_string_lossy().to_string();
+                // Filtra nomes que parecem arquivos temporários/DMG montados automaticamente
+                // Padrão: contém "." e parece hash/temp (ex: dmg.EtYWkF, com.apple.xxx, disk.xxx)
+                let looks_temp = name.contains('.')
+                    && (name.starts_with("dmg.")
+                        || name.starts_with("com.")
+                        || name.starts_with("disk.")
+                        || name.starts_with("._")
+                        // Nome com "." e sem espaços e com chars aleatórios (provável hash de 6+ chars após o ponto)
+                        || name.split('.').last().map(|s| s.len() >= 6 && s.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or(false));
+                if looks_temp { continue; }
+                vols.push(serde_json::json!({ "path": path.to_string_lossy(), "name": name }));
             }
         }
         vols.sort_by(|a, b| {
@@ -959,7 +990,7 @@ fn normalize_tags(paths: Vec<String>) -> Vec<NormalizeResult> {
                 if let Some(a) = tag.artist() { let c = clean(a); if c != a { tag.set_artist(c); dirty = true; } }
                 if let Some(a) = tag.album()  { let c = clean(a); if c != a { tag.set_album(c); dirty = true; } }
                 if let Some(g) = tag.genre()  { let c = clean(g); if c != g { tag.set_genre(c); dirty = true; } }
-                if dirty { tag.write_to_path(path, id3::Version::Id3v24).ok()?; }
+                if dirty { ensure_writable(path); tag.write_to_path(path, id3::Version::Id3v24).ok()?; }
                 Some(dirty)
             })().unwrap_or(false)
         } else {
@@ -980,7 +1011,7 @@ fn normalize_tags(paths: Vec<String>) -> Vec<NormalizeResult> {
                 if let Some(g) = tag.genre().map(|s| s.to_string()) {
                     let c = clean(&g); if c != g { tag.set_genre(c.into()); dirty = true; }
                 }
-                if dirty { tagged.save_to_path(path, lofty::config::WriteOptions::default()).ok()?; }
+                if dirty { ensure_writable(path); tagged.save_to_path(path, lofty::config::WriteOptions::default()).ok()?; }
                 Some(dirty)
             })().unwrap_or(false)
         };
@@ -1439,6 +1470,9 @@ fn dj_software_candidates() -> Vec<(String, String, Vec<String>)> {
                 "/Applications/djay Pro AI.app".into(),
                 "/Applications/djay.app".into(),
             ]),
+            ("engine_dj".into(), "Engine DJ".into(),             vec![
+                "/Applications/Engine DJ.app".into(),
+            ]),
         ]
     }
     #[cfg(target_os = "windows")]
@@ -1468,6 +1502,12 @@ fn dj_software_candidates() -> Vec<(String, String, Vec<String>)> {
             ]),
             ("djay".into(),      "djay Pro (Algoriddim)".into(), vec![
                 // djay Pro via Microsoft Store — sem caminho fixo, marcar como não instalado
+            ]),
+            ("engine_dj".into(), "Engine DJ".into(),             vec![
+                format!("{}\\Engine DJ\\Engine DJ.exe", pf),
+                format!("{}\\Engine DJ\\Engine DJ.exe", pf86),
+                format!("{}\\inMusic\\Engine DJ\\Engine DJ.exe", pf),
+                format!("{}\\inMusic\\Engine DJ\\Engine DJ.exe", pf86),
             ]),
         ]
     }
@@ -1526,15 +1566,44 @@ fn write_traktor_nml(tracks: &[Track], path: &Path, playlist_name: &str) -> Resu
         let p = std::path::Path::new(full_path);
         let filename = p.file_name().unwrap_or_default().to_str().unwrap_or("").to_string();
         let parent = p.parent().unwrap_or(std::path::Path::new("/"));
-        let components: Vec<&str> = parent.components()
-            .filter_map(|c| match c {
-                std::path::Component::Normal(s) => s.to_str(),
-                _ => None,
-            })
-            .collect();
-        let dir = format!("/:{}/:", components.join("/:"));
-        let key = format!("Macintosh HD{}{}", dir, filename);
-        ("Macintosh HD".to_string(), dir, key)
+
+        #[cfg(target_os = "windows")]
+        {
+            // Windows: volume = drive letter (ex: "C:"), dir = /:<rest>/:
+            let mut comps: Vec<&str> = parent.components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str(),
+                    _ => None,
+                })
+                .collect();
+            // First component after stripping drive is the path parts
+            let drive = parent.components()
+                .find_map(|c| if let std::path::Component::Prefix(p) = c {
+                    p.as_os_str().to_str().map(|s| s.trim_end_matches(':').to_string())
+                } else { None })
+                .unwrap_or_else(|| "C".to_string());
+            let volume = format!("{}:", drive);
+            // Remove drive component from comps if present
+            if comps.first().map(|s| s.ends_with(':') || s.len() == 2).unwrap_or(false) {
+                comps.remove(0);
+            }
+            let dir = format!("/:{}/:", comps.join("/:"));
+            let key = format!("{}{}{}",  volume, dir, filename);
+            (volume, dir, key)
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let components: Vec<&str> = parent.components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str(),
+                    _ => None,
+                })
+                .collect();
+            let dir = format!("/:{}/:", components.join("/:"));
+            let key = format!("Macintosh HD{}{}", dir, filename);
+            ("Macintosh HD".to_string(), dir, key)
+        }
     };
 
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -1603,6 +1672,9 @@ fn export_playlist_to_dj(
 
     match software_id.as_str() {
         "serato" => {
+            #[cfg(target_os = "windows")]
+            let dir = home.join("Documents").join("My Serato").join("Subcrates");
+            #[cfg(not(target_os = "windows"))]
             let dir = home.join("Music").join("_Serato_").join("Subcrates");
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("{}.crate", safe_name));
@@ -1613,7 +1685,14 @@ fn export_playlist_to_dj(
             let dir = home.join("Documents").join("TagWave Playlists");
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("{} - Rekordbox.xml", safe_name));
-            // Reuse existing Rekordbox XML logic
+            let output = path.to_string_lossy().to_string();
+            export_rekordbox(tracks, output.clone())?;
+            Ok(output)
+        }
+        "engine_dj" => {
+            let dir = home.join("Documents").join("TagWave Playlists");
+            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{} - Engine DJ.xml", safe_name));
             let output = path.to_string_lossy().to_string();
             export_rekordbox(tracks, output.clone())?;
             Ok(output)
@@ -1642,6 +1721,9 @@ fn export_playlist_to_dj(
             Ok(path.to_string_lossy().to_string())
         }
         "djay" => {
+            #[cfg(target_os = "windows")]
+            let dir = home.join("Documents").join("djay").join("Playlists");
+            #[cfg(not(target_os = "windows"))]
             let dir = home.join("Music").join("djay").join("Playlists");
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("{}.m3u", safe_name));
@@ -1716,10 +1798,13 @@ fn find_new_files(folder: String, known_paths: Vec<String>) -> Vec<String> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension()
-                    .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
-                    .unwrap_or(false)
+            if !e.file_type().is_file() { return false; }
+            // Ignora resource forks do macOS (._arquivo) e arquivos ocultos
+            let fname = e.file_name().to_string_lossy();
+            if fname.starts_with("._") || fname.starts_with('.') { return false; }
+            e.path().extension()
+                .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
+                .unwrap_or(false)
         })
         .map(|e| e.path().to_string_lossy().to_string())
         .filter(|p| !known.contains(p))

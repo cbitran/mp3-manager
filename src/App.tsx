@@ -7,6 +7,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
 import Inspector from "./components/Inspector";
@@ -35,7 +36,8 @@ import CreatePlaylistModal from "./components/CreatePlaylistModal";
 import type { PendingNewTrack } from "./store";
 
 function loadingLabel(mode: "startup" | "closing"): string {
-  const lang = navigator.language.toLowerCase();
+  const saved = localStorage.getItem("tagwave_language") ?? navigator.language;
+  const lang = saved.toLowerCase();
   if (lang.startsWith("pt")) return mode === "startup" ? "carregando…" : "salvando…";
   if (lang.startsWith("es")) return mode === "startup" ? "cargando…"   : "guardando…";
   return mode === "startup" ? "loading…" : "saving…";
@@ -62,6 +64,8 @@ export default function App() {
     daysRemaining,
     theme,
   } = useAppStore();
+
+  const { t } = useTranslation();
 
   const promotePendingTracks = useAppStore((s) => s.promotePendingTracks);
   const addWatchedFolder = useAppStore((s) => s.addWatchedFolder);
@@ -245,6 +249,7 @@ export default function App() {
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [normalizing, setNormalizing]     = useState(false);
   const [exporting, setExporting]         = useState(false);
+  const pendingBpmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [enriching, setEnriching]         = useState(false);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number } | null>(null);
   const [scanTotal, setScanTotal]       = useState<number | null>(null);
@@ -263,6 +268,9 @@ export default function App() {
   const [bpmProgress, setBpmProgress]           = useState<{ done: number; total: number } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => shouldShowOnboarding());
   const [showTour, setShowTour] = useState(() => !shouldShowOnboarding() && shouldShowTour());
+
+  type DjSoftwareInfo = { id: string; name: string; installed: boolean };
+  const [installedDj, setInstalledDj] = useState<DjSoftwareInfo[]>([]);
   const [tourPlayerVisible, setTourPlayerVisible] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
@@ -289,6 +297,12 @@ export default function App() {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    invoke<DjSoftwareInfo[]>("detect_dj_software")
+      .then((list) => setInstalledDj(list.filter((sw) => sw.installed)))
+      .catch(() => {});
   }, []);
 
   // Limpa issues quando todas as faixas são removidas; filtra grupos órfãos quando algumas são removidas
@@ -352,7 +366,7 @@ export default function App() {
       const paths = allTracks.map((t) => t.path);
       const results = await invoke<{ path: string; changed: boolean }[]>("normalize_tags", { paths });
       const changed = results.filter((r) => r.changed).length;
-      toast(changed > 0 ? `${changed} tag${changed !== 1 ? "s" : ""} normalizada${changed !== 1 ? "s" : ""}` : "Todas as tags já estão normalizadas", changed > 0 ? "success" : "info");
+      toast(changed > 0 ? t("toolbar.toast.normalized", { count: changed }) : t("toolbar.toast.alreadyNormalized"), changed > 0 ? "success" : "info");
     } finally {
       setNormalizing(false);
     }
@@ -374,26 +388,9 @@ export default function App() {
   function requireExportTargets(): Track[] | null {
     const targets = getExportTargets();
     if (!targets) {
-      toast("Selecione faixas ou uma playlist na sidebar para exportar", "info");
+      toast(t("toolbar.selectToExport"), "info");
     }
     return targets;
-  }
-
-  async function exportRekordbox() {
-    const targets = requireExportTargets();
-    if (!targets) return;
-    const outPath = await save({
-      defaultPath: "TagWave_Export.xml",
-      filters: [{ name: "Rekordbox XML", extensions: ["xml"] }],
-    });
-    if (!outPath) return;
-    setExporting(true);
-    try {
-      const count = await invoke<number>("export_rekordbox", { tracks: targets, outputPath: outPath });
-      toast(`${count} faixa${count !== 1 ? "s" : ""} exportada${count !== 1 ? "s" : ""} para Rekordbox`);
-    } finally {
-      setExporting(false);
-    }
   }
 
   async function exportM3U() {
@@ -407,7 +404,7 @@ export default function App() {
     setExporting(true);
     try {
       const m3uCount = await invoke<number>("export_m3u", { tracks: targets, outputPath: outPath });
-      toast(`Playlist M3U criada · ${m3uCount} faixas`);
+      toast(t("toolbar.toast.m3uCreated", { count: m3uCount }));
     } finally {
       setExporting(false);
     }
@@ -424,24 +421,27 @@ export default function App() {
     setExporting(true);
     try {
       const count = await invoke<number>("export_csv", { tracks: targets, outputPath: outPath });
-      toast(`CSV exportado · ${count} faixas`);
+      toast(t("toolbar.toast.csvExported", { count }));
     } finally {
       setExporting(false);
     }
   }
 
-  async function exportTraktorNml() {
+  async function exportToDj(softwareId: string) {
     const targets = requireExportTargets();
     if (!targets) return;
-    const outPath = await save({
-      defaultPath: "TagWave_Traktor.nml",
-      filters: [{ name: "Traktor NML", extensions: ["nml"] }],
-    });
-    if (!outPath) return;
+    const folderName = lastFolder ? lastFolder.split(/[\\/]/).filter(Boolean).pop() ?? "TagWave" : "TagWave";
     setExporting(true);
     try {
-      const count = await invoke<number>("export_traktor_nml", { tracks: targets, outputPath: outPath });
-      toast(`Traktor NML exportado · ${count} faixas`);
+      await invoke("export_playlist_to_dj", {
+        playlistName: folderName,
+        softwareId,
+        tracks: targets,
+      });
+      const swName = installedDj.find((sw) => sw.id === softwareId)?.name ?? softwareId;
+      toast(t("toolbar.toast.exportedDj", { count: targets.length, software: swName }));
+    } catch (err) {
+      toast(t("toolbar.toast.exportError", { error: String(err) }), "error");
     } finally {
       setExporting(false);
     }
@@ -469,7 +469,7 @@ export default function App() {
       : allTracks;
     const parseable = targets.filter((t) => parseFilenamePattern(t.filename) !== null);
     if (parseable.length === 0) {
-      toast("Nenhuma faixa com padrão 'Artista - Título' no nome", "info");
+      toast(t("toolbar.noTrackWithPattern"), "info");
       return;
     }
     setRestoringFromName(true);
@@ -506,7 +506,7 @@ export default function App() {
       useAppStore.setState((s) => ({
         selectedIds: new Set([...s.selectedIds].filter((id) => !restoredIds.has(id))),
       }));
-      toast(`${restored} faixa${restored !== 1 ? "s" : ""} restaurada${restored !== 1 ? "s" : ""} a partir dos nomes`, "success");
+      toast(t("toolbar.toast.restored", { count: restored }), "success");
     } finally {
       setRestoringFromName(false);
     }
@@ -528,7 +528,7 @@ export default function App() {
         }).catch((e) => console.error("[undo-enrich] save_tags:", e));
         useAppStore.getState().updateTrack(orig);
       }
-      toast(`${snapshot.length} faixa${snapshot.length !== 1 ? "s" : ""} restaurada${snapshot.length !== 1 ? "s" : ""}`, "success");
+      toast(t("toolbar.toast.restored", { count: snapshot.length }), "success");
     } finally {
       setEnriching(false);
     }
@@ -547,7 +547,7 @@ export default function App() {
     if (explicitTrackId) {
       const single = freshTracks.find((t) => t.id === explicitTrackId);
       const targets = single ? [single] : [];
-      if (targets.length === 0) { toast("Faixa não encontrada", "info"); return; }
+      if (targets.length === 0) { toast(t("toolbar.toast.trackNotFound"), "info"); return; }
       const isExplicitSelection = true;
       return runEnrich(source, targets, isExplicitSelection, freshTracks, undefined);
     }
@@ -567,7 +567,7 @@ export default function App() {
     } else {
       targets = freshTracks.filter((t) => !t.genre || !t.album || !t.year);
     }
-    if (targets.length === 0) { toast("Todas as faixas já têm metadados completos", "info"); return; }
+    if (targets.length === 0) { toast(t("toolbar.toast.allMetaComplete"), "info"); return; }
     return runEnrich(source, targets, isExplicitSelection, freshTracks, folderPath);
   }
 
@@ -629,10 +629,10 @@ export default function App() {
         }
         toast(
           found > 0
-            ? `iTunes: ${found}/${targets.length} encontradas · ${enriched} enriquecidas`
-            : `iTunes: 0/${targets.length} encontradas — tente Spotify`,
+            ? t("toolbar.toast.enrichItunes", { found, total: targets.length, enriched })
+            : t("toolbar.toast.enrichItunesNone", { total: targets.length }),
           found > 0 ? "success" : "info",
-          found > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+          found > 0 ? { label: t("toolbar.toast.undo"), fn: undoEnrich } : undefined,
         );
         if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
       } finally {
@@ -694,10 +694,10 @@ export default function App() {
         }
         toast(
           found > 0
-            ? `Spotify: ${found}/${targets.length} encontradas · ${enriched} enriquecidas`
-            : `Spotify: 0/${targets.length} encontradas — tente iTunes`,
+            ? t("toolbar.toast.enrichSpotify", { found, total: targets.length, enriched })
+            : t("toolbar.toast.enrichSpotifyNone", { total: targets.length }),
           found > 0 ? "success" : "info",
-          found > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+          found > 0 ? { label: t("toolbar.toast.undo"), fn: undoEnrich } : undefined,
         );
         if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
       } finally {
@@ -845,20 +845,21 @@ export default function App() {
       await Promise.allSettled(coverPromises);
 
       const parts: string[] = [];
-      if (found > 0)            parts.push(`${found}/${targets.length} encontradas`);
-      if (enriched > 0)         parts.push(`${enriched} enriquecidas`);
-      if (coverStats.count > 0) parts.push(`${coverStats.count} capas`);
+      if (found > 0)            parts.push(`${found}/${targets.length} ${t("toolbar.toast.enrichFoundLabel")}`);
+      if (enriched > 0)         parts.push(`${enriched} ${t("toolbar.toast.enrichEnrichedLabel")}`);
+      if (coverStats.count > 0) parts.push(`${coverStats.count} ${t("toolbar.toast.enrichCoversLabel")}`);
 
       if (enriched > 0) useAppStore.getState().recordEnrichment(enriched);
 
       // Encadear análise de BPM para faixas que ainda não têm BPM após enriquecimento
-      const stillNoBpm = targets.filter((t) => {
-        const fresh = useAppStore.getState().tracks.find((s) => s.path === t.path);
+      const stillNoBpm = targets.filter((track) => {
+        const fresh = useAppStore.getState().tracks.find((s) => s.path === track.path);
         return !fresh?.bpm;
       });
       if (stillNoBpm.length > 0) {
-        parts.push(`${stillNoBpm.length} aguardando BPM`);
-        setTimeout(() => batchAnalyzeBpm(stillNoBpm), 800);
+        parts.push(`${stillNoBpm.length} ${t("toolbar.toast.enrichPendingLabel")}`);
+        if (pendingBpmTimerRef.current) clearTimeout(pendingBpmTimerRef.current);
+        pendingBpmTimerRef.current = setTimeout(() => batchAnalyzeBpm(stillNoBpm), 800);
       }
 
       if (folderPath) {
@@ -868,10 +869,10 @@ export default function App() {
       } else {
         toast(
           parts.length > 0
-            ? `iTunes+Spotify: ${parts.join(" · ")}`
-            : "Nenhuma informação nova encontrada",
+            ? `${t("toolbar.toast.enrichBothPrefix")} ${parts.join(" · ")}`
+            : t("toolbar.toast.noNewData"),
           enriched > 0 ? "success" : "info",
-          enriched > 0 ? { label: "Desfazer", fn: undoEnrich } : undefined,
+          enriched > 0 ? { label: t("toolbar.toast.undo"), fn: undoEnrich } : undefined,
         );
       }
     } finally {
@@ -892,7 +893,7 @@ export default function App() {
     }
 
     if (targets.length === 0) {
-      toast("Nenhuma faixa de áudio para analisar", "info");
+      toast(t("toolbar.toast.noAudioTracks"), "info");
       return;
     }
 
@@ -945,8 +946,8 @@ export default function App() {
       }
       toast(
         analyzed > 0
-          ? `BPM analisado em ${analyzed} faixa${analyzed !== 1 ? "s" : ""}`
-          : "Nenhum BPM detectado",
+          ? t("toolbar.toast.bpmAnalyzed", { count: analyzed })
+          : t("toolbar.toast.noBpmDetected"),
         analyzed > 0 ? "success" : "info",
       );
     } finally {
@@ -997,6 +998,7 @@ export default function App() {
       const nameNoExt = basename.replace(/\.[^.]+$/, "");
       const sep = nameNoExt.indexOf(" - ");
       if (sep <= 0) continue;
+      console.log("[checkFilenameMetaIssues] detectado:", basename, "| title:", track.title, "| artist:", track.artist);
       const part1 = nameNoExt.slice(0, sep).trim();
       const part2 = nameNoExt.slice(sep + 3).trim();
       if (!part1 || !part2) continue;
@@ -1081,13 +1083,12 @@ export default function App() {
     setParenIssues([]);
     setDuplicateGroups([]);
     setGenreFilter(null);
+    setNewTrackIds(new Set());
+    if (pendingBpmTimerRef.current) { clearTimeout(pendingBpmTimerRef.current); pendingBpmTimerRef.current = null; }
 
     const unlistenSkipped = await listen<{ count: number }>("scan_skipped", ({ payload }) => {
       const n = payload.count;
-      toast(
-        `${n} arquivo${n !== 1 ? "s" : ""} ignorado${n !== 1 ? "s" : ""} — formato não suportado (não é áudio nem vídeo)`,
-        "info",
-      );
+      toast(t("toolbar.toast.unsupported", { count: n }), "info");
     });
 
     try {
@@ -1215,10 +1216,13 @@ export default function App() {
           try {
             const storeNow = useAppStore.getState();
             const pending = storeNow.pendingNewTracks;
-            const knownPaths = new Set(activeTracks.map((t) => t.path));
+            // Usa TODOS os tracks cacheados (todas as pastas válidas) como referência,
+            // para não considerar faixas de outras pastas monitoradas como "novas"
+            const knownPaths = new Set(validTracks.map((t) => t.path));
 
             // 1) Auto-integra faixas que o usuário adiou na sessão anterior (shownSession=true)
-            const toAutoIntegrate = pending.filter((p) => p.shownSession);
+            // Limita à pasta ativa para não integrar false-positives de outras pastas
+            const toAutoIntegrate = pending.filter((p) => p.shownSession && lastF !== null && p.path.startsWith(lastF));
             if (toAutoIntegrate.length > 0) {
               const autoPaths = toAutoIntegrate.map((p) => p.path);
               const autoTracks = await invoke<Track[]>("scan_specific_files", { paths: autoPaths });
@@ -1226,40 +1230,44 @@ export default function App() {
                 useAppStore.getState().setTracks([...autoTracks, ...activeTracks]);
                 setNewTrackIds(new Set(autoTracks.map((t) => t.id)));
                 storeNow.promotePendingTracks(autoPaths);
-                toast(
-                  `${autoTracks.length} faixa${autoTracks.length !== 1 ? "s" : ""} integrada${autoTracks.length !== 1 ? "s" : ""} automaticamente da sessão anterior`,
-                  "info"
-                );
+                toast(t("toolbar.toast.autoIntegrated", { count: autoTracks.length }), "info");
                 autoTracks.forEach((t) => knownPaths.add(t.path));
               }
             }
 
-            // 2) Encontra arquivos genuinamente novos nas pastas monitoradas
-            const watched = [...new Set([lastF, ...storeNow.watchedFolders].filter(Boolean) as string[])];
-            const stillPending = pending.filter((p) => !p.shownSession);
-            const stillPendingPaths = new Set(stillPending.map((p) => p.path));
-
+            // 2) Detecta arquivos genuinamente novos APENAS na pasta ativa.
+            // Detectar em todas as watchedFolders com knownPaths parcial causa falsos positivos massivos,
+            // porque o cache só guarda tracks de uma pasta por vez.
             const brandNewPaths: string[] = [];
-            for (const folder of watched) {
+            if (lastF) {
               try {
-                const found = await invoke<string[]>("find_new_files", { folder, knownPaths: [...knownPaths] });
-                found.forEach((p) => { if (!stillPendingPaths.has(p)) brandNewPaths.push(p); });
+                const found = await invoke<string[]>("find_new_files", { folder: lastF, knownPaths: [...knownPaths] });
+                brandNewPaths.push(...found);
               } catch { /* pasta pode ter sido removida */ }
             }
 
-            // 3) Monta a lista completa de pendentes (antigos não-adiados + recém-detectados)
+            // Mantém apenas pendentes da pasta ativa (descarta falsos positivos de outras pastas)
+            const stillPending = pending.filter(
+              (p) => !p.shownSession && lastF !== null && p.path.startsWith(lastF) && !knownPaths.has(p.path)
+            );
+            const stillPendingPaths = new Set(stillPending.map((p) => p.path));
+
+            // 3) Monta a lista final: pendentes válidos da pasta ativa + novos detectados agora
             const nowMs = Date.now();
-            const newEntries: PendingNewTrack[] = brandNewPaths.map((path) => ({
-              path,
-              folderPath: lastF ?? "",
-              detectedAt: nowMs,
-              shownSession: false,
-            }));
+            const newEntries: PendingNewTrack[] = brandNewPaths
+              .filter((p) => !stillPendingPaths.has(p))
+              .map((path) => ({
+                path,
+                folderPath: lastF ?? "",
+                detectedAt: nowMs,
+                shownSession: false,
+              }));
             const allPending = [...stillPending, ...newEntries];
 
+            // Persiste estado limpo (descarta entradas corrompidas/obsoletas do localStorage)
+            storeNow.setPendingNewTracks(allPending);
+
             if (allPending.length > 0) {
-              storeNow.setPendingNewTracks(allPending);
-              // Escaneia metadados para preview no modal
               const scanned = await invoke<Track[]>("scan_specific_files", { paths: allPending.map((p) => p.path) });
               if (scanned.length > 0) setNewTracksModal(scanned);
             }
@@ -1518,47 +1526,29 @@ export default function App() {
               {/* pt-1: padding transparente que cobre o gap e mantém o hover contínuo */}
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
                 <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
-                  <button
-                    onClick={exportRekordbox}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    Rekordbox XML
-                  </button>
-                  <button
-                    onClick={exportTraktorNml}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    Traktor NML
-                  </button>
-                  <button
-                    onClick={exportM3U}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    M3U
-                  </button>
+                  {installedDj.map((sw) => (
+                    <button
+                      key={sw.id}
+                      onClick={() => exportToDj(sw.id)}
+                      className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                    >
+                      {sw.name}
+                    </button>
+                  ))}
+                  {installedDj.length > 0 && (
+                    <div className="my-1 h-px bg-white/[0.06]" />
+                  )}
                   <button
                     onClick={exportM3U}
                     className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
                   >
-                    Serato DJ
-                  </button>
-                  <button
-                    onClick={exportM3U}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    djay Pro
-                  </button>
-                  <button
-                    onClick={exportM3U}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    Virtual DJ
+                    {t("toolbar.exportMenu.m3u")}
                   </button>
                   <button
                     onClick={exportCsv}
                     className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
                   >
-                    CSV Universal
+                    {t("toolbar.exportMenu.csv")}
                   </button>
                 </div>
               </div>
@@ -1580,12 +1570,12 @@ export default function App() {
             <button
               onClick={() => useAppStore.getState().setActivePlaylistId(null)}
               className="text-[10px] text-[#605A55] hover:text-[#D95340] transition-colors"
-              title="Fechar playlist"
+              title={t("app.closePlaylist")}
             >×</button>
           </div>
         ) : allTracks.length > 0 ? (
           <span className="text-[11px] text-[#605A55] font-mono ml-1 whitespace-nowrap shrink-0">
-            {allTracks.length.toLocaleString("pt-BR")} faixas
+            {t("sidebar.tracksCount", { count: allTracks.length })}
           </span>
         ) : null}
 
@@ -1596,7 +1586,7 @@ export default function App() {
         >
           {(
             [
-              { id: "all" as const,       label: "Todas",                        title: "Mostrar todas as faixas" },
+              { id: "all" as const,       label: t("toolbar.filter.all"),        title: t("toolbar.filter.all") },
               { id: "recent" as const,    label: `+ ${recentCount}`,             title: `${recentCount} faixa${recentCount !== 1 ? "s" : ""} adicionada${recentCount !== 1 ? "s" : ""} recentemente` },
               { id: "favorites" as const, label: `★ ${favoriteCount}`,           title: `${favoriteCount} faixa${favoriteCount !== 1 ? "s" : ""} favorita${favoriteCount !== 1 ? "s" : ""} (marcadas com estrela)` },
               { id: "problems" as const,  label: `⚠ ${problemCount}`,            title: `${problemCount} faixa${problemCount !== 1 ? "s" : ""} com metadados incompletos (sem BPM, gênero, capa etc.) — clique para filtrar` },
@@ -1606,7 +1596,7 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setFilterTab(tab.id)}
-              title={tab.title}
+              data-tip={tab.title}
               className={`px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wide transition-colors ${
                 filterTab === tab.id
                   ? "bg-[#D95340]/20 text-[#D95340] border border-[#D95340]/25"
@@ -1759,7 +1749,7 @@ export default function App() {
 
                 {isAdvFilterActive && (
                   <p className="mt-2 text-[9px] text-[#8F8883] text-center">
-                    {tracks.length} de {baseFiltered.length} faixas
+                    {t("app.filterOf", { visible: tracks.length, total: baseFiltered.length })}
                   </p>
                 )}
               </div>
@@ -1776,7 +1766,7 @@ export default function App() {
                 <input
                   autoFocus={searchExpanded && windowWidth < 1100}
                   className="w-52 pl-8 pr-3 py-1.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-[#C2BEBC] placeholder-[#605A55] focus:outline-none focus:border-[#D95340]/50 focus:bg-white/[0.06] transition-colors font-mono"
-                  placeholder="buscar…"
+                  placeholder={t("common.search") + "…"}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onBlur={() => { if (!searchQuery) setSearchExpanded(false); }}
@@ -1820,7 +1810,7 @@ export default function App() {
             <button
               onClick={() => getCurrentWindow().close()}
               className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-white hover:bg-[#D95340] transition-colors rounded"
-              title="Fechar"
+              title={t("common.close")}
             >
               <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="1" y1="1" x2="8" y2="8"/><line x1="8" y1="1" x2="1" y2="8"/></svg>
             </button>
@@ -1841,7 +1831,7 @@ export default function App() {
                 <path d="M0 0l6 4-6 4V0z"/>
               </svg>
               <span className="text-[10px] font-mono font-bold text-[#D95340] group-hover:text-[#E07364] transition-colors">{cleanupCount}</span>
-              <span className="text-[10px] font-semibold text-[#D95340]/70 group-hover:text-[#E07364] transition-colors">faixas para enriquecer</span>
+              <span className="text-[10px] font-semibold text-[#D95340]/70 group-hover:text-[#E07364] transition-colors">{t("app.tracksForEnrich")}</span>
             </button>
           ) : <span />}
 
@@ -1851,14 +1841,14 @@ export default function App() {
                 <button
                   onClick={() => setShowTrialInfo(true)}
                   className="text-[9px] font-bold font-mono text-[#D95340] hover:text-[#E07364] tabular-nums transition-colors"
-                  title={`Trial: ${daysRemaining()} dias restantes — clique para detalhes`}
+                  title={t("app.trialInfo", { days: daysRemaining() })}
                 >
                   Trial · {daysRemaining()}d
                 </button>
                 <button
                   onClick={() => setShowTrialInfo(true)}
                   className="px-2 py-0.5 rounded text-[9px] font-bold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white transition-colors"
-                  title="Comprar licença completa"
+                  title={t("app.buyLicense")}
                 >
                   Upgrade
                 </button>
@@ -1871,7 +1861,7 @@ export default function App() {
             <div className="relative" ref={colPickerRef}>
               <button
                 onClick={() => setShowColPicker((v) => !v)}
-                title="Gerenciar colunas"
+                title={t("app.manageCols")}
                 className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
                   showColPicker
                     ? "bg-white/[0.08] text-[#D95340]"
@@ -2090,10 +2080,10 @@ export default function App() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <span className="text-[11px] font-bold text-[#E0796A] uppercase tracking-widest">
-                            Recém chegadas
+                            {t("app.recentlyAdded")}
                           </span>
                           <span className="text-[10px] text-[#605A55] ml-2">
-                            {newTracks.length} {newTracks.length === 1 ? "faixa nova" : "faixas novas"} · integradas à biblioteca
+                            {t("app.newTracksSubtitle", { count: newTracks.length })}
                           </span>
                         </div>
                         <button
@@ -2103,7 +2093,7 @@ export default function App() {
                           <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                             <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
                           </svg>
-                          Dispensar
+                          {t("app.dismissNew")}
                         </button>
                       </div>
                       <div className="overflow-auto">
@@ -2114,7 +2104,7 @@ export default function App() {
                     {/* Divisor rotulado entre as duas seções */}
                     <div className="flex items-center gap-3 px-4 py-1.5 shrink-0 border-y border-white/[0.05]" style={{ background: "#0E0D0C" }}>
                       <div className="flex-1 h-px bg-white/[0.05]" />
-                      <span className="text-[9px] font-bold text-[#373331] uppercase tracking-widest">Biblioteca</span>
+                      <span className="text-[9px] font-bold text-[#373331] uppercase tracking-widest">{t("app.library")}</span>
                       <div className="flex-1 h-px bg-white/[0.05]" />
                     </div>
                   </>

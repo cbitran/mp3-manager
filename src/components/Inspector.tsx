@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../store";
 import { enrichTrackFull } from "../services/SpotifyService";
 import { searchTrack as iTunesSearch } from "../services/iTunesService";
@@ -49,6 +50,7 @@ function Field({ label, value, onChange, onBlur, onKeyDown, disabled, placeholde
 }
 
 export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProgress }: { onClose?: () => void; embedded?: boolean; onBatchEnrich?: () => void; enrichProgress?: { done: number; total: number } | null } = {}) {
+  const { t } = useTranslation();
   const { selectedIds, tracks, updateTrack, playerTrackId, isPlayingGlobal, clearSelection } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
@@ -88,7 +90,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
     setComment(first.comment ?? "");
     setSaved(false);
     setEnrichSummary(null);
-  }, [first?.id]);
+  }, [first?.id, first?.rating]);
 
   // Reload cover when cover_version changes
   useEffect(() => {
@@ -239,6 +241,31 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
     }
   }
 
+  async function handleSaveRating(n: number) {
+    if (!first) return;
+    const next = rating === n ? 0 : n;
+    setRating(next);
+    try {
+      await invoke("save_tags", {
+        path: first.path,
+        title: title || null,
+        artist: artist || null,
+        album: album || null,
+        genre: genre || null,
+        year: year ? parseInt(year) : null,
+        trackNumber: trackNumber ? parseInt(trackNumber) : null,
+        totalTracks: totalTracks ? parseInt(totalTracks) : null,
+        bpm: bpm || null,
+        key: key || null,
+        rating: next > 0 ? next : null,
+        comment: comment || null,
+      });
+      updateTrack({ ...first, rating: next > 0 ? next : undefined });
+    } catch (err) {
+      console.error("[Inspector] save_tags rating error:", err);
+    }
+  }
+
   if (!first) return null;
 
   return (
@@ -251,11 +278,11 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
         <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em]">
-              {isBatch ? `${selectedArr.length} selecionadas` : "Selecionado"}
+              {isBatch ? t("inspector.selectedMany", { count: selectedArr.length }) : t("inspector.selectedOne")}
             </p>
             <button
               onClick={() => { clearSelection(); onClose?.(); }}
-              title="Fechar"
+              title={t("common.close")}
               className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
             >
               <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -290,7 +317,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       )}
       {embedded && isBatch && (
         <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
-          <p className="text-[11px] text-[#8F8883]">{selectedArr.length} faixas selecionadas</p>
+          <p className="text-[11px] text-[#8F8883]">{t("inspector.selectedMany", { count: selectedArr.length })}</p>
         </div>
       )}
 
@@ -395,7 +422,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
             }}
             className="mx-3 mt-2.5 w-[calc(100%-24px)] py-1.5 rounded-lg text-[11px] font-semibold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white transition-colors flex items-center justify-center gap-1.5"
           >
-            {coverDataUrl ? "Alterar capa" : "+ Adicionar capa"}
+            {coverDataUrl ? t("inspector.changeCover") : t("inspector.addCover")}
           </button>
         </div>
       )}
@@ -467,7 +494,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       {!isBatch && first.issues.length > 0 && (
         <div className="mx-3 mt-3 px-3 py-2 rounded-md border border-[#D95340]/20 bg-[#D95340]/8">
           <p className="text-[9px] font-bold text-[#D95340] uppercase tracking-widest mb-1.5">
-            Precisa de atenção
+            {t("inspector.needsAttention")}
           </p>
           {first.issues.map((issue) => (
             <p key={issue} className="text-[11px] text-[#C99BA6] leading-tight">
@@ -480,12 +507,12 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       {/* Rating */}
       {!isBatch && (
         <div className="mx-3 mt-2 flex items-center gap-1.5">
-          <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest w-10">Rating</span>
+          <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest w-10">{t("inspector.rating")}</span>
           <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
-                onClick={() => setRating(rating === n ? 0 : n)}
+                onClick={() => handleSaveRating(n)}
                 className={`text-base transition-colors leading-none ${
                   n <= rating ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#8F8883]"
                 }`}
@@ -502,20 +529,20 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
 
       {/* Tags ID3 header */}
       <div className="px-3 pt-3 pb-0">
-        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Tags ID3</p>
+        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">{t("inspector.tagsId3")}</p>
       </div>
 
       {/* Fields */}
       <div className="flex flex-col gap-2.5 px-3 py-3">
-        <Field label="Título" value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? "(múltiplos)" : ""} />
-        <Field label="Artista" value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
-        <Field label="Álbum" value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
-        <Field label="Gênero" value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? t("inspector.multiple") : ""} />
+        <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label={t("inspector.album")} value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label={t("inspector.genre")} value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Ano" value={year} onChange={setYear} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+          <Field label={t("inspector.year")} value={year} onChange={setYear} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
           <div>
             <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
-              Faixa #
+              {t("inspector.track")}
             </label>
             <div className="flex items-center gap-1">
               <input
@@ -540,10 +567,10 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="BPM" value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
-          <Field label="Tom" value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
+          <Field label={t("inspector.bpm")} value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
+          <Field label={t("inspector.key")} value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
         </div>
-        <Field label="Comentário" value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline />
+        <Field label={t("inspector.comment")} value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline />
       </div>
 
       </div>{/* fim área scrollável */}
@@ -569,7 +596,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
             {enriching && !enrichProgress ? (
               <>
                 <span className="animate-spin text-white text-base">⟳</span>
-                <span className="text-white text-xs font-semibold">Buscando…</span>
+                <span className="text-white text-xs font-semibold">{t("inspector.searching")}</span>
               </>
             ) : enrichSummary && !enrichProgress ? (
               <>
@@ -584,9 +611,9 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 <span className="text-white text-sm">✦</span>
                 <div className="flex-1 text-left">
                   <p className="text-white text-xs font-bold leading-none">
-                    {isBatch ? `Enriquecer ${selectedArr.length} faixas` : "Enriquecer Metadados"}
+                    {isBatch ? t("inspector.enrichCount", { count: selectedArr.length }) : t("inspector.enrichMeta")}
                   </p>
-                  <p className="text-white/55 text-[10px] mt-0.5">Spotify · iTunes</p>
+                  <p className="text-white/55 text-[10px] mt-0.5">{t("inspector.sources")}</p>
                 </div>
                 {enrichProgress ? (
                   <span className="text-white/70 text-[10px] font-semibold tabular-nums">
@@ -619,7 +646,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#5BA055" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="2 5 4 7 8 3"/>
             </svg>
-            <span className="text-[10px] text-[#5BA055] font-semibold">Tags salvas</span>
+            <span className="text-[10px] text-[#5BA055] font-semibold">{t("inspector.tagsSaved")}</span>
           </div>
         )}
       </div>

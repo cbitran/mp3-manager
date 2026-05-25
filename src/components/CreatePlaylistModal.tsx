@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "../store";
 
 interface DjSoftwareInfo {
@@ -16,23 +17,26 @@ interface Props {
 }
 
 const DJ_LABELS: Record<string, string> = {
-  serato:    "Serato DJ Pro",
-  rekordbox: "rekordbox",
-  traktor:   "Traktor Pro 3",
-  vdj:       "Virtual DJ",
-  djay:      "djay Pro (Algoriddim)",
-  m3u:       "Arquivo M3U",
+  serato:     "Serato DJ Pro",
+  rekordbox:  "rekordbox",
+  traktor:    "Traktor Pro 3",
+  vdj:        "Virtual DJ",
+  djay:       "djay Pro (Algoriddim)",
+  engine_dj:  "Engine DJ",
+  m3u:        "Arquivo M3U",
 };
 
 const DJ_ICONS: Record<string, string> = {
-  serato:    "S",
-  rekordbox: "R",
-  traktor:   "T",
-  vdj:       "V",
-  djay:      "D",
+  serato:     "S",
+  rekordbox:  "R",
+  traktor:    "T",
+  vdj:        "V",
+  djay:       "D",
+  engine_dj:  "E",
 };
 
 export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState(exportOnly?.playlistName ?? "Minha Playlist");
   const [djSoftware, setDjSoftware] = useState<DjSoftwareInfo[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -124,11 +128,11 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
   const djCount   = [...selected].filter((id) => id !== "m3u").length;
   const hasMpu    = selected.has("m3u");
   const btnLabel  = () => {
-    if (exporting) return "Exportando…";
+    if (exporting) return t("playlist.exporting");
     const parts: string[] = [];
     if (djCount > 0)  parts.push(`${djCount} software${djCount !== 1 ? "s" : ""}`);
     if (hasMpu)       parts.push("M3U");
-    return parts.length ? `Exportar para ${parts.join(" + ")}` : "Exportar";
+    return parts.length ? `${t("playlist.exportTo")} ${parts.join(" + ")}` : t("common.apply");
   };
 
   const renderRow = (id: string, label: string, subtitle: string, isInstalled: boolean, isM3u = false) => {
@@ -207,10 +211,10 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
         {/* Header */}
         <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <h2 className="text-[14px] font-semibold" style={{ color: "#F5F5F4" }}>
-            {exportOnly ? "Exportar Playlist" : "Criar Playlist"}
+            {exportOnly ? t("playlist.export") : t("playlist.create")}
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: "#605A55" }}>
-            {tracks.length} {tracks.length === 1 ? "faixa" : "faixas"} selecionada{tracks.length !== 1 ? "s" : ""}
+            {t("playlist.tracksSelected", { count: tracks.length })}
           </p>
         </div>
 
@@ -241,8 +245,8 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
             <div className="pt-2">
               <p className="text-[10px]" style={{ color: "#4C4743" }}>
                 {results.some((r) => !r.error && r.id !== "m3u")
-                  ? "O software DJ foi aberto automaticamente. A playlist aparecerá na biblioteca."
-                  : "Exportação concluída."}
+                  ? t("playlist.djOpenedAuto")
+                  : t("playlist.exportDone")}
               </p>
             </div>
             <button
@@ -250,7 +254,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
               className="w-full mt-2 py-2 rounded-lg text-[12px] font-semibold"
               style={{ background: "#D95340", color: "white" }}
             >
-              Fechar
+              {t("common.close")}
             </button>
           </div>
         ) : (
@@ -259,13 +263,13 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
             {/* Playlist name */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest block mb-1.5" style={{ color: "#8F8883" }}>
-                Nome da Playlist
+                {t("playlist.nameLabel")}
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Set Techno 2025"
+                placeholder={t("playlist.namePlaceholder")}
                 className="w-full px-3 py-2 rounded-lg text-[13px] outline-none"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F5F4" }}
                 onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
@@ -295,29 +299,29 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
                 )}
               </div>
               <div className="flex-1">
-                <p className="text-[12px] font-medium" style={{ color: "#C2BEBC" }}>Salvar na biblioteca do TagWave</p>
-                <p className="text-[10px]" style={{ color: "#605A55" }}>Aparece na aba Playlists da sidebar</p>
+                <p className="text-[12px] font-medium" style={{ color: "#C2BEBC" }}>{t("playlist.saveToLibrary")}</p>
+                <p className="text-[10px]" style={{ color: "#605A55" }}>{t("playlist.saveToLibraryDesc")}</p>
               </div>
             </label>}
 
             {/* Software list */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest block mb-2" style={{ color: "#8F8883" }}>
-                Exportar para
+                {t("playlist.exportTo")}
               </label>
               <div className="space-y-1.5">
-                {djSoftware.map((sw) => renderRow(sw.id, sw.name, sw.installed ? "Instalado" : "Não encontrado", sw.installed))}
+                {djSoftware.map((sw) => renderRow(sw.id, sw.name, sw.installed ? t("settings.services.installed") : t("settings.services.notFound"), sw.installed))}
                 {/* Separador antes do M3U */}
                 {djSoftware.length > 0 && (
                   <div className="h-px my-0.5" style={{ background: "rgba(255,255,255,0.05)" }} />
                 )}
-                {renderRow("m3u", "Arquivo M3U", "Compatível com todos os softwares", true, true)}
+                {renderRow("m3u", "Arquivo M3U", t("playlist.m3uSubtitle"), true, true)}
               </div>
             </div>
 
             {/* Note */}
             <p className="text-[10px]" style={{ color: "#4C4743" }}>
-              {[...selected].some((id) => id !== "m3u") ? "O software DJ será aberto automaticamente após a exportação." : "Escolha onde exportar a playlist."}
+              {[...selected].some((id) => id !== "m3u") ? t("playlist.djOpenNote") : t("playlist.chooseExport")}
             </p>
 
             {/* Actions */}
@@ -327,7 +331,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors"
                 style={{ background: "rgba(255,255,255,0.06)", color: "#8F8883" }}
               >
-                Cancelar
+                {t("common.cancel")}
               </button>
               <button
                 onClick={handleExport}
@@ -335,7 +339,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
                 className="flex-1 py-2 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-40"
                 style={{ background: "#D95340", color: "white" }}
               >
-                {exporting ? "Exportando…" : (!exportOnly && saveToLibrary && selected.size === 0) ? "Salvar" : btnLabel()}
+                {exporting ? t("playlist.exporting") : (!exportOnly && saveToLibrary && selected.size === 0) ? t("playlist.save") : btnLabel()}
               </button>
             </div>
           </div>

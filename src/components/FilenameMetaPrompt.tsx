@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 
 export interface FilenameMetaIssue {
   path: string;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Props) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [ignored, setIgnored] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set(issues.map((i) => i.path)));
@@ -36,31 +38,32 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
   async function apply() {
     setApplying(true);
     const targets = visible.filter((i) => selected.has(i.path));
+    console.log("[FilenameMetaPrompt] apply targets:", targets.map(t => ({ path: t.path, title: t.extractedTitle, artist: t.extractedArtist })));
+    let saved = 0;
     for (const issue of targets) {
+      const payload = {
+        path: issue.path,
+        title: issue.missingTitle ? issue.extractedTitle : null,
+        artist: issue.missingArtist ? issue.extractedArtist : null,
+        album: null, genre: null, year: null,
+        trackNumber: null, totalTracks: null,
+        bpm: null, key: null, rating: null, comment: null,
+      };
+      console.log("[FilenameMetaPrompt] invoking save_tags:", payload);
       try {
-        await invoke("save_tags", {
-          path: issue.path,
-          title: issue.missingTitle ? issue.extractedTitle : null,
-          artist: issue.missingArtist ? issue.extractedArtist : null,
-          album: null,
-          genre: null,
-          year: null,
-          trackNumber: null,
-          totalTracks: null,
-          bpm: null,
-          key: null,
-          rating: null,
-          comment: null,
-        });
+        await invoke("save_tags", payload);
+        console.log("[FilenameMetaPrompt] save_tags OK para:", issue.path);
+        saved++;
         onApplied(
           issue.path,
           issue.missingArtist ? issue.extractedArtist : null,
           issue.missingTitle ? issue.extractedTitle : null,
         );
       } catch (err) {
-        console.error("[FilenameMetaPrompt] save_tags falhou:", err);
+        console.error("[FilenameMetaPrompt] save_tags FALHOU para:", issue.path, err);
       }
     }
+    console.log("[FilenameMetaPrompt] concluído:", saved, "de", targets.length, "salvas");
     setApplying(false);
     setDone(true);
     setTimeout(onDismiss, 1200);
@@ -70,7 +73,7 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
     return (
       <div className="mx-3 mb-2 px-3 py-2 rounded-md bg-[#D95340]/12 border border-[#D95340]/20 flex items-center gap-2">
         <span className="text-[#D95340] text-xs">✓</span>
-        <span className="text-xs text-[#D95340]/80 font-medium">Metadados extraídos do nome do arquivo</span>
+        <span className="text-xs text-[#D95340]/80 font-medium">{t("prompts.filename.done")}</span>
       </div>
     );
   }
@@ -80,9 +83,9 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
   const missingTitle  = visible.filter((i) => i.missingTitle && !i.missingArtist).length;
 
   const summary = [
-    missingBoth   > 0 && `${missingBoth} sem artista e título`,
-    missingArtist > 0 && `${missingArtist} sem artista`,
-    missingTitle  > 0 && `${missingTitle} sem título`,
+    missingBoth   > 0 && t("prompts.filename.summaryBoth",   { count: missingBoth }),
+    missingArtist > 0 && t("prompts.filename.summaryArtist", { count: missingArtist }),
+    missingTitle  > 0 && t("prompts.filename.summaryTitle",  { count: missingTitle }),
   ].filter(Boolean).join(", ");
 
   return (
@@ -95,12 +98,12 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
         <span className="w-1.5 h-1.5 rounded-full bg-[#AA6374] shrink-0" />
         <div className="flex-1 min-w-0">
           <span className="text-[11px] font-semibold text-[#FAFAF9]">
-            {visible.length} faixa{visible.length !== 1 ? "s" : ""} com nome de arquivo identificável
+            {t("prompts.filename.header", { count: visible.length })}
           </span>
           <span className="text-[10px] text-[#DCDAD8]/60 ml-1.5">· {summary}</span>
         </div>
         <span className="text-[11px] text-[#FAFAF9]/70 font-semibold shrink-0">
-          {expanded ? "Fechar" : "Revisar"}
+          {expanded ? t("prompts.filename.close") : t("prompts.filename.review")}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); onDismiss(); }}
@@ -125,7 +128,7 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
                 )
               }
             />
-            <span className="text-[10px] text-[#605A55] uppercase tracking-wider">Selecionar tudo</span>
+            <span className="text-[10px] text-[#605A55] uppercase tracking-wider">{t("prompts.filename.selectAll")}</span>
           </div>
 
           {/* Issue rows */}
@@ -151,12 +154,12 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
                   <div className="flex gap-2 mt-0.5 flex-wrap">
                     {issue.missingArtist && (
                       <span className="text-[11px] text-[#DCDAD8] leading-tight">
-                        Artista: <span className="text-[#E07364] font-medium">{issue.extractedArtist}</span>
+                        {t("prompts.filename.fieldArtist")}: <span className="text-[#E07364] font-medium">{issue.extractedArtist}</span>
                       </span>
                     )}
                     {issue.missingTitle && (
                       <span className="text-[11px] text-[#DCDAD8] leading-tight">
-                        Título: <span className="text-[#E07364] font-medium">{issue.extractedTitle}</span>
+                        {t("prompts.filename.fieldTitle")}: <span className="text-[#E07364] font-medium">{issue.extractedTitle}</span>
                       </span>
                     )}
                   </div>
@@ -176,12 +179,12 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
           {/* Footer */}
           <div className="px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-[10px] text-[#605A55]">{selected.size} selecionadas</span>
+              <span className="text-[10px] text-[#605A55]">{t("prompts.filename.selectedCount", { count: selected.size })}</span>
               <button
                 onClick={onDismiss}
                 className="text-[10px] text-[#605A55] hover:text-[#C99BA6] transition-colors"
               >
-                Ignorar tudo
+                {t("prompts.filename.ignoreAll")}
               </button>
             </div>
             <button
@@ -189,7 +192,7 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
               disabled={applying || selected.size === 0}
               className="px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide bg-[#D95340] hover:bg-[#E07364] disabled:opacity-40 text-white transition-colors"
             >
-              {applying ? "Aplicando…" : `Importar metadados (${selected.size})`}
+              {applying ? t("prompts.filename.applying") : t("prompts.filename.importMeta", { count: selected.size })}
             </button>
           </div>
         </div>

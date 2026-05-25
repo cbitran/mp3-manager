@@ -12,6 +12,8 @@ import {
 
 import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { useAppStore, type Track } from "../store";
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
@@ -246,12 +248,12 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
               className="px-1 py-px rounded text-[8px] font-semibold uppercase tracking-wider leading-tight cursor-default select-none"
               style={{ background: "rgba(255,255,255,0.07)", color: "#756D67", border: "1px solid rgba(255,255,255,0.10)" }}
             >
-              arquivo
+              {i18n.t("table.badgeArchive")}
             </span>
           )}
           {hasIssues && (
             <span className="px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-widest bg-[#D95340]/20 text-[#D95340] leading-tight">
-              enriquecer
+              {i18n.t("table.badgeEnrich")}
             </span>
           )}
         </div>
@@ -290,7 +292,7 @@ const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
     <div
       className="flex gap-px justify-center cursor-pointer"
       onMouseLeave={() => setHover(0)}
-      title={current > 0 ? `Nota: ${current}/5 — clique para alterar` : "Clique para avaliar (1–5 ★)"}
+      title={current > 0 ? i18n.t("table.ratingSet", { rating: current }) : i18n.t("table.ratingHint")}
     >
       {Array.from({ length: 5 }, (_, idx) => {
         const filled = idx < displayed;
@@ -314,8 +316,15 @@ const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
 
 // ---------------------------------------------------------------------------
 
-// Cache em nível de módulo — sobrevive a remounts causados pelo TanStack Table
+// Cache LRU simples: máximo 400 entradas (capas ~50KB cada → ~20MB máx)
+const COVER_CACHE_MAX = 400;
 const coverCache = new Map<string, string>();
+function setCoverCache(key: string, value: string) {
+  if (coverCache.size >= COVER_CACHE_MAX) {
+    coverCache.delete(coverCache.keys().next().value!);
+  }
+  coverCache.set(key, value);
+}
 
 const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { path: string; hasCover: boolean; coverVersion?: number }) {
   const cacheKey = `${path}::${coverVersion ?? 0}`;
@@ -329,7 +338,7 @@ const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { pa
       .then((b64) => {
         if (b64) {
           const dataUrl = `data:image/jpeg;base64,${b64}`;
-          coverCache.set(cacheKey, dataUrl);
+          setCoverCache(cacheKey, dataUrl);
           setSrc(dataUrl);
         } else {
           setSrc(null);
@@ -384,6 +393,7 @@ export default function TrackTable({
     addTracksToPlaylist,
   } = useAppStore();
 
+  const { t } = useTranslation();
   const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
 
   const anchorIdRef = useRef<string | null>(null);
@@ -1235,7 +1245,7 @@ export default function TrackTable({
           }}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
-          {VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) ? "Reproduzir vídeo" : "Tocar"}
+          {VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) ? t("table.playVideo") : t("table.play")}
         </button>
         {/* Enriquecer metadados */}
         {onEnrich && (
@@ -1254,8 +1264,8 @@ export default function TrackTable({
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
             {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
-              ? `Enriquecer ${selectedIds.size} faixas`
-              : "Enriquecer metadados"}
+              ? t("table.enrichCount", { count: selectedIds.size })
+              : t("table.enrichMeta")}
           </button>
         )}
         {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
@@ -1291,7 +1301,7 @@ export default function TrackTable({
             <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-70">
               <path d="M1 8l2-4 2 2.5 2-5 2 3 1-2"/>
             </svg>
-            {analyzingBpmId === contextMenu.track.id ? "Analisando…" : "Analisar BPM"}
+            {analyzingBpmId === contextMenu.track.id ? t("table.analyzing") : t("table.analyzeBpm")}
           </button>
         )}
         {/* Edição inline */}
@@ -1306,7 +1316,7 @@ export default function TrackTable({
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
             <path d="M1 9h8M6.5 1.5l2 2-5 5H1.5v-2l5-5z"/>
           </svg>
-          Editar título
+          {t("table.editTitle")}
         </button>
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
@@ -1318,7 +1328,7 @@ export default function TrackTable({
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
             <path d="M1 9h8M6.5 1.5l2 2-5 5H1.5v-2l5-5z"/>
           </svg>
-          Editar artista
+          {t("table.editArtist")}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
@@ -1329,7 +1339,7 @@ export default function TrackTable({
           }}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M1 2h9v7H1V2zm2 2v3h5V4H3z"/></svg>
-          {IS_WIN_TABLE ? "Revelar no Explorer" : "Revelar no Finder"}
+          {IS_WIN_TABLE ? t("table.revealExplorer") : t("table.revealFinder")}
         </button>
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
@@ -1339,7 +1349,7 @@ export default function TrackTable({
           }}
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><rect x="3" y="1" width="7" height="8" rx="1"/><rect x="1" y="3" width="7" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
-          Copiar Caminho
+          {t("table.copyPath")}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
@@ -1352,7 +1362,7 @@ export default function TrackTable({
           <svg width="11" height="11" viewBox="0 0 12 12" fill={favoriteTrackPaths.has(contextMenu.track.path) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" className="text-[#D95340] opacity-80">
             <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
           </svg>
-          {favoriteTrackPaths.has(contextMenu.track.path) ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+          {favoriteTrackPaths.has(contextMenu.track.path) ? t("table.removeFromFavs") : t("table.addToFavs")}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
@@ -1370,7 +1380,7 @@ export default function TrackTable({
             <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
             <rect x="1" y="8" width="5" height="2" rx="0.5"/>
           </svg>
-          {selectedIds.size > 1 ? `Criar Playlist (${selectedIds.size} faixas)` : "Criar Playlist"}
+          {selectedIds.size > 1 ? t("table.createPlaylistCount", { count: selectedIds.size }) : t("table.createPlaylist")}
         </button>
         {/* Adicionar a playlist existente */}
         {playlists.length > 0 && (
@@ -1382,7 +1392,7 @@ export default function TrackTable({
                   <rect x="1" y="4.5" width="5" height="2" rx="0.5"/>
                   <path d="M8 6v3M6.5 7.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                 </svg>
-                Adicionar à playlist
+                {t("table.addToPlaylist")}
               </span>
               <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="opacity-40"><path d="M1 0l4 3-4 3V0z"/></svg>
             </button>
@@ -1422,7 +1432,7 @@ export default function TrackTable({
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-70">
             <path d="M4 1h3a1 1 0 011 1v.5H2.5V2A1 1 0 014 1zM1 3h9l-.8 6.5A1 1 0 018.2 10H2.8a1 1 0 01-.997-.9L1 3z"/>
           </svg>
-          {selectedIds.size > 1 ? `Remover ${selectedIds.size} faixas…` : "Remover…"}
+          {selectedIds.size > 1 ? t("table.removeCount", { count: selectedIds.size }) : t("table.remove")}
         </button>
       </div>
     )}
@@ -1440,40 +1450,40 @@ export default function TrackTable({
         <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
           <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
             {removeDialog.targets.length === 1
-              ? `Remover "${removeDialog.targets[0].title ?? removeDialog.targets[0].filename}"`
-              : `Remover ${removeDialog.targets.length} faixas`}
+              ? t("table.removeDialogSingle", { name: removeDialog.targets[0].title ?? removeDialog.targets[0].filename })
+              : t("table.removeDialogTitle")}
           </h3>
           <p className="text-xs text-[#8F8883] mb-5">
-            Escolha o que deseja fazer com {removeDialog.targets.length === 1 ? "este arquivo" : "estes arquivos"}.
+            {t("table.removeDialogMsg", { count: removeDialog.targets.length })}
           </p>
           <div className="flex flex-col gap-2">
             <button
               className="w-full py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
               onClick={async () => {
-                const ids = removeDialog.targets.map((t) => t.id);
-                for (const t of removeDialog.targets) {
-                  await invoke("trash_file", { path: t.path }).catch(() => {});
+                const ids = removeDialog.targets.map((tr) => tr.id);
+                for (const tr of removeDialog.targets) {
+                  await invoke("trash_file", { path: tr.path }).catch(() => {});
                 }
                 removeTracks(ids);
                 setRemoveDialog(null);
               }}
             >
-              Mover para a Lixeira
+              {t("sidebar.moveToTrash")}
             </button>
             <button
               className="w-full py-2 rounded-lg bg-white/8 hover:bg-white/12 text-[#D95340] text-sm font-medium transition-colors"
               onClick={() => {
-                removeTracks(removeDialog.targets.map((t) => t.id));
+                removeTracks(removeDialog.targets.map((tr) => tr.id));
                 setRemoveDialog(null);
               }}
             >
-              Remover da Lista
+              {t("sidebar.removeFromList")}
             </button>
             <button
               className="w-full py-2 rounded-lg bg-transparent hover:bg-white/5 text-[#756D67] text-sm transition-colors"
               onClick={() => setRemoveDialog(null)}
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
           </div>
         </div>
