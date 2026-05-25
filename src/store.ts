@@ -57,7 +57,8 @@ const TRIAL_DAYS         = 14;
 const TRIAL_START_KEY    = "tagwave_trialStartDate";
 const TRACKS_ANALYZED_KEY= "tagwave_tracksAnalyzed";
 const TAGS_ENRICHED_KEY  = "tagwave_tagsEnriched";
-const LICENSE_KEY_STORE  = "tagwave_licenseKey";
+const LICENSE_KEY_STORE   = "tagwave_licenseKey";
+const LICENSE_EMAIL_STORE = "tagwave_licenseEmail";
 
 function initTrialStart(): Date {
   const stored = localStorage.getItem(TRIAL_START_KEY);
@@ -79,11 +80,12 @@ interface AppState {
   recentFolders: string[];
   favoriteTrackPaths: Set<string>;
 
-  // Trial
+  // Trial / Licença
   trialStartDate: Date;
   tracksAnalyzed: number;
   tagsEnriched: number;
-  licenseKey: string;
+  licenseKey:   string;
+  licenseEmail: string;
 
   setTracks: (tracks: Track[]) => void;
   updateTrack: (track: Track) => void;
@@ -171,7 +173,7 @@ interface AppState {
   estimatedTimeSaved: () => string;
   recordScan: (count: number) => void;
   recordEnrichment: (count: number) => void;
-  activateLicense: (key: string) => void;
+  activateLicense: (key: string, email?: string) => void;
   extendForBeta: () => void;
 }
 
@@ -284,7 +286,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   trialStartDate: initTrialStart(),
   tracksAnalyzed: parseInt(localStorage.getItem(TRACKS_ANALYZED_KEY) ?? "0", 10),
   tagsEnriched:   parseInt(localStorage.getItem(TAGS_ENRICHED_KEY)   ?? "0", 10),
-  licenseKey:     localStorage.getItem(LICENSE_KEY_STORE) ?? "",
+  licenseKey:     localStorage.getItem(LICENSE_KEY_STORE)   ?? "",
+  licenseEmail:   localStorage.getItem(LICENSE_EMAIL_STORE) ?? "",
 
   // Column visibility
   columnVisibility: JSON.parse(localStorage.getItem("tagwave_col_vis") ?? "{}"),
@@ -457,9 +460,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem(TAGS_ENRICHED_KEY, String(next));
     set({ tagsEnriched: next });
   },
-  activateLicense: (key) => {
+  activateLicense: (key, email = "") => {
     localStorage.setItem(LICENSE_KEY_STORE, key);
-    set({ licenseKey: key });
+    if (email) localStorage.setItem(LICENSE_EMAIL_STORE, email);
+    set({ licenseKey: key, licenseEmail: email });
   },
   extendForBeta: () => {
     const yesterday = new Date(Date.now() - 86_400_000);

@@ -34,6 +34,7 @@ import NewTracksModal from "./components/NewTracksModal";
 import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
 import CreatePlaylistModal from "./components/CreatePlaylistModal";
 import type { PendingNewTrack } from "./store";
+import { checkLicenseStatus } from "./services/LicenseService";
 
 function loadingLabel(mode: "startup" | "closing"): string {
   const saved = localStorage.getItem("tagwave_language") ?? navigator.language;
@@ -62,6 +63,7 @@ export default function App() {
     setGenreFilter,
     isTrialActivated,
     daysRemaining,
+    activateLicense,
     theme,
   } = useAppStore();
 
@@ -106,6 +108,16 @@ export default function App() {
     apply();
     return () => { unlisten?.(); };
   }, [theme]);
+
+  // Verifica licença salva localmente ao iniciar (restaura ativação de sessões anteriores)
+  useEffect(() => {
+    checkLicenseStatus()
+      .then((status) => {
+        if (status.valid) activateLicense(status.instance_id, status.email);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Bloqueia o menu de contexto nativo do WebView (Reload / Inspect Element)
   useEffect(() => {

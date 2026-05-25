@@ -1819,6 +1819,170 @@ fn scan_specific_files(paths: Vec<String>) -> Vec<Track> {
         .collect()
 }
 
+// ── Licenciamento (LemonSqueezy) ─────────────────────────────────────────────
+
+/// Mude para `true` quando o produto estiver criado no LemonSqueezy.
+const LICENSING_ENABLED: bool = false;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct LicenseFile {
+    key:          String,
+    instance_id:  String,
+    email:        String,
+    activated_at: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct LicenseStatus {
+    valid:       bool,
+    email:       String,
+    instance_id: String,
+    error:       Option<String>,
+}
+
+fn license_file_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("license.json"))
+}
+
+fn machine_name() -> String {
+    std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "TagWave".to_string())
+}
+
+/// Ativa uma chave de licença. Quando LICENSING_ENABLED = false, aceita qualquer
+/// chave com ≥ 10 caracteres e salva localmente (modo beta/dev).
+#[tauri::command]
+async fn activate_license_key(
+    app: tauri::AppHandle,
+    key: String,
+) -> Result<LicenseStatus, String> {
+    let key = key.trim().to_string();
+    if key.len() < 10 {
+        return Err("Chave muito curta".to_string());
+    }
+
+    if !LICENSING_ENABLED {
+        let info = LicenseFile {
+            key:          key.clone(),
+            instance_id:  "dev-instance".to_string(),
+            email:        "beta@tagwave.app".to_string(),
+            activated_at: chrono::Utc::now().to_rfc3339(),
+        };
+        save_license_file(&app, &info);
+        return Ok(LicenseStatus {
+            valid: true,
+            email: info.email,
+            instance_id: info.instance_id,
+            error: None,
+        });
+    }
+
+    // Chamada real ao LemonSqueezy
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let res = client
+        .post("https://api.lemonsqueezy.com/v1/licenses/activate")
+        .header("Accept", "application/json")
+        .json(&serde_json::json!({
+            "license_key":   key,
+            "instance_name": format!("TagWave on {}", machine_name()),
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Erro de rede: {}", e))?;
+
+    let http_ok = res.status().is_success();
+    let body: serde_json::Value = res.json().await
+        .map_err(|e| format!("Resposta inválida: {}", e))?;
+
+    if !http_ok || !body["activated"].as_bool().unwrap_or(false) {
+        return Err(
+            body["error"].as_str().unwrap_or("Chave inválida ou já utilizada").to_string()
+        );
+    }
+
+    let instance_id = body["instance"]["id"].as_str().unwrap_or("").to_string();
+    let email       = body["license_key"]["customer_email"].as_str().unwrap_or("").to_string();
+
+    let info = LicenseFile {
+        key: key.clone(),
+        instance_id: instance_id.clone(),
+        email: email.clone(),
+        activated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    save_license_file(&app, &info);
+
+    Ok(LicenseStatus { valid: true, email, instance_id, error: None })
+}
+
+/// Verifica se há uma licença ativa salva localmente.
+/// Quando LICENSING_ENABLED = true, revalida com o servidor.
+#[tauri::command]
+async fn check_license_status(app: tauri::AppHandle) -> Result<LicenseStatus, String> {
+    let path = license_file_path(&app).ok_or("Config dir indisponível")?;
+    if !path.exists() {
+        return Err("Sem licença".to_string());
+    }
+
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let info: LicenseFile = serde_json::from_str(&content).map_err(|_| "Arquivo de licença corrompido")?;
+
+    if !LICENSING_ENABLED {
+        return Ok(LicenseStatus {
+            valid: true,
+            email: info.email,
+            instance_id: info.instance_id,
+            error: None,
+        });
+    }
+
+    // Revalidação online
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let res = client
+        .post("https://api.lemonsqueezy.com/v1/licenses/validate")
+        .header("Accept", "application/json")
+        .json(&serde_json::json!({
+            "license_key": info.key,
+            "instance_id": info.instance_id,
+        }))
+        .send()
+        .await
+        .map_err(|_| "Sem conexão — usando licença em cache")?;
+
+    let body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+
+    if !body["valid"].as_bool().unwrap_or(false) {
+        let _ = fs::remove_file(&path);
+        return Err(body["error"].as_str().unwrap_or("Licença revogada").to_string());
+    }
+
+    Ok(LicenseStatus {
+        valid: true,
+        email: info.email,
+        instance_id: info.instance_id,
+        error: None,
+    })
+}
+
+fn save_license_file(app: &tauri::AppHandle, info: &LicenseFile) {
+    if let Some(path) = license_file_path(app) {
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(info) {
+            let _ = fs::write(path, json);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1864,6 +2028,8 @@ pub fn run() {
             find_new_files,
             scan_specific_files,
             list_volumes,
+            activate_license_key,
+            check_license_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
