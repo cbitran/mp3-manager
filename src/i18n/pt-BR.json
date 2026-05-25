@@ -31,7 +31,21 @@
       "columns": "Colunas",
       "shortcuts": "Atalhos",
       "license": "Licença",
-      "language": "Idioma"
+      "language": "Idioma",
+      "accessibility": "Acessibilidade"
+    },
+    "accessibility": {
+      "fontSize": "Tamanho da Fonte",
+      "fontSizeDesc": "Ajuste o tamanho do texto em toda a interface",
+      "fontSmall": "Padrão",
+      "fontMedium": "Médio",
+      "fontLarge": "Grande",
+      "fontXL": "Muito Grande",
+      "colorMode": "Modo de Cor",
+      "colorModeDesc": "Adaptações visuais para diferentes necessidades",
+      "colorDefault": "Padrão",
+      "colorDeutanopia": "Deuteranopia (vermelho-verde)",
+      "colorHighContrast": "Alto Contraste"
     },
     "appearance": {
       "theme": "Tema",
@@ -76,6 +90,7 @@
       "colKey": "Tom",
       "colBpm": "BPM",
       "colRating": "Rating",
+      "colCue": "CUE Points",
       "colDuration": "Duração",
       "colSize": "Tamanho",
       "colCover": "Capa",

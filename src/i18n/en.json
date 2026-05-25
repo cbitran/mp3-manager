@@ -31,7 +31,21 @@
       "columns": "Columns",
       "shortcuts": "Shortcuts",
       "license": "License",
-      "language": "Language"
+      "language": "Language",
+      "accessibility": "Accessibility"
+    },
+    "accessibility": {
+      "fontSize": "Font Size",
+      "fontSizeDesc": "Adjust text size across the entire interface",
+      "fontSmall": "Default",
+      "fontMedium": "Medium",
+      "fontLarge": "Large",
+      "fontXL": "Extra Large",
+      "colorMode": "Color Mode",
+      "colorModeDesc": "Visual adaptations for different needs",
+      "colorDefault": "Default",
+      "colorDeutanopia": "Deuteranopia (red-green)",
+      "colorHighContrast": "High Contrast"
     },
     "appearance": {
       "theme": "Theme",
@@ -76,6 +90,7 @@
       "colKey": "Key",
       "colBpm": "BPM",
       "colRating": "Rating",
+      "colCue": "CUE Points",
       "colDuration": "Duration",
       "colSize": "Size",
       "colCover": "Cover",

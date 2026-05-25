@@ -445,3 +445,74 @@ html[data-theme="light"] input[type="checkbox"]:hover {
 .animate-ai-bounce {
   animation: ai-bounce 900ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   SISTEMA DE ACESSIBILIDADE
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Correção de contraste imediata ─────────────────────────────
+   #4C4743 em fundos escuros tem ~3.5:1 — abaixo do mínimo WCAG AA
+   para texto pequeno (9–11px). Elevamos para #605A55 globalmente. */
+.text-\[\#4C4743\] { color: #605A55 !important; }
+
+/* Toolbar usa bg-[#23201E] como fundo — #605A55 tem só 2.3:1 lá.
+   Elevamos todo texto secundário da toolbar para #8F8883 (3.3:1). */
+[data-tauri-drag-region] .text-\[\#605A55\],
+[data-tauri-drag-region] .text-\[\#756D67\] { color: #8F8883 !important; }
+[data-tauri-drag-region] .hover\:text-\[\#756D67\]:hover,
+[data-tauri-drag-region] .hover\:text-\[\#8F8883\]:hover { color: #C2BEBC !important; }
+
+/* ── Escala de fonte ─────────────────────────────────────────────
+   Basta definir data-font no <html> para escalar TODOS os textos
+   sem tocar em nenhum componente. */
+html { --app-fs: 1; }
+html[data-font="115"] { --app-fs: 1.15; }
+html[data-font="130"] { --app-fs: 1.30; }
+html[data-font="150"] { --app-fs: 1.50; }
+
+html[data-font] [class*="text-[8px]"]  { font-size: calc(8px  * var(--app-fs)) !important; }
+html[data-font] [class*="text-[9px]"]  { font-size: calc(9px  * var(--app-fs)) !important; }
+html[data-font] [class*="text-[10px]"] { font-size: calc(10px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[11px]"] { font-size: calc(11px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[12px]"] { font-size: calc(12px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[13px]"] { font-size: calc(13px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[14px]"] { font-size: calc(14px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[16px]"] { font-size: calc(16px * var(--app-fs)) !important; }
+html[data-font] [class*="text-[18px]"] { font-size: calc(18px * var(--app-fs)) !important; }
+html[data-font] .text-xs   { font-size: calc(0.75rem  * var(--app-fs)) !important; }
+html[data-font] .text-sm   { font-size: calc(0.875rem * var(--app-fs)) !important; }
+html[data-font] .text-base { font-size: calc(1rem     * var(--app-fs)) !important; }
+html[data-font] .text-lg   { font-size: calc(1.125rem * var(--app-fs)) !important; }
+html[data-font] .text-xl   { font-size: calc(1.25rem  * var(--app-fs)) !important; }
+
+/* ── Modo Alto Contraste ─────────────────────────────────────────
+   Eleva todos os textos um degrau na escala de tonalidade. */
+html[data-color="high-contrast"] .text-\[\#605A55\]  { color: #8F8883 !important; }
+html[data-color="high-contrast"] .text-\[\#4C4743\]  { color: #756D67 !important; }
+html[data-color="high-contrast"] .text-\[\#373331\]  { color: #605A55 !important; }
+html[data-color="high-contrast"] .text-\[\#8F8883\]  { color: #C2BEBC !important; }
+html[data-color="high-contrast"] .text-\[\#756D67\]  { color: #8F8883 !important; }
+html[data-color="high-contrast"] .border-white\/\[0\.04\] { border-color: rgba(255,255,255,0.09) !important; }
+html[data-color="high-contrast"] .border-white\/\[0\.05\] { border-color: rgba(255,255,255,0.11) !important; }
+html[data-color="high-contrast"] .border-white\/\[0\.06\] { border-color: rgba(255,255,255,0.13) !important; }
+html[data-color="high-contrast"] .bg-white\/\[0\.03\]  { background-color: rgba(255,255,255,0.05) !important; }
+html[data-color="high-contrast"] .bg-white\/\[0\.04\]  { background-color: rgba(255,255,255,0.07) !important; }
+
+/* ── Modo Daltonismo (Deuteranopia / Protanopia) ─────────────────
+   Substitui todo o coral #D95340 por azul #2563EB.
+   Pessoas com daltonismo vermelho-verde (8% dos homens) não
+   distinguem o coral, mas percebem bem o azul. */
+html[data-color="deuteranopia"] .text-\[\#D95340\]             { color: #2563EB !important; }
+html[data-color="deuteranopia"] .text-\[\#E07364\]             { color: #3B82F6 !important; }
+html[data-color="deuteranopia"] .text-\[\#B34435\]             { color: #1D4ED8 !important; }
+html[data-color="deuteranopia"] .bg-\[\#D95340\]               { background-color: #2563EB !important; }
+html[data-color="deuteranopia"] .bg-\[\#E07364\]               { background-color: #3B82F6 !important; }
+html[data-color="deuteranopia"] .hover\:bg-\[\#E07364\]:hover  { background-color: #3B82F6 !important; }
+html[data-color="deuteranopia"] .hover\:bg-\[\#D95340\]:hover  { background-color: #2563EB !important; }
+html[data-color="deuteranopia"] .active\:bg-\[\#B34435\]:active { background-color: #1D4ED8 !important; }
+html[data-color="deuteranopia"] .border-\[\#D95340\]           { border-color: #2563EB !important; }
+html[data-color="deuteranopia"] .hover\:text-\[\#D95340\]:hover  { color: #2563EB !important; }
+html[data-color="deuteranopia"] .hover\:text-\[\#E07364\]:hover  { color: #3B82F6 !important; }
+html[data-color="deuteranopia"] input[type="checkbox"]:checked   { background-color: #2563EB !important; border-color: #2563EB !important; }
+html[data-color="deuteranopia"] input[type="range"]              { accent-color: #2563EB !important; }
+html[data-color="deuteranopia"] ::selection                      { background: #2563EB; }

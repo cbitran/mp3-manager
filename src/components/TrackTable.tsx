@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useAppStore, type Track } from "../store";
+import CuePointsModal from "./CuePointsModal";
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
 const MINI_BARS = 40;
@@ -125,7 +126,7 @@ function camelotColor(key: string): string {
 
 function formatBPM(bpm: string): string {
   const n = parseFloat(bpm);
-  return isNaN(n) ? bpm : n.toFixed(2);
+  return isNaN(n) ? "—" : n.toFixed(2);
 }
 
 // ── Inline-edit request bus ──────────────────────────────────────────────────
@@ -204,6 +205,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
               title ? "text-[13px] font-medium text-[#F5F5F4]" : "text-xs italic text-[#756D67]"
             }`}
             onDoubleClick={(e) => {
+              if (!IS_WIN_TABLE && !e.metaKey) return; // macOS: Cmd+dbl = editar, dbl simples = tocar
               e.stopPropagation();
               setEditing("title");
               setEditValue(title ?? filename);
@@ -231,6 +233,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
           <div
             className="text-[11px] text-[#8F8883] mt-px leading-snug [overflow-wrap:anywhere] cursor-text"
             onDoubleClick={(e) => {
+              if (!IS_WIN_TABLE && !e.metaKey) return;
               e.stopPropagation();
               setEditing("artist");
               setEditValue(artist);
@@ -395,6 +398,7 @@ export default function TrackTable({
 
   const { t } = useTranslation();
   const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
+  const [cueModalTrack, setCueModalTrack] = useState<Track | null>(null);
 
   const anchorIdRef = useRef<string | null>(null);
   const sortedRowsRef = useRef<Array<{id: string}>>([]);
@@ -784,6 +788,44 @@ export default function TrackTable({
         header: "Nota",
         cell: (i) => <RatingCell track={i.row.original} />,
         size: 80, minSize: 70,
+      }),
+
+      // CUE POINTS
+      col.accessor("cue_points", {
+        id: "cue_points",
+        header: () => <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743]">CUE</span>,
+        cell: ({ getValue, row }) => {
+          const cues = getValue() ?? [];
+          const count = cues.length;
+          return (
+            <button
+              title={count > 0 ? `${count} CUE Point${count !== 1 ? "s" : ""} — clique para editar` : "Clique para adicionar CUE Points"}
+              onClick={(e) => { e.stopPropagation(); setCueModalTrack(row.original); }}
+              className="w-full flex items-center justify-center gap-1 transition-opacity hover:opacity-80"
+            >
+              {count > 0 ? (
+                <div className="flex items-center gap-1">
+                  {cues.slice(0, 4).map((c: import("../store").CuePoint, i: number) => (
+                    <span
+                      key={i}
+                      className="w-3 h-3 rounded-sm flex items-center justify-center text-white font-bold"
+                      style={{ background: c.color, fontSize: 7 }}
+                    >
+                      {i + 1}
+                    </span>
+                  ))}
+                  {count > 4 && (
+                    <span className="text-[9px] font-mono" style={{ color: "#605A55" }}>+{count - 4}</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[11px]" style={{ color: "#373331" }}>—</span>
+              )}
+            </button>
+          );
+        },
+        size: 80, minSize: 64,
+        enableSorting: false,
       }),
 
       // DURAÇÃO
@@ -1512,6 +1554,15 @@ export default function TrackTable({
           {dragGhost.label}
         </div>
       </div>
+    )}
+    {cueModalTrack && (
+      <CuePointsModal
+        track={cueModalTrack}
+        onClose={() => setCueModalTrack(null)}
+        onSaved={(cues) => {
+          useAppStore.getState().updateTrack({ ...cueModalTrack, cue_points: cues });
+        }}
+      />
     )}
     </>
   );

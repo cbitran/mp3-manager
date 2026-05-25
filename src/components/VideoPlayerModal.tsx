@@ -279,7 +279,7 @@ export default function VideoPlayerModal({ track, onClose }: Props) {
             <span className="text-[11px] font-mono tabular-nums ml-1" style={{ color: "#C2BEBC" }}>
               {fmt(current)}
             </span>
-            <span className="text-[11px] font-mono tabular-nums" style={{ color: "#3a3533" }}>/</span>
+            <span className="text-[11px] font-mono tabular-nums" style={{ color: "#605A55" }}>/</span>
             <span className="text-[11px] font-mono tabular-nums" style={{ color: "#605A55" }}>
               {fmt(duration)}
             </span>

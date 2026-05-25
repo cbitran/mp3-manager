@@ -65,6 +65,8 @@ export default function App() {
     daysRemaining,
     activateLicense,
     theme,
+    fontScale,
+    colorMode,
   } = useAppStore();
 
   const { t } = useTranslation();
@@ -118,6 +120,18 @@ export default function App() {
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Aplica escala de fonte
+  useEffect(() => {
+    if (fontScale === "100") document.documentElement.removeAttribute("data-font");
+    else document.documentElement.setAttribute("data-font", fontScale);
+  }, [fontScale]);
+
+  // Aplica modo de cor / acessibilidade
+  useEffect(() => {
+    if (colorMode === "default") document.documentElement.removeAttribute("data-color");
+    else document.documentElement.setAttribute("data-color", colorMode);
+  }, [colorMode]);
 
   // Bloqueia o menu de contexto nativo do WebView (Reload / Inspect Element)
   useEffect(() => {

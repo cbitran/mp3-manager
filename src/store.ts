@@ -1,5 +1,12 @@
 import { create } from "zustand";
 
+export interface CuePoint {
+  index: number;
+  position_ms: number;
+  label: string;
+  color: string;  // "#RRGGBB"
+}
+
 export interface Track {
   id: string;
   path: string;
@@ -24,6 +31,7 @@ export interface Track {
   modified_at?: number;
   comment?: string;
   total_tracks?: number;
+  cue_points: CuePoint[];
 }
 
 export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
@@ -127,6 +135,10 @@ interface AppState {
   resetShortcutOverrides: () => void;
   theme: "auto" | "light" | "dark";
   setTheme: (theme: "auto" | "light" | "dark") => void;
+  fontScale: "100" | "115" | "130" | "150";
+  setFontScale: (scale: "100" | "115" | "130" | "150") => void;
+  colorMode: "default" | "deuteranopia" | "high-contrast";
+  setColorMode: (mode: "default" | "deuteranopia" | "high-contrast") => void;
   djPrimary: string;
   djAutoImport: boolean;
   djShowAll: boolean;
@@ -341,6 +353,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTheme: (theme) => {
     localStorage.setItem("tagwave_theme", theme);
     set({ theme });
+  },
+  fontScale: (localStorage.getItem("tagwave_font_scale") as "100" | "115" | "130" | "150") ?? "100",
+  setFontScale: (fontScale) => {
+    localStorage.setItem("tagwave_font_scale", fontScale);
+    set({ fontScale });
+  },
+  colorMode: (localStorage.getItem("tagwave_color_mode") as "default" | "deuteranopia" | "high-contrast") ?? "default",
+  setColorMode: (colorMode) => {
+    localStorage.setItem("tagwave_color_mode", colorMode);
+    set({ colorMode });
   },
   djPrimary: localStorage.getItem("tagwave_dj_primary") ?? "none",
   djAutoImport: localStorage.getItem("tagwave_dj_autoimport") === "true",

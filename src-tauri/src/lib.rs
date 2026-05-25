@@ -16,6 +16,131 @@ use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 
+// ── CUE Points ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CuePoint {
+    pub index: u8,
+    pub position_ms: u32,
+    pub label: String,
+    pub color: String,  // "#RRGGBB"
+}
+
+fn parse_serato_cue_points(id3tag: &id3::Tag) -> Vec<CuePoint> {
+    let frame = id3tag.frames().find(|f| {
+        if f.id() != "GEOB" { return false; }
+        if let id3::Content::EncapsulatedObject(obj) = f.content() {
+            obj.description == "Serato Markers2"
+        } else { false }
+    });
+
+    let data = match frame.and_then(|f| {
+        if let id3::Content::EncapsulatedObject(obj) = f.content() { Some(&obj.data) } else { None }
+    }) {
+        Some(d) => d,
+        None => return Vec::new(),
+    };
+
+    let b64_str = match std::str::from_utf8(data) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let b64_clean: String = b64_str.chars().filter(|c| !c.is_whitespace()).collect();
+    let decoded = match base64::engine::general_purpose::STANDARD.decode(&b64_clean) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    if decoded.len() < 2 { return Vec::new(); }
+    let mut pos = 2usize; // skip 2-byte version
+    let mut cues = Vec::new();
+
+    while pos + 8 <= decoded.len() {
+        let tag_type = &decoded[pos..pos + 4];
+        pos += 4;
+        let len = u32::from_be_bytes([decoded[pos], decoded[pos+1], decoded[pos+2], decoded[pos+3]]) as usize;
+        pos += 4;
+        if pos + len > decoded.len() { break; }
+        let entry = &decoded[pos..pos + len];
+        pos += len;
+
+        if tag_type.starts_with(b"CUE") && entry.len() >= 11 {
+            let index      = entry[0];
+            let pos_ms     = u32::from_be_bytes([entry[1], entry[2], entry[3], entry[4]]);
+            let r = entry[6]; let g = entry[7]; let b = entry[8];
+            let label = if entry.len() > 11 {
+                let end = entry[11..].iter().position(|&b| b == 0).unwrap_or(entry.len() - 11);
+                String::from_utf8_lossy(&entry[11..11 + end]).to_string()
+            } else { String::new() };
+            cues.push(CuePoint { index, position_ms: pos_ms, label, color: format!("#{:02X}{:02X}{:02X}", r, g, b) });
+        }
+    }
+    cues.sort_by_key(|c| c.position_ms);
+    cues
+}
+
+fn build_serato_markers2(cues: &[CuePoint]) -> Vec<u8> {
+    let mut payload: Vec<u8> = vec![0x01, 0x01]; // version
+    for cue in cues {
+        let r = u8::from_str_radix(&cue.color.get(1..3).unwrap_or("CC"), 16).unwrap_or(0xCC);
+        let g = u8::from_str_radix(&cue.color.get(3..5).unwrap_or("00"), 16).unwrap_or(0x00);
+        let b_val = u8::from_str_radix(&cue.color.get(5..7).unwrap_or("00"), 16).unwrap_or(0x00);
+        let label_bytes = cue.label.as_bytes();
+        let entry_len = 11 + label_bytes.len() + 1; // 11 fixed + label + null
+        payload.extend_from_slice(b"CUE\0");
+        payload.extend_from_slice(&(entry_len as u32).to_be_bytes());
+        payload.push(cue.index);
+        payload.extend_from_slice(&cue.position_ms.to_be_bytes());
+        payload.push(0x00);
+        payload.push(r); payload.push(g); payload.push(b_val);
+        payload.push(0x00); payload.push(0x00);
+        payload.extend_from_slice(label_bytes);
+        payload.push(0x00); // null terminator
+    }
+    payload
+}
+
+#[tauri::command]
+fn get_cue_points(path: String) -> Vec<CuePoint> {
+    let p = Path::new(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext != "mp3" && ext != "aif" && ext != "aiff" { return Vec::new(); }
+    match id3::Tag::read_from_path(p) {
+        Ok(tag) => parse_serato_cue_points(&tag),
+        Err(_)  => Vec::new(),
+    }
+}
+
+#[tauri::command]
+fn save_cue_points(path: String, cues: Vec<CuePoint>) -> Result<(), String> {
+    let p = Path::new(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext != "mp3" && ext != "aif" && ext != "aiff" {
+        return Err("Formato não suportado para escrita de CUE Points".to_string());
+    }
+    let mut tag = id3::Tag::read_from_path(p).unwrap_or_else(|_| id3::Tag::new());
+
+    // Remove existing Serato Markers2 frame
+    tag.remove_encapsulated_object(Some("application/octet-stream"), Some(""), Some("Serato Markers2"), None::<&[u8]>);
+
+    if !cues.is_empty() {
+        let payload = build_serato_markers2(&cues);
+        let b64_data = base64::engine::general_purpose::STANDARD.encode(&payload);
+        let b64_bytes = b64_data.into_bytes();
+        tag.add_frame(id3::Frame::with_content("GEOB", id3::Content::EncapsulatedObject(
+            id3::frame::EncapsulatedObject {
+                mime_type: "application/octet-stream".to_string(),
+                filename: String::new(),
+                description: "Serato Markers2".to_string(),
+                data: b64_bytes,
+            }
+        )));
+    }
+
+    tag.write_to_path(p, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── Track ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -43,6 +168,8 @@ pub struct Track {
     pub modified_at: Option<i64>,
     pub comment: Option<String>,
     pub total_tracks: Option<u32>,
+    #[serde(default)]
+    pub cue_points: Vec<CuePoint>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -92,8 +219,8 @@ fn read_track(path: &Path) -> Option<Track> {
     let track_number = tag.and_then(|t| t.track());
     let has_cover    = tag.map(|t| !t.pictures().is_empty()).unwrap_or(false);
 
-    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS — read via id3 crate for MP3/AIFF
-    let (bpm, key, rating, comment, total_tracks) = if format == "MP3" || format == "AIFF" || format == "AIF" {
+    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS — read via id3 crate for MP3/AIFF
+    let (bpm, key, rating, comment, total_tracks, cue_points) = if format == "MP3" || format == "AIFF" || format == "AIF" {
         if let Ok(id3tag) = id3::Tag::read_from_path(path) {
             let bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
                 if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
@@ -111,9 +238,10 @@ fn read_track(path: &Path) -> Option<Track> {
                     t.split('/').nth(1).and_then(|s| s.trim().parse::<u32>().ok())
                 } else { None }
             });
-            (bpm, key, rating, comment, total_tracks)
+            let cue_points = parse_serato_cue_points(&id3tag);
+            (bpm, key, rating, comment, total_tracks, cue_points)
         } else {
-            (None, None, None, None, None)
+            (None, None, None, None, None, Vec::new())
         }
     } else {
         // For FLAC/OGG: BPM and KEY in Vorbis comments
@@ -124,7 +252,7 @@ fn read_track(path: &Path) -> Option<Track> {
         let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
         let total_tracks = tag.and_then(|t| t.track_total());
-        (bpm, key, None, comment, total_tracks)
+        (bpm, key, None, comment, total_tracks, Vec::new())
     };
 
     let mut issues = Vec::new();
@@ -138,7 +266,7 @@ fn read_track(path: &Path) -> Option<Track> {
         id, path: path.to_string_lossy().to_string(), filename, format,
         title, artist, album, genre, year, track_number, bpm, key, rating,
         duration_secs, file_size_bytes, has_cover, cover_version: 0, issues,
-        bitrate_kbps, sample_rate_hz, modified_at, comment, total_tracks,
+        bitrate_kbps, sample_rate_hz, modified_at, comment, total_tracks, cue_points,
     })
 }
 
@@ -2030,6 +2158,8 @@ pub fn run() {
             list_volumes,
             activate_license_key,
             check_license_status,
+            get_cue_points,
+            save_cue_points,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

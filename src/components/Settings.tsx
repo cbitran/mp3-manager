@@ -10,7 +10,7 @@ import { DEFAULT_SHORTCUTS, formatShortcut, captureKey } from "../shortcuts";
 
 interface DjSoftwareInfo { id: string; name: string; installed: boolean; }
 
-type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts" | "language";
+type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts" | "language" | "accessibility";
 
 const DJ_OPTION_IDS = ["serato", "rekordbox", "traktor", "vdj", "djay", "engine_dj", "none"] as const;
 
@@ -20,6 +20,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const {
     columnVisibility, setColumnVisibility,
     theme, setTheme,
+    fontScale, setFontScale,
+    colorMode, setColorMode,
     djPrimary, djAutoImport, djShowAll, setDjPrefs,
     activateLicense, isTrialActivated,
     daysElapsed, daysRemaining, tracksAnalyzed, tagsEnriched, estimatedTimeSaved,
@@ -36,6 +38,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     { id: "key",           label: t("settings.columns.colKey")      },
     { id: "bpm",           label: t("settings.columns.colBpm")      },
     { id: "rating",        label: t("settings.columns.colRating")   },
+    { id: "cue_points",    label: t("settings.columns.colCue")      },
     { id: "duration_secs", label: t("settings.columns.colDuration") },
     { id: "file_size",     label: t("settings.columns.colSize")     },
   ];
@@ -109,12 +112,13 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   }, [recordingId, setShortcutOverride]);
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: "appearance", label: t("settings.tabs.appearance") },
-    { id: "services",   label: t("settings.tabs.services")  },
-    { id: "columns",    label: t("settings.tabs.columns")   },
-    { id: "shortcuts",  label: t("settings.tabs.shortcuts") },
-    { id: "language",   label: t("settings.tabs.language")  },
-    { id: "license",    label: t("settings.tabs.license")   },
+    { id: "appearance",   label: t("settings.tabs.appearance")   },
+    { id: "services",     label: t("settings.tabs.services")     },
+    { id: "columns",      label: t("settings.tabs.columns")      },
+    { id: "shortcuts",    label: t("settings.tabs.shortcuts")    },
+    { id: "language",     label: t("settings.tabs.language")     },
+    { id: "accessibility",label: t("settings.tabs.accessibility")},
+    { id: "license",      label: t("settings.tabs.license")      },
   ];
 
   const LANG_OPTIONS = [
@@ -525,6 +529,89 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── ACESSIBILIDADE ── */}
+          {tab === "accessibility" && (
+            <div className="space-y-6">
+
+              {/* Font size */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-[#8F8883]">
+                  {t("settings.accessibility.fontSize")}
+                </p>
+                <p className="text-[11px] text-[#4C4743] mb-3">
+                  {t("settings.accessibility.fontSizeDesc")}
+                </p>
+                <div className="flex gap-2">
+                  {([
+                    { id: "100", label: t("settings.accessibility.fontSmall"),  pct: "100%" },
+                    { id: "115", label: t("settings.accessibility.fontMedium"), pct: "115%" },
+                    { id: "130", label: t("settings.accessibility.fontLarge"),  pct: "130%" },
+                    { id: "150", label: t("settings.accessibility.fontXL"),     pct: "150%" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setFontScale(opt.id)}
+                      className={`flex-1 py-3 px-2 rounded-lg flex flex-col items-center gap-1 transition-colors border ${
+                        fontScale === opt.id
+                          ? "bg-[#D95340]/[0.12] border-[#D95340]/[0.30]"
+                          : "bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      <span style={{ fontSize: `calc(14px * ${parseInt(opt.id) / 100})` }}
+                        className={`font-bold leading-none ${fontScale === opt.id ? "text-[#D95340]" : "text-[#C2BEBC]"}`}>
+                        Aa
+                      </span>
+                      <span className={`text-[10px] ${fontScale === opt.id ? "text-[#D95340]/70" : "text-[#605A55]"}`}>
+                        {opt.pct}
+                      </span>
+                      <span className={`text-[10px] font-semibold ${fontScale === opt.id ? "text-[#D95340]" : "text-[#8F8883]"}`}>
+                        {opt.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Color mode */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-[#8F8883]">
+                  {t("settings.accessibility.colorMode")}
+                </p>
+                <p className="text-[11px] text-[#4C4743] mb-3">
+                  {t("settings.accessibility.colorModeDesc")}
+                </p>
+                <div className="space-y-2">
+                  {([
+                    { id: "default",       label: t("settings.accessibility.colorDefault"),      dot: "#D95340", desc: "" },
+                    { id: "deuteranopia",  label: t("settings.accessibility.colorDeutanopia"),   dot: "#2563EB", desc: "" },
+                    { id: "high-contrast", label: t("settings.accessibility.colorHighContrast"), dot: "#F5F5F4", desc: "" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setColorMode(opt.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors border ${
+                        colorMode === opt.id
+                          ? "bg-[#D95340]/[0.08] border-[#D95340]/[0.25]"
+                          : "bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: opt.dot }} />
+                      <span className={`text-[12px] font-semibold ${colorMode === opt.id ? "text-[#D95340]" : "text-[#C2BEBC]"}`}>
+                        {opt.label}
+                      </span>
+                      {colorMode === opt.id && (
+                        <svg className="ml-auto shrink-0" width="11" height="9" viewBox="0 0 11 9" fill="none" stroke="#D95340" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4.5 4 7.5 10 1.5"/>
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
             </div>
           )}
 

@@ -16,6 +16,12 @@ function fileName(p: string) {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
+function fileDirPath(p: string) {
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  parts.pop();
+  return parts.length ? (p.startsWith("/") ? "/" : "") + parts.join("/") : p;
+}
+
 function formatGroupKey(key: string) {
   const parts = key.split("|||");
   if (parts.length >= 2) return `${parts[0]} · ${parts[1]}`;
@@ -151,12 +157,17 @@ export default function DuplicatePrompt({ groups, onDismiss }: Props) {
                           </svg>
                         </button>
 
-                        {/* Nome do arquivo */}
-                        <span className={`flex-1 text-[11px] font-mono truncate min-w-0 ${
-                          marked ? "text-[#D95340]/70 line-through" : "text-[#a09890]"
-                        }`}>
-                          {name}
-                        </span>
+                        {/* Nome + caminho do arquivo */}
+                        <div className="flex-1 min-w-0 flex flex-col">
+                          <span className={`text-[11px] font-mono truncate ${
+                            marked ? "text-[#D95340]/70 line-through" : "text-[#a09890]"
+                          }`}>
+                            {name}
+                          </span>
+                          <span className="text-[9px] font-mono truncate text-[#4C4743] mt-0.5" title={fileDirPath(p)}>
+                            {fileDirPath(p)}
+                          </span>
+                        </div>
 
                         {/* Ignorar individualmente */}
                         <button
@@ -194,9 +205,14 @@ export default function DuplicatePrompt({ groups, onDismiss }: Props) {
                 </p>
                 {[...ignoredPaths].map((p) => (
                   <div key={p} className="flex items-center gap-2 px-2 py-1 rounded-md mb-0.5 bg-white/[0.01]">
-                    <span className="flex-1 text-[10px] font-mono text-[#4C4743] truncate min-w-0">
-                      {fileName(p)}
-                    </span>
+                    <div className="flex-1 min-w-0 flex flex-col">
+                      <span className="text-[10px] font-mono text-[#4C4743] truncate">
+                        {fileName(p)}
+                      </span>
+                      <span className="text-[9px] font-mono text-[#373331] truncate mt-0.5" title={fileDirPath(p)}>
+                        {fileDirPath(p)}
+                      </span>
+                    </div>
                     <button
                       onClick={() => undoIgnore(p)}
                       className="shrink-0 text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"

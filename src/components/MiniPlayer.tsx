@@ -358,13 +358,13 @@ export default function MiniPlayer() {
         {/* ── ZONA 1: Capa + Info ───────────────────────────────── */}
         <div className="flex items-center gap-3 w-56 shrink-0 min-w-0 pr-5">
           <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${
-            isPlaying ? "bg-[#D95340]" : "bg-[#373331]"
+            isPlaying ? "bg-[#D95340]" : "bg-[#4C4743]"
           }`} />
 
           <div className="shrink-0 w-7 h-7 rounded overflow-hidden bg-[#23201E] border border-white/[0.05] flex items-center justify-center">
             {coverUrl
               ? <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-              : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#373331" strokeWidth="1.1" strokeLinecap="round">
+              : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#605A55" strokeWidth="1.1" strokeLinecap="round">
                   <circle cx="5" cy="4.5" r="2"/><path d="M1 9.5c0-2.21 1.79-4 4-4s4 1.79 4 4"/>
                 </svg>
             }
@@ -372,7 +372,7 @@ export default function MiniPlayer() {
 
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold text-[#DCDAD8] truncate leading-tight tracking-[-0.01em]">
-              {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#373331] font-normal italic">sem faixa</span>}
+              {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#605A55] font-normal italic">sem faixa</span>}
             </p>
             <p className="text-[9px] text-[#8F8883] truncate leading-none mt-[3px] tracking-wide uppercase">
               {activeTrack?.artist ?? ""}

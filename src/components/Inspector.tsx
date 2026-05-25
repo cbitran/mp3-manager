@@ -507,7 +507,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       {/* Rating */}
       {!isBatch && (
         <div className="mx-3 mt-2 flex items-center gap-1.5">
-          <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest w-10">{t("inspector.rating")}</span>
+          <span className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest shrink-0 max-w-[72px] truncate">{t("inspector.rating")}</span>
           <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
