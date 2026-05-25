@@ -283,6 +283,7 @@ export default function App() {
   const [newTracksModal, setNewTracksModal] = useState<Track[] | null>(null);
   const [playlistOffer, setPlaylistOffer]   = useState<Track[] | null>(null);
   const [createPlaylistTracks, setCreatePlaylistTracks] = useState<Track[] | null>(null);
+  const [exportPlaylistTarget, setExportPlaylistTarget] = useState<import("./store").Playlist | null>(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -1948,6 +1949,7 @@ export default function App() {
                   useAppStore.setState({ selectedIds: new Set(folderTracks.map((t) => t.id)) });
                   setTimeout(() => batchEnrich("all", folderPath), 50);
                 }}
+                onExportPlaylist={(pl) => setExportPlaylistTarget(pl)}
               />
             {/* Drag handle */}
             <div
@@ -2318,6 +2320,18 @@ export default function App() {
           onClose={() => setCreatePlaylistTracks(null)}
         />
       )}
+
+      {/* Exportar playlist existente via context menu da sidebar */}
+      {exportPlaylistTarget && (() => {
+        const plTracks = allTracks.filter((t) => exportPlaylistTarget.trackPaths.includes(t.path));
+        return (
+          <CreatePlaylistModal
+            tracks={plTracks}
+            exportOnly={{ playlistId: exportPlaylistTarget.id, playlistName: exportPlaylistTarget.name }}
+            onClose={() => setExportPlaylistTarget(null)}
+          />
+        );
+      })()}
 
       {/* Drag & drop overlay */}
       {isDragOver && (

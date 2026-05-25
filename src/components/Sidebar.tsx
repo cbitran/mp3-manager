@@ -10,6 +10,7 @@ interface SidebarProps {
   onFolderSelect: (folder: string) => void;
   onAnalyzeBpmFolder?: (folderPath: string) => void;
   onEnrichFolder?: (folderPath: string) => void;
+  onExportPlaylist?: (pl: Playlist) => void;
 }
 
 interface DeleteDialogState {
@@ -17,7 +18,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFolder }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist }: SidebarProps) {
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
@@ -340,6 +341,18 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
             <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
             Abrir playlist
           </button>
+          {onExportPlaylist && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={() => { onExportPlaylist(playlistCtx.pl); setPlaylistCtx(null); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                <path d="M5.5 1v6M3 5l2.5 2.5L8 5"/>
+                <path d="M1.5 9h8"/>
+              </svg>
+              Exportar playlist
+            </button>
+          )}
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"

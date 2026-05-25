@@ -1200,7 +1200,7 @@ export default function TrackTable({
                     key={cell.id}
                     className={`px-2 ${rowH} overflow-hidden align-middle`}
                   >
-                    <div className={`flex items-center min-w-0 ${LEFT_COLS.has(cell.column.id) ? 'justify-start' : 'justify-center'}`}>
+                    <div className={`flex items-center min-w-0 w-full ${LEFT_COLS.has(cell.column.id) ? 'justify-start' : 'justify-center'}`}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </div>
                   </td>
