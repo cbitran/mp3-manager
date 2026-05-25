@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import i18n from "../i18n";
 import { useAppStore } from "../store";
 
 function pct(n: number, total: number): number {
@@ -94,14 +95,14 @@ export default function LibraryStats({ onClose, embedded }: { onClose?: () => vo
       )}
 
       <div className="px-4 py-3 border-b border-white/[0.05] space-y-2.5">
-        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-2">Cobertura de Metadados</p>
+        <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em] mb-2">{i18n.t("app.metadataCoverage")}</p>
 
         {[
-          { label: "BPM", pct: stats.pctBpm, n: stats.withBpm },
-          { label: "Tom", pct: stats.pctKey, n: stats.withKey },
-          { label: "Gênero", pct: stats.pctGenre, n: stats.withGenre },
-          { label: "Capa", pct: stats.pctCover, n: stats.withCover },
-          { label: "Rating", pct: stats.pctRating, n: stats.withRating },
+          { label: i18n.t("settings.columns.colBpm"), pct: stats.pctBpm, n: stats.withBpm },
+          { label: i18n.t("settings.columns.colKey"), pct: stats.pctKey, n: stats.withKey },
+          { label: i18n.t("settings.columns.colGenre"), pct: stats.pctGenre, n: stats.withGenre },
+          { label: i18n.t("settings.columns.colCover"), pct: stats.pctCover, n: stats.withCover },
+          { label: i18n.t("settings.columns.colRating"), pct: stats.pctRating, n: stats.withRating },
         ].map(({ label, pct: p, n }) => (
           <div key={label}>
             <div className="flex justify-between items-baseline">

@@ -56,7 +56,12 @@
       "showAll": "Show analyses from all sources",
       "showAllDesc": "Displays values from all DJ software side by side in the Inspector",
       "savePrefs": "Save Preferences",
-      "saved": "✓ Saved"
+      "saved": "✓ Saved",
+    "itunesDesc": "Genre, Album, Year and Cover — automatic, no login",
+    "spotifyDesc": "BPM, Key (Camelot), Album, Year and Cover — automatic, no login",
+    "musicbrainzDesc": "Audio fingerprint identification",
+    "localAnalysis": "Local analysis",
+    "localAnalysisDesc": "BPM and Key calculated directly from the file"
     },
     "columns": {
       "visibility": "Column visibility",
@@ -176,6 +181,10 @@
     "sortCoverNone": "Sort by cover",
     "sortCoverFirst": "Without cover first (click to reverse)",
     "sortCoverAsc": "With cover first (click to remove sorting)",
+    "sortStatusNone": "Sort by status",
+    "sortStatusFirst": "Problems first (click to reverse)",
+    "sortStatusAsc": "OK first (click to remove sorting)",
+    "noTitleTooltip": "This file has no title in ID3 metadata. The filename is displayed instead. Double-click to edit.",
     "badgeArchive": "archive",
     "badgeEnrich": "enrich",
     "ratingHint": "Click to rate (1–5 ★)",
@@ -206,7 +215,11 @@
     "removeDialogMsg_other": "{{count}} tracks will be removed from the list.",
     "removeDialogNote": "Files will not be deleted from disk.",
     "confirmRemove": "Remove",
-    "exportChipLabel": "Export '{{name}}'"
+    "exportChipLabel": "Export '{{name}}'",
+    "deleteTitle": "Delete \"{{name}}\"?",
+    "deleteTitleCount": "Delete {{count}} tracks?",
+    "deleteMsg": "The file will be moved to Trash or removed from this list only.",
+    "deleteMsgCount": "The {{count}} files will be moved to Trash or removed from this list only."
   },
 
   "toolbar": {
@@ -400,14 +413,26 @@
     },
     "dragDrop": "Drop to scan",
     "audio": "Audio",
-    "video": "Video"
+    "video": "Video",
+    "metadataCoverage": "Metadata Coverage"
   },
 
   "onboarding": {
     "welcome": "Welcome to TagWave",
     "dropFolder": "Drop a folder with music here",
     "or": "or",
-    "openFolder": "Open Folder"
+    "openFolder": "Open Folder",
+    "f1Title": "Scan your library",
+    "f1Desc": "Open a folder and TagWave analyzes all your audio files in seconds.",
+    "f2Title": "Enrich metadata",
+    "f2Desc": "Fetch genre, album, year and artwork automatically via iTunes with one click.",
+    "f3Title": "Camelot Wheel",
+    "f3Desc": "See which tracks are harmonically compatible — essential for mixtapes and DJ sets.",
+    "f4Title": "Clean filenames",
+    "f4Desc": "Detects and fixes underscores, numeric prefixes and brackets in filenames.",
+    "videoPause": "Pause (Space)",
+    "videoPlay": "Play (Space)",
+    "videoForward15": "Forward 15s (→)"
   },
 
   "dj": {

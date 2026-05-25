@@ -56,7 +56,12 @@
       "showAll": "Mostrar análises de todas as fontes",
       "showAllDesc": "Exibe valores de todos os softwares DJ lado a lado no Inspector",
       "savePrefs": "Salvar Preferências",
-      "saved": "✓ Salvo"
+      "saved": "✓ Salvo",
+    "itunesDesc": "Gênero, Álbum, Ano e Capa — automático, sem login",
+    "spotifyDesc": "BPM, Tom (Camelot), Álbum, Ano e Capa — automático, sem login",
+    "musicbrainzDesc": "Identificação por fingerprint de áudio",
+    "localAnalysis": "Análise local",
+    "localAnalysisDesc": "BPM e Tom calculados diretamente no arquivo"
     },
     "columns": {
       "visibility": "Visibilidade das colunas",
@@ -176,6 +181,10 @@
     "sortCoverNone": "Ordenar por capa",
     "sortCoverFirst": "Sem capa primeiro (clique para inverter)",
     "sortCoverAsc": "Com capa primeiro (clique para remover ordenação)",
+    "sortStatusNone": "Ordenar por status",
+    "sortStatusFirst": "Problemáticas primeiro (clique para inverter)",
+    "sortStatusAsc": "OK primeiro (clique para remover ordenação)",
+    "noTitleTooltip": "Este arquivo não tem título nos metadados ID3. O nome do arquivo está sendo exibido no lugar. Duplo clique para editar.",
     "badgeArchive": "arquivo",
     "badgeEnrich": "enriquecer",
     "ratingHint": "Clique para avaliar (1–5 ★)",
@@ -206,7 +215,11 @@
     "removeDialogMsg_other": "{{count}} faixas serão removidas da lista.",
     "removeDialogNote": "Os arquivos não serão excluídos do disco.",
     "confirmRemove": "Remover",
-    "exportChipLabel": "Exportar '{{name}}'"
+    "exportChipLabel": "Exportar '{{name}}'",
+    "deleteTitle": "Excluir \"{{name}}\"?",
+    "deleteTitleCount": "Excluir {{count}} faixas?",
+    "deleteMsg": "O arquivo será movido para a Lixeira ou removido apenas desta lista.",
+    "deleteMsgCount": "Os {{count}} arquivos serão movidos para a Lixeira ou removidos apenas desta lista."
   },
 
   "toolbar": {
@@ -400,14 +413,26 @@
     },
     "dragDrop": "Soltar para escanear",
     "audio": "Áudio",
-    "video": "Vídeo"
+    "video": "Vídeo",
+    "metadataCoverage": "Cobertura de Metadados"
   },
 
   "onboarding": {
     "welcome": "Bem-vindo ao TagWave",
     "dropFolder": "Arraste uma pasta com músicas aqui",
     "or": "ou",
-    "openFolder": "Abrir Pasta"
+    "openFolder": "Abrir Pasta",
+    "f1Title": "Escanear sua biblioteca",
+    "f1Desc": "Abra uma pasta e o TagWave analisa todos os seus arquivos de áudio em segundos.",
+    "f2Title": "Enriquecer metadados",
+    "f2Desc": "Busque gênero, álbum, ano e capas automaticamente via iTunes com um clique.",
+    "f3Title": "Roda de Camelot",
+    "f3Desc": "Veja quais faixas são harmonicamente compatíveis — essencial para mixtapes e sets DJ.",
+    "f4Title": "Limpar filenames",
+    "f4Desc": "Detecta e corrige underscores, prefixos numéricos e chaves nos nomes de arquivo.",
+    "videoPause": "Pausar (Espaço)",
+    "videoPlay": "Tocar (Espaço)",
+    "videoForward15": "Avançar 15s (→)"
   },
 
   "dj": {

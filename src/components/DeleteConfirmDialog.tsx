@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "../store";
 
 interface Props {
@@ -7,18 +8,19 @@ interface Props {
 }
 
 export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
+  const { t } = useTranslation();
   const { setTracks, clearSelection, recentFolders, removeRecentFolder, lastFolder, setLastFolder } = useAppStore();
   const allTracks = useAppStore((s) => s.tracks);
 
   const title =
     tracks.length === 1
-      ? `Excluir "${tracks[0].title || tracks[0].filename}"?`
-      : `Excluir ${tracks.length} faixas?`;
+      ? t("table.deleteTitle", { name: tracks[0].title || tracks[0].filename })
+      : t("table.deleteTitleCount", { count: tracks.length });
 
   const subtitle =
     tracks.length === 1
-      ? "O arquivo será movido para a Lixeira ou removido apenas desta lista."
-      : `Os ${tracks.length} arquivos serão movidos para a Lixeira ou removidos apenas desta lista.`;
+      ? t("table.deleteMsg")
+      : t("table.deleteMsgCount", { count: tracks.length });
 
   async function handleTrash() {
     for (const t of tracks) {
@@ -67,19 +69,19 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
             onClick={handleTrash}
             className="w-full py-2.5 rounded-lg bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white text-[13px] font-semibold transition-colors uppercase tracking-wide"
           >
-            Mover para a Lixeira
+            {t("sidebar.moveToTrash")}
           </button>
           <button
             onClick={removeFromState}
             className="w-full py-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[#C2BEBC] text-[13px] font-medium transition-colors border border-white/[0.07]"
           >
-            Remover da Lista
+            {t("sidebar.removeFromList")}
           </button>
           <button
             onClick={onClose}
             className="w-full py-2 text-[#373331] hover:text-[#605A55] text-[12px] transition-colors"
           >
-            Cancelar
+            {t("common.cancel")}
           </button>
         </div>
       </div>

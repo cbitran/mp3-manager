@@ -67,6 +67,9 @@ export default function App() {
 
   const { t } = useTranslation();
 
+  const IS_WIN = !/^Mac/.test(navigator.platform);
+  const CMD = IS_WIN ? "Ctrl+" : "⌘";
+
   const promotePendingTracks = useAppStore((s) => s.promotePendingTracks);
   const addWatchedFolder = useAppStore((s) => s.addWatchedFolder);
   const markFolderEnriched = useAppStore((s) => s.markFolderEnriched);
@@ -1366,7 +1369,7 @@ export default function App() {
           data-tour="open-folder"
           onClick={pickFolder}
           disabled={isScanning}
-          title="Abrir Pasta (⌘O)"
+          title={`${t("toolbar.openFolder")} (${CMD}O)`}
           className="shrink-0 flex items-center justify-center w-8 h-8 rounded-md bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] disabled:opacity-50 transition-colors"
         >
           {isScanning ? (
@@ -1788,7 +1791,7 @@ export default function App() {
         </div>
 
         {/* Controles de janela — Windows (macOS usa traffic lights nativos) */}
-        {!/^Mac/.test(navigator.platform) && (
+        {IS_WIN && (
           <div className="flex items-center shrink-0 ml-1">
             <button
               onClick={() => getCurrentWindow().minimize()}
@@ -1914,7 +1917,7 @@ export default function App() {
 
             <button
               onClick={() => setShowSettings(true)}
-              title={`${t("settings.title")} (⌘,)`}
+              title={`${t("settings.title")} (${CMD},)`}
               className="flex items-center justify-center w-5 h-5 rounded text-[#D95340] hover:text-[#E07364] hover:bg-white/[0.06] transition-colors"
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">

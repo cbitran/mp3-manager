@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import i18n from "../i18n";
 import { type Track } from "../store";
 
 interface Props {
@@ -241,7 +242,7 @@ export default function VideoPlayerModal({ track, onClose }: Props) {
             {/* Play / Pause */}
             <button
               onClick={togglePlay}
-              title={playing ? "Pausar (Espaço)" : "Tocar (Espaço)"}
+              title={playing ? i18n.t("onboarding.videoPause") : i18n.t("onboarding.videoPlay")}
               className="w-9 h-9 rounded-full flex items-center justify-center transition-colors shrink-0"
               style={{ background: "#D95340" }}
               onMouseEnter={(e) => e.currentTarget.style.background = "#E07364"}
@@ -262,7 +263,7 @@ export default function VideoPlayerModal({ track, onClose }: Props) {
             {/* Skip +15 */}
             <button
               onClick={() => skip(15)}
-              title="Avançar 15s (→)"
+              title={i18n.t("onboarding.videoForward15")}
               className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
               style={{ color: "#8F8883" }}
               onMouseEnter={(e) => e.currentTarget.style.color = "#F5F5F4"}

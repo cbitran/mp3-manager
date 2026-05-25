@@ -1,18 +1,20 @@
+import i18n from "../i18n";
+
 const ONBOARDING_KEY = "tagwave_onboarding_v1";
 
 interface Props {
   onComplete: () => void;
 }
 
-const features = [
+const getFeatures = () => [
   {
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 6C3 4.34 4.34 3 6 3H9L11 5H16C17.66 5 19 6.34 19 8V15C19 16.66 17.66 18 16 18H6C4.34 18 3 16.66 3 15V6Z"/>
       </svg>
     ),
-    title: "Escanear sua biblioteca",
-    desc: "Abra uma pasta e o TagWave analisa todos os seus arquivos de áudio em segundos.",
+    title: i18n.t("onboarding.f1Title"),
+    desc: i18n.t("onboarding.f1Desc"),
   },
   {
     icon: (
@@ -20,8 +22,8 @@ const features = [
         <circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2.5"/>
       </svg>
     ),
-    title: "Enriquecer metadados",
-    desc: "Busque gênero, álbum, ano e capas automaticamente via iTunes com um clique.",
+    title: i18n.t("onboarding.f2Title"),
+    desc: i18n.t("onboarding.f2Desc"),
   },
   {
     icon: (
@@ -29,8 +31,8 @@ const features = [
         <path d="M10 2L12.5 8H19L14 11.5L16 18L10 14L4 18L6 11.5L1 8H7.5L10 2Z"/>
       </svg>
     ),
-    title: "Roda de Camelot",
-    desc: "Veja quais faixas são harmonicamente compatíveis — essencial para mixtapes e sets DJ.",
+    title: i18n.t("onboarding.f3Title"),
+    desc: i18n.t("onboarding.f3Desc"),
   },
   {
     icon: (
@@ -38,8 +40,8 @@ const features = [
         <path d="M3 6h14M5 10h10M7 14h6"/>
       </svg>
     ),
-    title: "Limpar filenames",
-    desc: "Detecta e corrige underscores, prefixos numéricos e chaves nos nomes de arquivo.",
+    title: i18n.t("onboarding.f4Title"),
+    desc: i18n.t("onboarding.f4Desc"),
   },
 ];
 
@@ -64,7 +66,7 @@ export default function Onboarding({ onComplete }: Props) {
 
         {/* Features */}
         <div className="px-8 py-6 grid grid-cols-2 gap-4">
-          {features.map(({ icon, title, desc }) => (
+          {getFeatures().map(({ icon, title, desc }) => (
             <div key={title} className="flex gap-3">
               <div className="shrink-0 w-8 h-8 rounded-lg bg-[#D95340]/10 border border-[#D95340]/20 flex items-center justify-center text-[#D95340]/80">
                 {icon}

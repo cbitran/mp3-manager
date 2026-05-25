@@ -215,10 +215,10 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                 </p>
                 <div className="rounded-lg px-4 py-3 space-y-2 bg-white/[0.03] border border-white/[0.06]">
                   {[
-                    { icon: "♪", label: "iTunes / Apple Music", desc: i18n.language?.startsWith("pt") ? "Gênero, Álbum, Ano e Capa — automático, sem login" : i18n.language?.startsWith("es") ? "Género, Álbum, Año y Portada — automático, sin login" : "Genre, Album, Year and Cover — automatic, no login" },
-                    { icon: "▷", label: "Spotify",              desc: i18n.language?.startsWith("pt") ? "BPM, Tom (Camelot), Álbum, Ano e Capa — automático, sem login" : i18n.language?.startsWith("es") ? "BPM, Tonalidad (Camelot), Álbum, Año y Portada — automático, sin login" : "BPM, Key (Camelot), Album, Year and Cover — automatic, no login" },
-                    { icon: "◎", label: "MusicBrainz",          desc: i18n.language?.startsWith("pt") ? "Identificação por fingerprint de áudio" : i18n.language?.startsWith("es") ? "Identificación por huella de audio" : "Audio fingerprint identification" },
-                    { icon: "≋", label: i18n.language?.startsWith("pt") ? "Análise local" : i18n.language?.startsWith("es") ? "Análisis local" : "Local analysis", desc: i18n.language?.startsWith("pt") ? "BPM e Tom calculados diretamente no arquivo" : i18n.language?.startsWith("es") ? "BPM y Tonalidad calculados directamente en el archivo" : "BPM and Key calculated directly from the file" },
+                    { icon: "♪", label: "iTunes / Apple Music", desc: t("settings.services.itunesDesc") },
+                    { icon: "▷", label: "Spotify",              desc: t("settings.services.spotifyDesc") },
+                    { icon: "◎", label: "MusicBrainz",          desc: t("settings.services.musicbrainzDesc") },
+                    { icon: "≋", label: t("settings.services.localAnalysis"), desc: t("settings.services.localAnalysisDesc") },
                   ].map(({ icon, label, desc }) => (
                     <div key={label} className="flex items-start gap-3">
                       <span className="text-[14px] mt-0.5 w-5 text-center shrink-0 text-[#D95340]">{icon}</span>

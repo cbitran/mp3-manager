@@ -208,7 +208,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
               setEditing("title");
               setEditValue(title ?? filename);
             }}
-            title={IS_WIN_TABLE ? "Duplo clique para editar" : "⌘+clique duplo para editar"}
+            title={IS_WIN_TABLE ? i18n.t("table.dblClickEdit") : i18n.t("table.cmdDblClickEdit")}
           >
             {title ?? filename}
           </span>
@@ -244,7 +244,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
         <div className="flex flex-col items-end gap-px shrink-0 mt-px">
           {!title && (
             <span
-              title="Este arquivo não tem título nos metadados ID3. O nome do arquivo está sendo exibido no lugar. Duplo clique para editar."
+              title={i18n.t("table.noTitleTooltip")}
               className="px-1 py-px rounded text-[8px] font-semibold uppercase tracking-wider leading-tight cursor-default select-none"
               style={{ background: "rgba(255,255,255,0.07)", color: "#756D67", border: "1px solid rgba(255,255,255,0.10)" }}
             >
@@ -590,14 +590,14 @@ export default function TrackTable({
               }}
               className="w-full flex items-center justify-center gap-1.5"
               title={
-                sorted === "asc"  ? "Sem capa primeiro (clique para inverter)"
-                : sorted === "desc" ? "Com capa primeiro (clique para remover ordenação)"
-                : "Ordenar por capa"
+                sorted === "asc"  ? i18n.t("table.sortCoverFirst")
+                : sorted === "desc" ? i18n.t("table.sortCoverAsc")
+                : i18n.t("table.sortCoverNone")
               }
             >
               <span className="text-[9px] font-bold uppercase tracking-widest transition-colors duration-200"
                 style={{ color: sorted ? "#C2BEBC" : "#8F8883" }}>
-                Capa
+                {i18n.t("settings.columns.colCover")}
               </span>
               {sorted && (
                 <span
@@ -636,7 +636,7 @@ export default function TrackTable({
 
       // GÊNERO
       col.accessor("genre", {
-        header: "Gênero",
+        header: i18n.t("settings.columns.colGenre"),
         cell: (i) =>
           i.getValue() ? (
             <span className="inline-block px-1.5 py-px rounded-sm text-[10px] uppercase tracking-wide bg-white/[0.06] text-[#a09890] whitespace-nowrap truncate max-w-full">
@@ -690,9 +690,9 @@ export default function TrackTable({
               }}
               className="w-full flex items-center justify-center"
               title={
-                sorted === "desc" ? "Problemáticas primeiro (clique para inverter)"
-                : sorted === "asc"  ? "OK primeiro (clique para remover ordenação)"
-                : "Ordenar por status"
+                sorted === "desc" ? i18n.t("table.sortStatusFirst")
+                : sorted === "asc"  ? i18n.t("table.sortStatusAsc")
+                : i18n.t("table.sortStatusNone")
               }
             >
               <span
@@ -788,7 +788,7 @@ export default function TrackTable({
 
       // DURAÇÃO
       col.accessor("duration_secs", {
-        header: "Duração",
+        header: i18n.t("settings.columns.colDuration"),
         cell: (i) => {
           const s = i.getValue();
           if (!s) return <span className="text-[#605A55] text-xs">—</span>;
@@ -849,7 +849,7 @@ export default function TrackTable({
       // COMENTÁRIO
       col.accessor("comment", {
         id: "comment",
-        header: "Comentário",
+        header: i18n.t("settings.columns.colComment"),
         cell: (i) =>
           i.getValue() ? (
             <span className="text-[11px] text-[#8F8883] truncate">{i.getValue()}</span>
