@@ -174,21 +174,21 @@ export default function App() {
   const { columnVisibility, setColumnVisibility } = useAppStore();
 
   const HIDEABLE_COLS = [
-    { id: "capa",         label: "Capa" },
-    { id: "album",        label: "Álbum" },
-    { id: "genre",        label: "Gênero" },
-    { id: "artist",       label: "Artista" },
-    { id: "year_col",     label: "Ano" },
-    { id: "status",       label: "Status" },
-    { id: "file_size",    label: "Tamanho" },
-    { id: "key",          label: "Tom" },
-    { id: "bpm",          label: "BPM" },
-    { id: "rating",       label: "Nota" },
-    { id: "duration_secs",label: "Duração" },
-    { id: "bitrate",      label: "Bitrate" },
-    { id: "tipo",         label: "Tipo" },
-    { id: "adicionada",   label: "Adicionada" },
-    { id: "comment",      label: "Comentário" },
+    { id: "capa",         label: t("settings.columns.colCover") },
+    { id: "album",        label: t("settings.columns.colAlbum") },
+    { id: "genre",        label: t("settings.columns.colGenre") },
+    { id: "artist",       label: t("settings.columns.colArtist") },
+    { id: "year_col",     label: t("settings.columns.colYear") },
+    { id: "status",       label: t("settings.columns.colStatus") },
+    { id: "file_size",    label: t("settings.columns.colSize") },
+    { id: "key",          label: t("settings.columns.colKey") },
+    { id: "bpm",          label: t("settings.columns.colBpm") },
+    { id: "rating",       label: t("settings.columns.colRating") },
+    { id: "duration_secs",label: t("settings.columns.colDuration") },
+    { id: "bitrate",      label: t("settings.columns.colBitrate") },
+    { id: "tipo",         label: t("settings.columns.colType") },
+    { id: "adicionada",   label: t("settings.columns.colAdded") },
+    { id: "comment",      label: t("settings.columns.colComment") },
   ];
   const DEFAULT_HIDDEN_COLS = new Set(["tipo", "adicionada", "comment"]);
   const isColVisible = (id: string) =>
@@ -1402,16 +1402,16 @@ export default function App() {
                   ? "bg-[#D95340]/15 text-[#D95340] border border-[#D95340]/25 hover:bg-[#D95340]/25"
                   : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
               }`}
-              title="Restaurar Artista, Título e Ano a partir do nome do arquivo (padrão: Artista - Título [Ano].mp3)"
+              title={t("toolbar.restoreFromNames")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 5.5A3.5 3.5 0 108.5 2.5L7 4"/><path d="M2 2.5v3h3"/>
               </svg>
               {restoringFromName
-                ? "Restaurando…"
+                ? t("toolbar.restoring")
                 : selectedIds.size > 0
-                  ? `Restaurar ${selectedIds.size}`
-                  : "Restaurar de Nomes"}
+                  ? t("toolbar.restoreCount", { count: selectedIds.size })
+                  : t("toolbar.restore")}
             </button>
           )}
           {/* Botão Desfazer — aparece após enriquecimento enquanto snapshot está disponível */}
@@ -1420,13 +1420,13 @@ export default function App() {
               onClick={undoEnrich}
               disabled={enriching}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#EAB308] hover:text-[#F59E0B] hover:bg-yellow-500/[0.08] border border-yellow-500/20 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
-              title="Desfazer último enriquecimento"
+              title={t("toolbar.undoEnrich")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 5.5A3.5 3.5 0 108.5 2.5L7 4"/>
                 <path d="M2 2.5v3h3"/>
               </svg>
-              Desfazer
+              {t("common.undo")}
             </button>
           )}
           {allTracks.length > 0 && (
@@ -1439,16 +1439,16 @@ export default function App() {
                   ? "text-[#D95340] bg-[#D95340]/[0.08] border border-[#D95340]/[0.30]"
                   : "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
               }`}
-              title="Analisar BPM em lote de todas as faixas selecionadas"
+              title={t("toolbar.analyzeBpmTooltip")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
                 <path d="M1 8l2-4 2 2.5 2-5 2 3 1-2"/>
               </svg>
               {analyzingBpm && bpmProgress
-                ? `BPM ${bpmProgress.done}/${bpmProgress.total}`
+                ? t("toolbar.bpmProgress", { done: bpmProgress.done, total: bpmProgress.total })
                 : selectedIds.size > 0
-                  ? `BPM (${selectedIds.size})`
-                  : "Analisar BPM"}
+                  ? t("toolbar.bpmCount", { count: selectedIds.size })
+                  : t("toolbar.analyzeBpm")}
             </button>
           )}
           {allTracks.length > 0 && (
@@ -1457,28 +1457,28 @@ export default function App() {
                 onClick={() => batchEnrich("all")}
                 disabled={enriching || isScanning}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
-                title="Enriquecer metadados faltantes via iTunes + Spotify"
+                title={t("toolbar.enrichTooltip")}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="5.5" cy="5.5" r="4"/>
                   <path d="M5.5 3.5v2l1.5 1"/>
                 </svg>
                 {enriching && enrichProgress
-                  ? `${enrichProgress.done}/${enrichProgress.total}`
+                  ? t("toolbar.enrichProgress", { done: enrichProgress.done, total: enrichProgress.total })
                   : selectedIds.size > 0
-                    ? `Enriquecer ${selectedIds.size}`
-                    : "Enriquecer"}
+                    ? t("toolbar.enrichCount", { count: selectedIds.size })
+                    : t("toolbar.enrich")}
               </button>
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[160px]">
                 <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
                   <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
-                    Todos os serviços
+                    {t("toolbar.enrichMenu.all")}
                   </button>
                   <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
-                    Só iTunes
+                    {t("toolbar.enrichMenu.itunes")}
                   </button>
                   <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
-                    Só Spotify
+                    {t("toolbar.enrichMenu.spotify")}
                   </button>
                 </div>
               </div>
@@ -1493,24 +1493,24 @@ export default function App() {
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1 3h9M3 5.5h5M4.5 8h2"/>
               </svg>
-              {normalizing ? "Normalizando…" : "Normalizar Tags"}
+              {normalizing ? t("toolbar.normalizing") : t("toolbar.normalize")}
             </button>
           )}
           {allTracks.length > 0 && (() => {
             const hasSelection = selectedIds.size > 0;
             const canExport = hasSelection || !!activePlaylist;
             const exportLabel = exporting
-              ? "Exportando…"
+              ? t("toolbar.exporting")
               : hasSelection
-              ? `Exportar (${selectedIds.size})`
+              ? t("toolbar.exportCount", { count: selectedIds.size })
               : activePlaylist
-              ? `Exportar "${activePlaylist.name}"`
-              : "Exportar";
+              ? t("toolbar.exportPlaylist", { name: activePlaylist.name })
+              : t("toolbar.export");
             return (
             <div className="relative group">
               <button
                 disabled={exporting || !canExport}
-                title={canExport ? undefined : "Selecione faixas ou uma playlist para exportar"}
+                title={canExport ? undefined : t("toolbar.selectToExport")}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 ${
                   canExport
                     ? "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
@@ -1587,10 +1587,10 @@ export default function App() {
           {(
             [
               { id: "all" as const,       label: t("toolbar.filter.all"),        title: t("toolbar.filter.all") },
-              { id: "recent" as const,    label: `+ ${recentCount}`,             title: `${recentCount} faixa${recentCount !== 1 ? "s" : ""} adicionada${recentCount !== 1 ? "s" : ""} recentemente` },
-              { id: "favorites" as const, label: `★ ${favoriteCount}`,           title: `${favoriteCount} faixa${favoriteCount !== 1 ? "s" : ""} favorita${favoriteCount !== 1 ? "s" : ""} (marcadas com estrela)` },
-              { id: "problems" as const,  label: `⚠ ${problemCount}`,            title: `${problemCount} faixa${problemCount !== 1 ? "s" : ""} com metadados incompletos (sem BPM, gênero, capa etc.) — clique para filtrar` },
-              { id: "ok" as const,        label: `✓ ${allTracks.length - problemCount}`, title: `${allTracks.length - problemCount} faixa${(allTracks.length - problemCount) !== 1 ? "s" : ""} com metadados completos` },
+              { id: "recent" as const,    label: `+ ${recentCount}`,             title: t("toolbar.chipRecentTooltip", { count: recentCount }) },
+              { id: "favorites" as const, label: `★ ${favoriteCount}`,           title: t("toolbar.chipFavoritesTooltip", { count: favoriteCount }) },
+              { id: "problems" as const,  label: `⚠ ${problemCount}`,            title: t("toolbar.chipProblemsTooltip", { count: problemCount }) },
+              { id: "ok" as const,        label: `✓ ${allTracks.length - problemCount}`, title: t("toolbar.chipOkTooltip", { count: allTracks.length - problemCount }) },
             ] as { id: typeof filterTab; label: string; title: string }[]
           ).map((tab) => (
             <button
@@ -1625,7 +1625,7 @@ export default function App() {
         {/* Lista / Grade toggle */}
         <button
           onClick={() => setCompact((v) => !v)}
-          title={compact ? "Ver em lista" : "Ver em grade compacta"}
+          title={compact ? t("toolbar.viewList") : t("toolbar.viewCompact")}
           className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
             compact ? "bg-white/[0.08] text-[#F5F5F4]" : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
           }`}
@@ -1657,7 +1657,7 @@ export default function App() {
           <div className="relative" ref={advFilterRef}>
             <button
               onClick={() => setShowAdvFilter((v) => !v)}
-              title="Filtro avançado"
+              title={t("toolbar.advancedFilter")}
               className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-semibold transition-colors border ${
                 isAdvFilterActive
                   ? "bg-[#D95340]/15 border-[#D95340]/35 text-[#D95340]"
@@ -1675,20 +1675,20 @@ export default function App() {
             {showAdvFilter && (
               <div className="absolute right-0 top-full mt-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl z-[200] w-64 p-3">
                 <div className="flex items-center justify-between mb-2.5">
-                  <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">Filtro Avançado</p>
+                  <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">{t("toolbar.advancedFilterTitle")}</p>
                   {isAdvFilterActive && (
                     <button
                       onClick={() => setAdvFilter({ bpmMin: "", bpmMax: "", yearMin: "", yearMax: "", key: "" })}
                       className="text-[10px] text-[#D95340] hover:text-[#E07364] transition-colors"
                     >
-                      Limpar
+                      {t("toolbar.clearFilter")}
                     </button>
                   )}
                 </div>
 
                 {/* BPM Range */}
                 <div className="mb-2.5">
-                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">BPM</label>
+                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">{t("toolbar.filterBpm")}</label>
                   <div className="flex items-center gap-1.5">
                     <input
                       type="number"
@@ -1710,7 +1710,7 @@ export default function App() {
 
                 {/* Year Range */}
                 <div className="mb-2.5">
-                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">Ano</label>
+                  <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">{t("toolbar.filterYear")}</label>
                   <div className="flex items-center gap-1.5">
                     <input
                       type="number"
@@ -1733,13 +1733,13 @@ export default function App() {
                 {/* Key filter */}
                 {availableKeys.length > 0 && (
                   <div>
-                    <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">Tom</label>
+                    <label className="text-[9px] font-semibold text-[#605A55] uppercase tracking-widest block mb-1">{t("toolbar.filterKey")}</label>
                     <select
                       value={advFilter.key}
                       onChange={(e) => setAdvFilter((f) => ({ ...f, key: e.target.value }))}
                       className="w-full px-2 py-1 rounded-md bg-[#120D0B] border border-white/[0.08] text-xs text-[#C2BEBC] focus:outline-none focus:border-[#D95340]/50 font-mono"
                     >
-                      <option value="">Todos</option>
+                      <option value="">{t("toolbar.filterAllKeys")}</option>
                       {availableKeys.map((k) => (
                         <option key={k} value={k}>{k}</option>
                       ))}
@@ -1775,7 +1775,7 @@ export default function App() {
             ) : (
               <button
                 onClick={() => setSearchExpanded(true)}
-                title="Buscar (clique para expandir)"
+                title={t("toolbar.searchExpand")}
                 className="flex items-center justify-center w-7 h-7 rounded-md text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
               >
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -1793,7 +1793,7 @@ export default function App() {
             <button
               onClick={() => getCurrentWindow().minimize()}
               className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors rounded"
-              title="Minimizar"
+              title={t("app.minimize")}
             >
               <svg width="10" height="2" viewBox="0 0 10 2" fill="currentColor"><rect width="10" height="1.5" rx="0.5"/></svg>
             </button>
@@ -1803,7 +1803,7 @@ export default function App() {
                 if (await w.isMaximized()) w.unmaximize(); else w.maximize();
               }}
               className="w-9 h-7 flex items-center justify-center text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors rounded"
-              title="Maximizar"
+              title={t("app.maximize")}
             >
               <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="0.7" y="0.7" width="7.6" height="7.6" rx="1"/></svg>
             </button>
@@ -1878,7 +1878,7 @@ export default function App() {
               {showColPicker && (
                 <div className="absolute right-0 top-full mt-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl py-2 z-[200] min-w-[160px]">
                   <p className="px-3 pb-1.5 text-[9px] font-bold text-[#605A55] uppercase tracking-widest border-b border-white/[0.05]">
-                    Colunas
+                    {t("settings.tabs.columns")}
                   </p>
                   <div className="py-1">
                     {HIDEABLE_COLS.map((col) => (
@@ -1905,7 +1905,7 @@ export default function App() {
                       }}
                       className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
                     >
-                      Mostrar todas
+                      {t("settings.columns.showAll")}
                     </button>
                   </div>
                 </div>
@@ -1914,7 +1914,7 @@ export default function App() {
 
             <button
               onClick={() => setShowSettings(true)}
-              title="Configurações (⌘,)"
+              title={`${t("settings.title")} (⌘,)`}
               className="flex items-center justify-center w-5 h-5 rounded text-[#D95340] hover:text-[#E07364] hover:bg-white/[0.06] transition-colors"
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1999,7 +1999,7 @@ export default function App() {
                           <path d="M7 4.5l2-1.5v4L7 5.5"/>
                         </svg>
                       )}
-                      {isAudio ? "Áudio" : "Vídeo"}
+                      {isAudio ? t("app.audio") : t("app.video")}
                       {count > 0 && (
                         <span className={`text-[9px] font-mono ${active ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
                           {count}
@@ -2135,7 +2135,7 @@ export default function App() {
                           : "text-[#605A55] border-transparent hover:text-[#8F8883] disabled:opacity-30 disabled:cursor-not-allowed"
                       }`}
                     >
-                      Selecionado
+                      {t("app.selectedTab")}
                       {selectedIds.size > 0 && (
                         <span className={`text-[9px] font-mono px-1 py-px rounded-sm ${
                           rightPanelTab === "selected"
@@ -2154,7 +2154,7 @@ export default function App() {
                           : "text-[#605A55] border-transparent hover:text-[#8F8883]"
                       }`}
                     >
-                      Biblioteca
+                      {t("app.libraryTab")}
                     </button>
                     <div className="flex-1" />
                     <button
@@ -2217,13 +2217,13 @@ export default function App() {
               <div>
                 <p className="text-[#F5F5F4] font-semibold text-[13px] leading-snug">
                   {ghostFolders.length === 1
-                    ? "Pasta não encontrada"
-                    : `${ghostFolders.length} pastas não encontradas`}
+                    ? t("app.ghostFolder.title")
+                    : t("app.ghostFolder.titlePlural", { count: ghostFolders.length })}
                 </p>
                 <p className="text-[#8F8883] text-[12px] mt-1 leading-relaxed">
                   {ghostFolders.length === 1
-                    ? "Esta pasta não existe mais no disco. Deseja removê-la da lista?"
-                    : "Estas pastas não existem mais no disco. Deseja removê-las da lista?"}
+                    ? t("app.ghostFolder.msg")
+                    : t("app.ghostFolder.msgPlural")}
                 </p>
               </div>
             </div>
@@ -2242,7 +2242,7 @@ export default function App() {
                 onClick={() => setGhostFolders([])}
                 className="px-4 py-2 rounded-lg text-[12px] font-medium text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.04] transition-colors"
               >
-                Agora não
+                {t("app.ghostFolder.notNow")}
               </button>
               <button
                 onClick={() => {
@@ -2255,7 +2255,7 @@ export default function App() {
                 }}
                 className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-[#D95340]/15 text-[#D95340] border border-[#D95340]/20 hover:bg-[#D95340]/25 transition-colors"
               >
-                Sim, remover
+                {t("app.ghostFolder.remove")}
               </button>
             </div>
           </div>
@@ -2335,7 +2335,7 @@ export default function App() {
               <path d="M6 14C6 11.24 8.24 9 11 9H16L19 12H29C31.76 12 34 14.24 34 17V28C34 30.76 31.76 33 29 33H11C8.24 33 6 30.76 6 28V14Z"/>
               <path d="M20 18v8M17 23l3 3 3-3"/>
             </svg>
-            <span className="text-[#D95340] text-sm font-semibold uppercase tracking-widest">Soltar para escanear</span>
+            <span className="text-[#D95340] text-sm font-semibold uppercase tracking-widest">{t("app.dragDrop")}</span>
           </div>
         </div>
       )}
