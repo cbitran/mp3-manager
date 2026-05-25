@@ -485,8 +485,8 @@ export default function App() {
           album: null,
           genre: null,
           year: parsed.year,
-          trackNumber: null, bpm: null, key: null, rating: null,
-        }).catch(() => {});
+          trackNumber: null, totalTracks: null, bpm: null, key: null, rating: null, comment: null,
+        }).catch((e) => console.error("[parse-filename] save_tags:", e));
         const updatedIssues = track.issues.filter((issue) => {
           if (issue === "sem artista" && parsed.artist) return false;
           if (issue === "sem título" && parsed.title) return false;
@@ -522,9 +522,10 @@ export default function App() {
         await invoke("save_tags", {
           path: orig.path, title: orig.title ?? null, artist: orig.artist ?? null,
           album: orig.album ?? null, genre: orig.genre ?? null, year: orig.year ?? null,
-          trackNumber: orig.track_number ?? null, bpm: orig.bpm ?? null,
-          key: orig.key ?? null, rating: orig.rating ?? null,
-        }).catch(() => {});
+          trackNumber: orig.track_number ?? null, totalTracks: orig.total_tracks ?? null,
+          bpm: orig.bpm ?? null, key: orig.key ?? null, rating: orig.rating ?? null,
+          comment: orig.comment ?? null,
+        }).catch((e) => console.error("[undo-enrich] save_tags:", e));
         useAppStore.getState().updateTrack(orig);
       }
       toast(`${snapshot.length} faixa${snapshot.length !== 1 ? "s" : ""} restaurada${snapshot.length !== 1 ? "s" : ""}`, "success");
@@ -600,7 +601,7 @@ export default function App() {
                     !(i === "sem gênero" && resolvedGenre)
                   );
                   const updated = { ...cur, genre: resolvedGenre, album: newAlbum ?? cur.album, year: newYear ?? cur.year, issues: updatedIssues };
-                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null }).catch(() => {});
+                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, totalTracks: updated.total_tracks ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null, comment: updated.comment ?? null }).catch((e) => console.error("[enrich-itunes] save_tags:", e));
                   useAppStore.getState().updateTrack(updated);
                   enriched++;
                 }
@@ -665,7 +666,7 @@ export default function App() {
                     !(i === "sem BPM" && resolvedBpm)
                   );
                   const updated = { ...cur, album: newAlbum ?? cur.album, year: newYear ?? cur.year, bpm: resolvedBpm, key: newKey ?? cur.key, issues: updatedIssues };
-                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null }).catch(() => {});
+                  await invoke("save_tags", { path: updated.path, title: updated.title ?? null, artist: updated.artist ?? null, album: updated.album ?? null, genre: updated.genre ?? null, year: updated.year ?? null, trackNumber: updated.track_number ?? null, totalTracks: updated.total_tracks ?? null, bpm: updated.bpm ?? null, key: updated.key ?? null, rating: updated.rating ?? null, comment: updated.comment ?? null }).catch((e) => console.error("[enrich-spotify] save_tags:", e));
                   useAppStore.getState().updateTrack(updated);
                   enriched++;
                 }
@@ -802,9 +803,10 @@ export default function App() {
               title: updated.title ?? null, artist: updated.artist ?? null,
               album: updated.album ?? null, genre: updated.genre ?? null,
               year: updated.year ?? null, trackNumber: updated.track_number ?? null,
-              bpm: updated.bpm ?? null, key: updated.key ?? null,
-              rating: updated.rating ?? null,
-            }).catch(() => {});
+              totalTracks: updated.total_tracks ?? null, bpm: updated.bpm ?? null,
+              key: updated.key ?? null, rating: updated.rating ?? null,
+              comment: updated.comment ?? null,
+            }).catch((e) => console.error("[enrich-main] save_tags:", e));
             useAppStore.getState().updateTrack(updated);
             enriched++;
           }
@@ -921,8 +923,10 @@ export default function App() {
               title: fresh.title ?? null, artist: fresh.artist ?? null,
               album: fresh.album ?? null, genre: fresh.genre ?? null,
               year: fresh.year ?? null, trackNumber: fresh.track_number ?? null,
-              bpm: bpmStr, key: fresh.key ?? null, rating: fresh.rating ?? null,
-            }).catch(() => {});
+              totalTracks: fresh.total_tracks ?? null, bpm: bpmStr,
+              key: fresh.key ?? null, rating: fresh.rating ?? null,
+              comment: fresh.comment ?? null,
+            }).catch((e) => console.error("[bpm-analysis] save_tags:", e));
             useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr });
             analyzed++;
           }

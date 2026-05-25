@@ -46,17 +46,19 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
           genre: null,
           year: null,
           trackNumber: null,
+          totalTracks: null,
           bpm: null,
           key: null,
           rating: null,
+          comment: null,
         });
         onApplied(
           issue.path,
           issue.missingArtist ? issue.extractedArtist : null,
           issue.missingTitle ? issue.extractedTitle : null,
         );
-      } catch {
-        // best-effort
+      } catch (err) {
+        console.error("[FilenameMetaPrompt] save_tags falhou:", err);
       }
     }
     setApplying(false);

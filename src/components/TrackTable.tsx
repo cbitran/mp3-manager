@@ -180,7 +180,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
   }
 
   return (
-    <div className="min-w-0 flex items-start gap-2">
+    <div className="min-w-0 w-full flex items-start gap-2">
       <div className="min-w-0 flex-1">
         {editing === "title" ? (
           <input
@@ -1278,8 +1278,9 @@ export default function TrackTable({
                   await invoke("save_tags", {
                     path: fresh.path, title: fresh.title ?? null, artist: fresh.artist ?? null,
                     album: fresh.album ?? null, genre: fresh.genre ?? null, year: fresh.year ?? null,
-                    trackNumber: fresh.track_number ?? null, bpm: bpmStr,
-                    key: fresh.key ?? null, rating: fresh.rating ?? null,
+                    trackNumber: fresh.track_number ?? null, totalTracks: fresh.total_tracks ?? null,
+                    bpm: bpmStr, key: fresh.key ?? null, rating: fresh.rating ?? null,
+                    comment: fresh.comment ?? null,
                   });
                   useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr });
                 }
