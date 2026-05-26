@@ -2267,10 +2267,15 @@ fn write_serato_crate(tracks: &[Track], path: &Path) -> Result<(), String> {
 
     // otrk chunk per track
     for track in tracks {
-        // macOS: "Macintosh HD/Users/..." (strip leading slash, prepend volume)
+        // macOS: arquivos em /Volumes/Nome/... → "Nome/..." (Serato usa nome do volume diretamente)
+        //        arquivos na raiz /Users/...   → "Macintosh HD/Users/..."
         // Windows: "C:/Users/..." (forward slashes, as-is)
         #[cfg(target_os = "macos")]
-        let serato_path = format!("Macintosh HD/{}", track.path.trim_start_matches('/'));
+        let serato_path = if let Some(rest) = track.path.strip_prefix("/Volumes/") {
+            rest.to_string()
+        } else {
+            format!("Macintosh HD/{}", track.path.trim_start_matches('/'))
+        };
         #[cfg(target_os = "windows")]
         let serato_path = track.path.replace('\\', "/");
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
