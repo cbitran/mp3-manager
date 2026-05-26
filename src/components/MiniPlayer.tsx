@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { useAppStore, consumeAutoPlay } from "../store";
+import { useAppStore, consumeAutoPlay, Track } from "../store";
 import { loadWaveform, setCachedWaveform, getCachedWaveform, WAVEFORM_BARS } from "../lib/waveformCache";
 import { globalAudio } from "../lib/globalAudio";
 
@@ -36,7 +36,7 @@ function fmt(s: number) {
 
 const WF_EXPANDED = 68;
 
-export default function MiniPlayer() {
+export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] }) {
   const { tracks, selectedIds, playerTrackId, playerTrackNonce, setPlayerTrack, setIsPlayingGlobal, setPlayerPlayback, seekRequest, oneShotRequest, scrubSeekRequest, playRequest } = useAppStore();
   // setCueEditorTrack desativada na produção
   const [isPlaying, setIsPlaying]   = useState(false);
@@ -400,8 +400,9 @@ export default function MiniPlayer() {
 
   function skipTrack(dir: 1 | -1) {
     if (!activeTrack) return;
-    const idx = tracks.findIndex((t) => t.id === activeTrack.id);
-    const next = tracks[idx + dir];
+    const list = displayTracks ?? tracks;
+    const idx = list.findIndex((t) => t.id === activeTrack.id);
+    const next = list[idx + dir];
     if (next) { setPlayerTrack(next.id); setIsPlaying(true); }
   }
 

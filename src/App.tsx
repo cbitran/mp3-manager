@@ -144,8 +144,6 @@ export default function App() {
 
   const allTracks = useAppStore((s) => s.tracks);
   const playerTrackId = useAppStore((s) => s.playerTrackId);
-  const cueEditorTrack = useAppStore((s) => s.cueEditorTrack);
-  // setCueEditorTrack desativada na produção
   const activePlaylistId = useAppStore((s) => s.activePlaylistId);
   const playlists = useAppStore((s) => s.playlists);
   const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null;
@@ -2017,14 +2015,14 @@ export default function App() {
 
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Folder Browser — substitui a tabela quando navegando */}
-          {!cueEditorTrack && browsePath && (
+          {browsePath && (
             <FolderBrowser
               rootPath={browsePath}
               onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
               onClose={() => setBrowsePath(null)}
             />
           )}
-          {!cueEditorTrack && !browsePath && <>
+          {!browsePath && <>
           {/* Abas Áudio / Vídeo — faixa centralizada abaixo do toolbar */}
           {allTracks.length > 0 && (
             <div className="flex items-center justify-center py-1.5 border-b border-white/[0.04] shrink-0">
@@ -2246,7 +2244,7 @@ export default function App() {
 
       {(selectedIds.size > 0 || !!playerTrackId || tourPlayerVisible) && (
         <div data-tour="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>
-          <MiniPlayer />
+          <MiniPlayer displayTracks={tracks} />
         </div>
       )}
 
