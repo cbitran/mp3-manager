@@ -2,8 +2,10 @@ use base64::Engine;
 use urlencoding;
 use id3::frame::{Comment as Id3Comment, Picture, PictureType};
 use id3::TagLike;
+use lofty::picture::{MimeType as LoftyMime, Picture as LoftyPic, PictureType as LoftyPicType};
 use lofty::prelude::*;
 use lofty::probe::Probe;
+use lofty::tag::{ItemKey as LoftyKey, ItemValue as LoftyVal, TagItem as LoftyItem};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,6 +17,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
+
+macro_rules! dlog {
+    ($($arg:tt)*) => { if cfg!(debug_assertions) { eprintln!($($arg)*); } };
+}
 
 // ── CUE Points ───────────────────────────────────────────────────────────────
 
@@ -406,27 +412,14 @@ fn save_tags(
     rating: Option<u8>, comment: Option<String>, total_tracks: Option<u32>,
 ) -> Result<(), String> {
     let fmt = file_format(Path::new(&path));
-    if fmt == "FLAC" || fmt == "OGG" || fmt == "OPUS" {
-        // Use lofty for non-ID3 formats
-        let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
-        let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
-        if let Some(v) = title        { tag.set_title(v.into()); }
-        if let Some(v) = artist       { tag.set_artist(v.into()); }
-        if let Some(v) = album        { tag.set_album(v.into()); }
-        if let Some(v) = genre        { tag.set_genre(v.into()); }
-        if let Some(v) = year         { tag.set_year(v); }
-        if let Some(v) = track_number { tag.set_track(v); }
-        if let Some(v) = total_tracks { tag.set_track_total(v); }
-        ensure_writable(&path);
-        tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
-    } else {
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+        // id3 para formatos que usam ID3v2 nativamente
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
         if let Some(v) = title        { tag.set_title(v); }
         if let Some(v) = artist       { tag.set_artist(v); }
         if let Some(v) = album        { tag.set_album(v); }
         if let Some(v) = genre        { tag.set_genre(v); }
         if let Some(v) = year         { tag.set_year(v as i32); }
-        // TRCK frame: handle track_number and total_tracks together
         match (track_number, total_tracks) {
             (Some(tn), Some(tt)) => { tag.add_frame(id3::Frame::text("TRCK", format!("{}/{}", tn, tt))); }
             (Some(tn), None)     => { tag.set_track(tn); }
@@ -450,6 +443,22 @@ fn save_tags(
         }
         ensure_writable(&path);
         tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    } else {
+        // lofty para FLAC, OGG, OPUS, WAV, M4A, AAC, WMA, etc.
+        let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
+        let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
+        if let Some(v) = title        { tag.set_title(v.into()); }
+        if let Some(v) = artist       { tag.set_artist(v.into()); }
+        if let Some(v) = album        { tag.set_album(v.into()); }
+        if let Some(v) = genre        { tag.set_genre(v.into()); }
+        if let Some(v) = year         { tag.set_year(v); }
+        if let Some(v) = track_number { tag.set_track(v); }
+        if let Some(v) = total_tracks { tag.set_track_total(v); }
+        if let Some(v) = bpm    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Bpm,        LoftyVal::Text(v))); } }
+        if let Some(v) = key    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::InitialKey, LoftyVal::Text(v))); } }
+        if let Some(v) = comment { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Comment,  LoftyVal::Text(v))); } }
+        ensure_writable(&path);
+        tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -459,36 +468,54 @@ async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
     let client = cover_client();
     let cover_data = client.get(&cover_url).send().await.map_err(|e| e.to_string())?
         .bytes().await.map_err(|e| e.to_string())?.to_vec();
-    let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
-    tag.remove("APIC");
-    tag.add_frame(Picture {
-        mime_type: "image/jpeg".to_string(),
-        picture_type: PictureType::CoverFront,
-        description: String::new(),
-        data: cover_data,
-    });
-    ensure_writable(&path);
-    tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+    let fmt = file_format(Path::new(&path));
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+        let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+        tag.remove("APIC");
+        tag.add_frame(Picture {
+            mime_type: "image/jpeg".to_string(),
+            picture_type: PictureType::CoverFront,
+            description: String::new(),
+            data: cover_data,
+        });
+        ensure_writable(&path);
+        tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+    } else {
+        let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
+        let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
+        tag.remove_picture_type(LoftyPicType::CoverFront);
+        tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(LoftyMime::Jpeg), None, cover_data));
+        ensure_writable(&path);
+        tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
 fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> {
     let cover_data = fs::read(&image_path).map_err(|e| e.to_string())?;
-    let mime = if image_path.to_lowercase().ends_with(".png") {
-        "image/png".to_string()
+    let is_png = image_path.to_lowercase().ends_with(".png");
+    let fmt = file_format(Path::new(&path));
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+        let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
+        let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+        tag.remove("APIC");
+        tag.add_frame(Picture {
+            mime_type: mime,
+            picture_type: PictureType::CoverFront,
+            description: String::new(),
+            data: cover_data,
+        });
+        ensure_writable(&path);
+        tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
     } else {
-        "image/jpeg".to_string()
-    };
-    let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
-    tag.remove("APIC");
-    tag.add_frame(Picture {
-        mime_type: mime,
-        picture_type: PictureType::CoverFront,
-        description: String::new(),
-        data: cover_data,
-    });
-    ensure_writable(&path);
-    tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+        let lofty_mime = if is_png { LoftyMime::Png } else { LoftyMime::Jpeg };
+        let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
+        let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
+        tag.remove_picture_type(LoftyPicType::CoverFront);
+        tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data));
+        ensure_writable(&path);
+        tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -732,7 +759,7 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
     let fname = path.split('/').last().unwrap_or(&path).to_string();
 
     if duration_secs <= 0.0 {
-        eprintln!("[BPM] {} — SKIP: duration_secs={}", fname, duration_secs);
+        dlog!("[BPM] {} — SKIP: duration_secs={}", fname, duration_secs);
         return Ok(None);
     }
 
@@ -751,13 +778,13 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
                | ((hdr[7] as usize & 0x7F) << 14)
                | ((hdr[8] as usize & 0x7F) << 7)
                | (hdr[9] as usize & 0x7F);
-        eprintln!("[BPM] {} — formato: MP3/ID3, skip {} bytes", fname, 10 + sz);
+        dlog!("[BPM] {} — formato: MP3/ID3, skip {} bytes", fname, 10 + sz);
         (10 + sz).min(file_len)
     } else if &hdr[..4] == b"fLaC" {
         // FLAC: pula metadados até encontrar blocos de áudio
         // Heurística: os metadados FLAC raramente ultrapassam 128 KB
         let skip = (128 * 1024).min(file_len / 4);
-        eprintln!("[BPM] {} — formato: FLAC, skip heurístico {} bytes", fname, skip);
+        dlog!("[BPM] {} — formato: FLAC, skip heurístico {} bytes", fname, skip);
         skip
     } else if &hdr[..4] == b"RIFF" && &hdr[8..12] == b"WAVE" {
         // WAV: procura o chunk 'data'
@@ -776,21 +803,21 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
             pos += 8 + chunk_sz;
             if file.seek(SeekFrom::Start(pos as u64)).is_err() { break; }
         }
-        eprintln!("[BPM] {} — formato: WAV, data chunk em {} bytes", fname, data_start);
+        dlog!("[BPM] {} — formato: WAV, data chunk em {} bytes", fname, data_start);
         data_start
     } else if &hdr[4..8] == b"ftyp" {
         // M4A / AAC / MP4 container — pula para mdat heuristicamente
         let skip = (4 * 1024).min(file_len / 4);
-        eprintln!("[BPM] {} — formato: M4A/MP4, skip heurístico {} bytes", fname, skip);
+        dlog!("[BPM] {} — formato: M4A/MP4, skip heurístico {} bytes", fname, skip);
         skip
     } else {
-        eprintln!("[BPM] {} — formato desconhecido (magic={:?}), começa em 0", fname, &hdr[..4]);
+        dlog!("[BPM] {} — formato desconhecido (magic={:?}), começa em 0", fname, &hdr[..4]);
         0
     };
 
     let audio_len = file_len.saturating_sub(audio_start);
     if audio_len < BARS {
-        eprintln!("[BPM] {} — SKIP: audio_len={} < {}", fname, audio_len, BARS);
+        dlog!("[BPM] {} — SKIP: audio_len={} < {}", fname, audio_len, BARS);
         return Ok(None);
     }
 
@@ -841,10 +868,10 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
         }
     }
 
-    eprintln!("[BPM] {} — picos={} mean_onset={:.4} threshold={:.4}", fname, peaks.len(), mean_onset, threshold);
+    dlog!("[BPM] {} — picos={} mean_onset={:.4} threshold={:.4}", fname, peaks.len(), mean_onset, threshold);
 
     if peaks.len() < 6 {
-        eprintln!("[BPM] {} — SKIP: poucos picos ({})", fname, peaks.len());
+        dlog!("[BPM] {} — SKIP: poucos picos ({})", fname, peaks.len());
         return Ok(None);
     }
 
@@ -855,7 +882,7 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
         .collect();
 
     if intervals.is_empty() {
-        eprintln!("[BPM] {} — SKIP: sem intervalos válidos", fname);
+        dlog!("[BPM] {} — SKIP: sem intervalos válidos", fname);
         return Ok(None);
     }
 
@@ -872,7 +899,7 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
     // Arredonda para 0.5 BPM
     let bpm = (bpm * 2.0).round() / 2.0;
 
-    eprintln!("[BPM] {} — RESULTADO: {}", fname, bpm);
+    dlog!("[BPM] {} — RESULTADO: {}", fname, bpm);
     Ok(Some(bpm))
 }
 
@@ -1961,25 +1988,25 @@ async fn query_itunes(
         urlencoding::encode(&term)
     );
 
-    eprintln!("[iTunes] Buscando: {:?}  |  arquivo: {}", term, path.split('/').last().unwrap_or(path));
+    dlog!("[iTunes] Buscando: {:?}  |  arquivo: {}", term, path.split('/').last().unwrap_or(path));
 
     let resp = match client.get(&url).send().await {
         Ok(r) => r,
-        Err(e) => { eprintln!("[iTunes] ERRO de rede: {}", e); return None; }
+        Err(e) => { dlog!("[iTunes] ERRO de rede: {}", e); return None; }
     };
     let status = resp.status();
-    eprintln!("[iTunes] HTTP {}", status);
+    dlog!("[iTunes] HTTP {}", status);
     if !status.is_success() { return None; }
 
     let json: serde_json::Value = match resp.json().await {
         Ok(j) => j,
-        Err(e) => { eprintln!("[iTunes] ERRO parse JSON: {}", e); return None; }
+        Err(e) => { dlog!("[iTunes] ERRO parse JSON: {}", e); return None; }
     };
     let results = json["results"].as_array()?;
-    eprintln!("[iTunes] {} resultado(s) recebido(s)", results.len());
+    dlog!("[iTunes] {} resultado(s) recebido(s)", results.len());
 
     for (i, r) in results.iter().enumerate() {
-        eprintln!("  [{}] \"{}\" — \"{}\"",
+        dlog!("  [{}] \"{}\" — \"{}\"",
             i,
             r["trackName"].as_str().unwrap_or("?"),
             r["artistName"].as_str().unwrap_or("?"),
@@ -2005,9 +2032,9 @@ async fn query_itunes(
     });
 
     if r.is_none() {
-        eprintln!("[iTunes] Nenhum resultado passou no filtro de correspondência para \"{} - {}\"", artist, title);
+        dlog!("[iTunes] Nenhum resultado passou no filtro de correspondência para \"{} - {}\"", artist, title);
     } else {
-        eprintln!("[iTunes] Match aceito: \"{}\" — \"{}\"",
+        dlog!("[iTunes] Match aceito: \"{}\" — \"{}\"",
             r.unwrap()["trackName"].as_str().unwrap_or("?"),
             r.unwrap()["artistName"].as_str().unwrap_or("?"),
         );
@@ -2052,8 +2079,8 @@ async fn batch_enrich_all(
     let mut results = Vec::new();
 
     for (idx, t) in tracks.iter().enumerate() {
-        eprintln!("\n[Enrich] === Faixa {}/{} ===", idx + 1, tracks.len());
-        eprintln!("[Enrich] título: {:?}  artista: {:?}", t.title, t.artist);
+        dlog!("\n[Enrich] === Faixa {}/{} ===", idx + 1, tracks.len());
+        dlog!("[Enrich] título: {:?}  artista: {:?}", t.title, t.artist);
 
         // Notifica JS ANTES do delay para o highlight aparecer imediatamente
         let _ = app.emit("enrich_track_start", serde_json::json!({
@@ -2062,7 +2089,7 @@ async fn batch_enrich_all(
 
         // 3,5 s entre chamadas — seguro para o rate-limit da Apple (~20 req/min)
         if idx > 0 {
-            eprintln!("[Enrich] Aguardando 3,5 s (rate-limit)…");
+            dlog!("[Enrich] Aguardando 3,5 s (rate-limit)…");
             tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
         }
 
@@ -2086,7 +2113,7 @@ async fn batch_enrich_all(
         };
 
         let found = result.genre.is_some() || result.album.is_some() || result.year.is_some();
-        eprintln!("[Enrich] Resultado: {} | gênero={:?} álbum={:?} ano={:?} capa={}",
+        dlog!("[Enrich] Resultado: {} | gênero={:?} álbum={:?} ano={:?} capa={}",
             if found { "ENCONTRADO" } else { "NÃO ENCONTRADO" },
             result.genre, result.album, result.year,
             if result.cover_url.is_some() { "sim" } else { "não" }

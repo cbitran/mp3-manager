@@ -1046,7 +1046,6 @@ export default function App() {
       const nameNoExt = basename.replace(/\.[^.]+$/, "");
       const sep = nameNoExt.indexOf(" - ");
       if (sep <= 0) continue;
-      console.log("[checkFilenameMetaIssues] detectado:", basename, "| title:", track.title, "| artist:", track.artist);
       const part1 = nameNoExt.slice(0, sep).trim();
       const part2 = nameNoExt.slice(sep + 3).trim();
       if (!part1 || !part2) continue;
