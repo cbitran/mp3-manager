@@ -1750,7 +1750,7 @@ fn normalize_tags(paths: Vec<String>) -> Vec<NormalizeResult> {
 fn export_rekordbox(tracks: Vec<Track>, output_path: String) -> Result<usize, String> {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<DJ_PLAYLISTS Version=\"1.0.0\">\n");
-    xml.push_str("  <PRODUCT Name=\"TagWave\" Version=\"0.3.0\" Company=\"Bitran\"/>\n");
+    xml.push_str(&format!("  <PRODUCT Name=\"TagWave\" Version=\"{}\" Company=\"Bitran\"/>\n", env!("CARGO_PKG_VERSION")));
     xml.push_str("  <COLLECTION Entries=\"");
     xml.push_str(&tracks.len().to_string());
     xml.push_str("\">\n");

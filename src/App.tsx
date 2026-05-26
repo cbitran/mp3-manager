@@ -2258,7 +2258,7 @@ export default function App() {
 
       {(selectedIds.size > 0 || !!playerTrackId || tourPlayerVisible) && (
         <div data-tour="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>
-          <MiniPlayer />
+          <MiniPlayer displayTracks={tracks} />
         </div>
       )}
 
