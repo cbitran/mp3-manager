@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
 import Inspector from "./components/Inspector";
-import CuePointsModal from "./components/CuePointsModal";
+// import CuePointsModal from "./components/CuePointsModal"; // desativado na produção
 import Sidebar from "./components/Sidebar";
 import MiniPlayer from "./components/MiniPlayer";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
@@ -145,7 +145,7 @@ export default function App() {
   const allTracks = useAppStore((s) => s.tracks);
   const playerTrackId = useAppStore((s) => s.playerTrackId);
   const cueEditorTrack = useAppStore((s) => s.cueEditorTrack);
-  const setCueEditorTrack = useAppStore((s) => s.setCueEditorTrack);
+  // setCueEditorTrack desativada na produção
   const activePlaylistId = useAppStore((s) => s.activePlaylistId);
   const playlists = useAppStore((s) => s.playlists);
   const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null;
@@ -2017,18 +2017,6 @@ export default function App() {
         )}
 
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* CUE Editor inline — substitui a tabela quando ativo */}
-          {cueEditorTrack && (
-            <CuePointsModal
-              inline
-              track={cueEditorTrack}
-              onClose={() => setCueEditorTrack(null)}
-              onSaved={(cues) => {
-                useAppStore.getState().updateTrack({ ...cueEditorTrack, cue_points: cues });
-                setCueEditorTrack(null);
-              }}
-            />
-          )}
           {/* Folder Browser — substitui a tabela quando navegando */}
           {!cueEditorTrack && browsePath && (
             <FolderBrowser

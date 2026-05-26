@@ -38,7 +38,7 @@ const WF_EXPANDED = 68;
 
 export default function MiniPlayer() {
   const { tracks, selectedIds, playerTrackId, playerTrackNonce, setPlayerTrack, setIsPlayingGlobal, setPlayerPlayback, seekRequest, oneShotRequest, scrubSeekRequest, playRequest } = useAppStore();
-  const setCueEditorTrack = useAppStore((s) => s.setCueEditorTrack);
+  // setCueEditorTrack desativada na produção
   const [isPlaying, setIsPlaying]   = useState(false);
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
@@ -460,8 +460,7 @@ export default function MiniPlayer() {
     ? rawDisplayBars
     : rawDisplayBars.filter((_, i) => i % barStep === 0);
   const VB_W = displayBars.length * BAR_STR;
-  const localCues   = activeTrack?.cue_points ?? [];
-  const canEditCues = !!activeTrack;
+  const localCues = activeTrack?.cue_points ?? [];
 
   const volMuted = volume === 0;
   const volIcon = (
@@ -590,46 +589,17 @@ export default function MiniPlayer() {
 
         <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
 
-        {/* ── Coluna CUE — card alto ──────────────────────────────────────── */}
-        <div className="flex items-stretch shrink-0 px-1.5 py-2" style={{ width: 76 }}>
-          <button
-            onClick={() => {
-              if (!canEditCues || !activeTrack) return;
-              if (playerTrackId !== activeTrack.id) setPlayerTrack(activeTrack.id);
-              setCueEditorTrack(activeTrack);
-            }}
-            title="Editar CUE Points"
-            disabled={!canEditCues}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all disabled:opacity-30"
-            style={{
-              background: (activeTrack?.cue_points?.length ?? 0) > 0 ? "rgba(180,30,30,0.35)" : "rgba(255,255,255,0.04)",
-              border: (activeTrack?.cue_points?.length ?? 0) > 0 ? "1px solid rgba(217,83,64,0.45)" : "1px solid rgba(255,255,255,0.10)",
-              color: (activeTrack?.cue_points?.length ?? 0) > 0 ? "#E08880" : "#605A55",
-            }}
-            onMouseEnter={(e) => { if (!canEditCues) return; e.currentTarget.style.background = "rgba(217,83,64,0.22)"; e.currentTarget.style.borderColor = "rgba(217,83,64,0.60)"; e.currentTarget.style.color = "#EDCFCC"; }}
-            onMouseLeave={(e) => {
-              const hasCues = (activeTrack?.cue_points?.length ?? 0) > 0;
-              e.currentTarget.style.background = hasCues ? "rgba(180,30,30,0.35)" : "rgba(255,255,255,0.04)";
-              e.currentTarget.style.borderColor = hasCues ? "rgba(217,83,64,0.45)" : "rgba(255,255,255,0.10)";
-              e.currentTarget.style.color = hasCues ? "#E08880" : "#605A55";
-            }}>
-            <span className="text-[15px] font-bold tracking-widest leading-none font-sans">CUE</span>
-            <span className="text-[15px] font-bold tracking-widest leading-none font-sans">POINT</span>
-            {(activeTrack?.cue_points?.length ?? 0) > 0 && (
-              <span className="text-[11px] font-mono opacity-60 mt-1">{activeTrack!.cue_points!.length}</span>
-            )}
-            {localCues.length > 0 && (
-              <div className="flex flex-wrap gap-0.5 justify-center mt-1.5">
-                {localCues.slice(0, 6).map((c, i) => (
-                  <button key={i} title={`CUE ${i+1}${c.label ? ` — ${c.label}` : ""} · ${fmt(c.position_ms / 1000)}`}
-                    onClick={(e) => { e.stopPropagation(); seekToMs(c.position_ms); }}
-                    className="w-3.5 h-3.5 rounded flex items-center justify-center text-white font-bold transition-opacity hover:opacity-80"
-                    style={{ background: c.color, fontSize: 6 }}>{i + 1}</button>
-                ))}
-              </div>
-            )}
-          </button>
-        </div>
+        {/* ── Coluna CUE — mini chips de atalho (editor desativado na produção) */}
+        {localCues.length > 0 && (
+          <div className="flex items-center shrink-0 px-2 py-2 gap-0.5 flex-wrap" style={{ width: 76 }}>
+            {localCues.slice(0, 6).map((c, i) => (
+              <button key={i} title={`CUE ${i+1}${c.label ? ` — ${c.label}` : ""} · ${fmt(c.position_ms / 1000)}`}
+                onClick={() => seekToMs(c.position_ms)}
+                className="w-5 h-5 rounded flex items-center justify-center text-white font-bold transition-opacity hover:opacity-80"
+                style={{ background: c.color, fontSize: 8 }}>{i + 1}</button>
+            ))}
+          </div>
+        )}
 
         {/* ── Waveform progress ─────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col justify-center px-3"
