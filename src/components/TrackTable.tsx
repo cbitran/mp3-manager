@@ -9,50 +9,56 @@ import {
   type ColumnSizingState,
   type ColumnOrderState,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useAppStore, type Track } from "../store";
-import CuePointsModal from "./CuePointsModal";
+
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
 const MINI_BARS = 40;
-const miniWaveCache = new Map<string, number[]>();
+
+interface WaveBarMini { amp: number; bass: number; treble: number; }
+const miniWaveCache = new Map<string, WaveBarMini[]>();
+
 
 const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path: string; isCurrentTrack: boolean }) {
-  const [bars, setBars] = useState<number[] | null>(miniWaveCache.get(path) ?? null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [bars, setBars] = useState<WaveBarMini[] | null>(miniWaveCache.get(path) ?? null);
   const playerProgress = useAppStore((s) => s.playerProgress);
   const playerDuration = useAppStore((s) => s.playerDuration);
 
   useEffect(() => {
     if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
-    const el = containerRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) return;
-      obs.disconnect();
-      queuedInvoke<number[]>(() => invoke("generate_waveform", { path, bars: MINI_BARS }))
-        .then((b) => { miniWaveCache.set(path, b); setBars(b); })
-        .catch(() => {});
-    }, { threshold: 0.1 });
-    obs.observe(el);
-    return () => obs.disconnect();
+    let cancelled = false;
+    queuedInvoke<number[]>(() => invoke("generate_waveform_rgb", { path, bars: MINI_BARS }))
+      .then((flat) => {
+        if (cancelled || !flat || flat.length !== MINI_BARS * 3) return;
+        const parsed: WaveBarMini[] = Array.from({ length: MINI_BARS }, (_, i) => ({
+          amp:    flat[i * 3],
+          bass:   flat[i * 3 + 1],
+          treble: flat[i * 3 + 2],
+        }));
+        miniWaveCache.set(path, parsed);
+        setBars(parsed);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [path]);
 
   const pct = isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0;
   const VB_W = MINI_BARS * 2.8;
-  const VB_H = 20;
+  const VB_H = 13;
 
   return (
-    <div ref={containerRef} className="w-full flex items-center justify-center">
+    <div className="w-full flex items-center justify-center" style={{ pointerEvents: "none" }}>
       {bars ? (
-        <svg width="100%" height="22" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="overflow-visible">
-          {bars.map((amp, i) => {
-            const barH  = Math.max(1, amp * (VB_H - 2));
-            const y     = (VB_H - barH) / 2;
+        <svg width="100%" height="15" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="overflow-visible">
+          {bars.map((bar, i) => {
+            const barH   = Math.max(1, bar.amp * (VB_H - 2));
+            const y      = (VB_H - barH) / 2;
             const barPct = i / MINI_BARS;
             const played = isCurrentTrack && pct > 0 && barPct < pct;
             return (
@@ -62,28 +68,32 @@ const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path
                 y={y}
                 width={2}
                 height={barH}
-                rx={0.5}
-                fill="#D95340"
-                opacity={played ? 0.55 + amp * 0.45 : isCurrentTrack ? 0.05 + amp * 0.10 : 0.10 + amp * 0.20}
+                rx={0.4}
+                fill={played ? "#D95340" : "#A8A3A0"}
+                opacity={played ? 1 : isCurrentTrack ? 0.45 + bar.amp * 0.45 : 0.28 + bar.amp * 0.45}
               />
             );
           })}
           {/* Playhead */}
           {isCurrentTrack && pct > 0 && (
-            <rect x={pct * VB_W - 0.5} y={0} width={1.5} height={VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
+            <rect x={pct * VB_W - 0.5} y={0} width={1} height={VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
           )}
         </svg>
       ) : (
-        <div className="w-full h-[22px] flex items-center gap-px px-1">
-          {Array.from({ length: 8 }, (_, i) => (
-            <div key={i} className="flex-1 rounded-sm bg-white/[0.05]" style={{ height: `${30 + (i % 3) * 20}%` }} />
-          ))}
-        </div>
+        <svg width="100%" height="15" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
+          {Array.from({ length: MINI_BARS }, (_, i) => {
+            const amp = 0.15 + 0.12 * Math.abs(Math.sin(i * 0.7));
+            const barH = Math.max(1, amp * (VB_H - 2));
+            return (
+              <rect key={i} x={i * 2.8} y={(VB_H - barH) / 2} width={2} height={barH}
+                fill="#A8A3A0" opacity={0.15} rx={0.4} />
+            );
+          })}
+        </svg>
       )}
     </div>
   );
 });
-import { setAutoPlayOnLoad } from "../store";
 import { openPath } from "@tauri-apps/plugin-opener";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { queuedInvoke } from "../lib/ipcQueue";
@@ -141,7 +151,7 @@ const IS_WIN_TABLE = navigator.platform.toLowerCase().startsWith("win") ||
   navigator.userAgent.toLowerCase().includes("windows");
 
 const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track }) {
-  const { title, artist, filename, issues } = track;
+  const { title, filename, issues } = track;
   const hasIssues = issues.length > 0;
   const updateTrack = useAppStore((s) => s.updateTrack);
 
@@ -215,33 +225,6 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
             {title ?? filename}
           </span>
         )}
-        {editing === "artist" ? (
-          <input
-            ref={inputRef}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
-              if (e.key === "Escape") setEditing(null);
-              e.stopPropagation();
-            }}
-            onBlur={commitEdit}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full mt-px bg-[#1c1715] border border-[#D95340]/50 rounded px-1.5 py-px text-[11px] text-[#8F8883] focus:outline-none focus:border-[#D95340]"
-          />
-        ) : artist ? (
-          <div
-            className="text-[11px] text-[#8F8883] mt-px leading-snug [overflow-wrap:anywhere] cursor-text"
-            onDoubleClick={(e) => {
-              if (!IS_WIN_TABLE && !e.metaKey) return;
-              e.stopPropagation();
-              setEditing("artist");
-              setEditValue(artist);
-            }}
-          >
-            {artist}
-          </div>
-        ) : null}
       </div>
       {(!title || hasIssues) && (
         <div className="flex flex-col items-end gap-px shrink-0 mt-px">
@@ -262,6 +245,66 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
         </div>
       )}
     </div>
+  );
+});
+
+// ── Artist edit cell ─────────────────────────────────────────────────────────
+
+const ArtistEditCell = memo(function ArtistEditCell({ track }: { track: Track }) {
+  const updateTrack = useAppStore((s) => s.updateTrack);
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+
+  function open(e: React.MouseEvent) {
+    e.stopPropagation();
+    setVal(track.artist ?? "");
+    setEditing(true);
+  }
+
+  async function commit() {
+    const trimmed = val.trim();
+    setEditing(false);
+    if (trimmed === (track.artist ?? "")) return;
+    const fresh = useAppStore.getState().tracks.find((t) => t.id === track.id) ?? track;
+    try {
+      await invoke("save_tags", {
+        path: fresh.path,
+        title: fresh.title ?? null, artist: trimmed || null,
+        album: fresh.album ?? null, genre: fresh.genre ?? null,
+        year: fresh.year ?? null, trackNumber: fresh.track_number ?? null,
+        totalTracks: fresh.total_tracks ?? null,
+        bpm: fresh.bpm ?? null, key: fresh.key ?? null,
+        rating: fresh.rating ?? null, comment: fresh.comment ?? null,
+      });
+      updateTrack({ ...fresh, artist: trimmed || undefined });
+    } catch { /* ignore */ }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full bg-[#1c1715] text-[#F5F5F4] text-[11px] px-1 py-0.5 rounded border border-[#D95340]/50 outline-none"
+      />
+    );
+  }
+
+  return (
+    <span
+      className="text-[11px] text-[#8F8883] truncate cursor-text select-none"
+      onDoubleClick={open}
+      title="Duplo clique para editar"
+    >
+      {track.artist ?? <span className="text-[#605A55] not-italic">—</span>}
+    </span>
   );
 });
 
@@ -387,7 +430,7 @@ export default function TrackTable({
     tracks: allTracks,
     toggleTrackFavorite,
     favoriteTrackPaths,
-    setPlayerTrack,
+    requestPlay,
     playerTrackId,
     columnVisibility,
     setColumnVisibility,
@@ -398,7 +441,7 @@ export default function TrackTable({
 
   const { t } = useTranslation();
   const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
-  const [cueModalTrack, setCueModalTrack] = useState<Track | null>(null);
+
 
   const anchorIdRef = useRef<string | null>(null);
   const sortedRowsRef = useRef<Array<{id: string}>>([]);
@@ -620,7 +663,7 @@ export default function TrackTable({
       col.accessor("title", {
         id: "title_artist",
         enableHiding: false,
-        header: "TÍTULO / ARTISTA",
+        header: "TÍTULO",
         cell: ({ row }) => <TitleArtistCell track={row.original} />,
         size: 280, minSize: 200,
       }),
@@ -656,12 +699,7 @@ export default function TrackTable({
       col.accessor("artist", {
         id: "artist",
         header: "Artista",
-        cell: (i) =>
-          i.getValue() ? (
-            <span className="text-[11px] text-[#8F8883] truncate">{i.getValue()}</span>
-          ) : (
-            <span className="text-[#605A55] text-xs">—</span>
-          ),
+        cell: ({ row }) => <ArtistEditCell track={row.original} />,
         size: 140, minSize: 100,
       }),
 
@@ -794,15 +832,11 @@ export default function TrackTable({
       col.accessor("cue_points", {
         id: "cue_points",
         header: () => <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743]">CUE</span>,
-        cell: ({ getValue, row }) => {
+        cell: ({ getValue }) => {
           const cues = getValue() ?? [];
           const count = cues.length;
           return (
-            <button
-              title={count > 0 ? `${count} CUE Point${count !== 1 ? "s" : ""} — clique para editar` : "Clique para adicionar CUE Points"}
-              onClick={(e) => { e.stopPropagation(); setCueModalTrack(row.original); }}
-              className="w-full flex items-center justify-center gap-1 transition-opacity hover:opacity-80"
-            >
+            <div className="w-full flex items-center justify-center gap-1">
               {count > 0 ? (
                 <div className="flex items-center gap-1">
                   {cues.slice(0, 4).map((c: import("../store").CuePoint, i: number) => (
@@ -821,7 +855,7 @@ export default function TrackTable({
               ) : (
                 <span className="text-[11px]" style={{ color: "#373331" }}>—</span>
               )}
-            </button>
+            </div>
           );
         },
         size: 80, minSize: 64,
@@ -900,8 +934,36 @@ export default function TrackTable({
           ),
         size: 160,
       }),
+
+      // PLAYLISTS
+      col.display({
+        id: "playlists",
+        header: () => <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743]">Playlists</span>,
+        cell: ({ row }) => {
+          const trackPlaylists = playlists.filter((pl) => pl.trackPaths.includes(row.original.path));
+          if (trackPlaylists.length === 0) return <span className="text-[#605A55] text-xs">—</span>;
+          return (
+            <div className="flex flex-wrap gap-0.5 justify-center">
+              {trackPlaylists.slice(0, 2).map((pl) => (
+                <span
+                  key={pl.id}
+                  className="px-1.5 py-px rounded-sm text-[8px] truncate max-w-[72px]"
+                  style={{ background: "rgba(217,83,64,0.12)", color: "#C97B40", border: "1px solid rgba(201,123,64,0.25)" }}
+                  title={pl.name}
+                >
+                  {pl.name}
+                </span>
+              ))}
+              {trackPlaylists.length > 2 && (
+                <span className="text-[8px] font-mono" style={{ color: "#4C4743" }}>+{trackPlaylists.length - 2}</span>
+              )}
+            </div>
+          );
+        },
+        size: 130, minSize: 80,
+      }),
     ],
-    [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite]
+    [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite, playlists]
   );
 
   const rowSelection = Object.fromEntries([...selectedIds].map((id) => [id, true]));
@@ -982,10 +1044,9 @@ export default function TrackTable({
         openPath(track.path).catch(() => {});
         return;
       }
-      setAutoPlayOnLoad();
-      setPlayerTrack(id);
+      requestPlay(id);
     },
-    [setPlayerTrack, allTracks, onVideoPlay]
+    [requestPlay, allTracks, onVideoPlay]
   );
 
   const handleContextMenu = useCallback(
@@ -1021,6 +1082,28 @@ export default function TrackTable({
     menu.style.left = `${left}px`;
   }, [contextMenu]);
 
+  // Hooks must be called unconditionally (before any early return)
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const allRows = table.getRowModel().rows;
+  const rowVirtualizer = useVirtualizer({
+    count: allRows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 44,
+    overscan: 30,
+  });
+
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = tableContainerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  const ROW_NUM_W = 40;
+  const colScaleFactor = containerWidth > 0 && containerWidth > table.getTotalSize() + ROW_NUM_W
+    ? (containerWidth - ROW_NUM_W) / table.getTotalSize()
+    : 1;
 
   if (tracks.length === 0) {
     return (
@@ -1076,13 +1159,17 @@ export default function TrackTable({
     );
   }
 
-  const rowH = compact ? "py-1" : "py-2.5";
+  const rowH = compact ? "py-1" : "py-3.5";
 
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const paddingBottom = virtualItems.length > 0 ? totalSize - virtualItems[virtualItems.length - 1].end : 0;
 
   return (
     <>
-    <div className="flex-1 overflow-auto select-none">
-      <table className="text-sm border-collapse table-fixed" style={{ width: "100%", minWidth: table.getTotalSize() + 40 }}>
+    <div ref={tableContainerRef} className="flex-1 overflow-auto select-none">
+      <table className="text-sm border-collapse table-fixed" style={{ width: "100%", minWidth: colScaleFactor > 1 ? undefined : table.getTotalSize() + 40 }}>
         <thead className="sticky top-0 z-10 bg-[#0E0D0C]">
           <tr>
             {/* Row number header */}
@@ -1095,7 +1182,7 @@ export default function TrackTable({
                 key={header.id}
                 data-col-id={header.id}
                 style={{
-                  width: header.getSize(),
+                  width: Math.round(header.getSize() * colScaleFactor),
                   position: 'relative',
                   opacity: draggingColId === header.id ? 0.2 : 1,
                   transition: 'opacity 0.12s, transform 0.12s',
@@ -1155,7 +1242,9 @@ export default function TrackTable({
                     dragColIdRef.current = null;
                     if (!from || !to || from === to) return;
                     const allIds = table.getAllLeafColumns().map((c) => c.id);
-                    const current = columnOrder.length > 0 ? columnOrder : allIds;
+                    const base = columnOrder.length > 0 ? columnOrder : allIds;
+                    // Merge saved order with any new columns not yet in it
+                    const current = [...base.filter(id => allIds.includes(id)), ...allIds.filter(id => !base.includes(id))];
                     const fi = current.indexOf(from);
                     const ti = current.indexOf(to);
                     if (fi < 0 || ti < 0) return;
@@ -1203,7 +1292,12 @@ export default function TrackTable({
           </tr>
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row, i) => {
+          {paddingTop > 0 && (
+            <tr><td colSpan={999} style={{ height: paddingTop, padding: 0, border: 0 }} /></tr>
+          )}
+          {virtualItems.map((virtualRow) => {
+            const row = allRows[virtualRow.index];
+            const i = virtualRow.index;
             const selected = selectedIds.has(row.id);
             const isPlaying = playerTrackId === row.id;
             const isEnriching = enrichingIds?.has(row.id) ?? false;
@@ -1260,6 +1354,9 @@ export default function TrackTable({
               </tr>
             );
           })}
+          {paddingBottom > 0 && (
+            <tr><td colSpan={999} style={{ height: paddingBottom, padding: 0, border: 0 }} /></tr>
+          )}
         </tbody>
       </table>
     </div>
@@ -1280,8 +1377,7 @@ export default function TrackTable({
               if (onVideoPlay) { onVideoPlay(contextMenu.track); }
               else { openPath(contextMenu.track.path).catch(() => {}); }
             } else {
-              setAutoPlayOnLoad();
-              setPlayerTrack(contextMenu.track.id);
+              requestPlay(contextMenu.track.id);
             }
             setContextMenu(null);
           }}
@@ -1554,15 +1650,6 @@ export default function TrackTable({
           {dragGhost.label}
         </div>
       </div>
-    )}
-    {cueModalTrack && (
-      <CuePointsModal
-        track={cueModalTrack}
-        onClose={() => setCueModalTrack(null)}
-        onSaved={(cues) => {
-          useAppStore.getState().updateTrack({ ...cueModalTrack, cue_points: cues });
-        }}
-      />
     )}
     </>
   );

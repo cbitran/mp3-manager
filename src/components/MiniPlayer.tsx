@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore, consumeAutoPlay } from "../store";
+import { loadWaveform, setCachedWaveform, getCachedWaveform, WAVEFORM_BARS } from "../lib/waveformCache";
+import { globalAudio } from "../lib/globalAudio";
 
-const PLAYER_BARS = 180;
-const waveCache = new Map<string, number[]>();
+const PLAYER_BARS = WAVEFORM_BARS;
 
-// No WebView2 (Windows), createMediaElementSource captura o output do <audio>
-// e o redireciona exclusivamente para o grafo Web Audio API, que não encaminha
-// para os alto-falantes do sistema. Resultado: áudio silencioso.
-// Solução: pular o AudioContext no Windows e usar playback nativo do HTML5.
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
+
+interface WaveBarRGB { amp: number; bass: number; treble: number; }
+// waveCache local removido — usa waveformCache compartilhado
 
 function strHash(s: string): number {
   let h = 5381;
@@ -18,26 +18,36 @@ function strHash(s: string): number {
   return Math.abs(h);
 }
 
-function makeFallback(path: string): number[] {
+function makeFallback(path: string): WaveBarRGB[] {
   const seed = strHash(path);
   return Array.from({ length: PLAYER_BARS }, (_, i) => {
     const t = i / PLAYER_BARS;
-    const a = 0.3 + 0.4 * Math.abs(Math.sin((seed % 100) * 0.07 + t * 6.28));
-    const b = 0.1 + 0.3 * Math.abs(Math.sin((seed % 77) * 0.13 + t * 12.1));
-    const c = 0.05 * Math.abs(Math.sin(t * 31 + seed % 17));
-    return Math.min(1, a + b + c);
+    const amp = Math.min(1, 0.3 + 0.4 * Math.abs(Math.sin((seed % 100) * 0.07 + t * 6.28))
+                            + 0.1 * Math.abs(Math.sin((seed % 77) * 0.13 + t * 12.1)));
+    return { amp, bass: 0.5, treble: 0.3 };
   });
 }
 
+
+function fmt(s: number) {
+  if (!isFinite(s) || s < 0) return "0:00";
+  return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+
+const WF_EXPANDED = 68;
+
 export default function MiniPlayer() {
-  const { tracks, selectedIds, playerTrackId, setPlayerTrack, setIsPlayingGlobal, setPlayerPlayback } = useAppStore();
+  const { tracks, selectedIds, playerTrackId, playerTrackNonce, setPlayerTrack, setIsPlayingGlobal, setPlayerPlayback, seekRequest, oneShotRequest, scrubSeekRequest, playRequest } = useAppStore();
+  const setCueEditorTrack = useAppStore((s) => s.setCueEditorTrack);
   const [isPlaying, setIsPlaying]   = useState(false);
   const [progress, setProgress]     = useState(0);
   const [duration, setDuration]     = useState(0);
   const [volume, setVolume]         = useState(0.8);
   const [coverUrl, setCoverUrl]     = useState<string | null>(null);
-  const [waveBars, setWaveBars]     = useState<number[] | null>(null);
+  const [waveBars, setWaveBars]     = useState<WaveBarRGB[] | null>(null);
   const [hoverPct, setHoverPct]     = useState<number | null>(null);
+  const wfExpanded = true;
+
   const audioRef     = useRef<HTMLAudioElement | null>(null);
   const loadedPath   = useRef<string | null>(null);
   const audioCtxRef  = useRef<AudioContext | null>(null);
@@ -45,26 +55,31 @@ export default function MiniPlayer() {
   const gainNodeRef  = useRef<GainNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
-  const waveBarsRef  = useRef<number[]>([]);   // always current waveform data for animation loop
-  const isPlayingRef = useRef(false);          // sync ref for effects that can't use stale state
+  const waveBarsRef  = useRef<WaveBarRGB[]>([]);
+  const isPlayingRef     = useRef(false);
+  const wfRef            = useRef<SVGSVGElement>(null);
+  const oneShotTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubRef         = useRef(false);
+  const scrubTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedArr = [...selectedIds];
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
   const activeTrack = tracks.find((t) => t.id === activeId) ?? null;
 
-  // Keep waveBarsRef in sync
+  const wfH       = WF_EXPANDED;
+  const windowDur = duration;
+  const winStart  = 0;
+  const barStart  = 0;
+  const barEnd    = PLAYER_BARS;
+  const winPct    = duration > 0 ? Math.max(0, Math.min(1, progress / duration)) : 0;
+  const BAR_W     = 0.8;
+  const BAR_GAP   = 1.2;
+  const BAR_STR   = BAR_W + BAR_GAP;
+
   useEffect(() => { if (waveBars) waveBarsRef.current = waveBars; }, [waveBars]);
+  useEffect(() => { isPlayingRef.current = isPlaying; setIsPlayingGlobal(isPlaying); }, [isPlaying, setIsPlayingGlobal]);
 
-  // Keep isPlayingRef in sync + update global store
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-    setIsPlayingGlobal(isPlaying);
-  }, [isPlaying, setIsPlayingGlobal]);
-
-  // ── Audio Context helpers ─────────────────────────────────────────
   async function setupAudioCtx() {
-    // Windows/WebView2: pula Web Audio API para evitar áudio silencioso.
-    // O playback e volume funcionam nativamente via audioRef.current.
     if (IS_WIN) return;
     if (audioCtxRef.current || !audioRef.current) return;
     try {
@@ -77,12 +92,8 @@ export default function MiniPlayer() {
       const gainNode = ctx.createGain();
       gainNode.gain.value = volume;
       const src = ctx.createMediaElementSource(audioRef.current);
-      src.connect(analyser);
-      analyser.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      audioCtxRef.current = ctx;
-      analyserRef.current = analyser;
-      gainNodeRef.current = gainNode;
+      src.connect(analyser); analyser.connect(gainNode); gainNode.connect(ctx.destination);
+      audioCtxRef.current = ctx; analyserRef.current = analyser; gainNodeRef.current = gainNode;
     } catch { /* silent */ }
   }
 
@@ -103,25 +114,23 @@ export default function MiniPlayer() {
           const bw = W / PLAYER_BARS;
           const bars = waveBarsRef.current;
           const { playerProgress: pp, playerDuration: pd } = useAppStore.getState();
-          const playedFrac = pd > 0 ? pp / pd : 0;
+          const pf = pd > 0 ? pp / pd : 0;
           for (let i = 0; i < PLAYER_BARS; i++) {
-            const barFrac = i / PLAYER_BARS;
-            if (barFrac < playedFrac) continue; // skip played section
+            const isPlayed = i / PLAYER_BARS < pf;
             const s = Math.floor(i * step), e2 = Math.floor((i + 1) * step);
             let sum = 0;
             for (let j = s; j < e2; j++) sum += freqData[j];
             const beatAmp = sum / Math.max(1, e2 - s) / 255;
-            if (beatAmp < 0.015) continue;
-            const waveBase = bars.length > i ? bars[i] : 0.5;
+            if (beatAmp < 0.01) continue;
+            const waveBase = bars.length > i ? bars[i].amp : 0.5;
             const finalAmp = waveBase * (0.4 + beatAmp * 0.6);
             const bh = Math.max(1.5, finalAmp * H * 0.85);
             const x = i * bw + bw * 0.15;
-            const y = (H - bh) / 2;
-            const w2 = bw * 0.7;
-            c.fillStyle = `rgba(255, 130, 110, ${0.25 + finalAmp * 0.65})`;
+            const alpha = isPlayed ? 0.08 + finalAmp * 0.12 : 0.22 + finalAmp * 0.55;
+            c.fillStyle = `rgba(217,83,64,${alpha})`;
             c.beginPath();
-            if (c.roundRect) c.roundRect(x, y, w2, bh, 1);
-            else c.rect(x, y, w2, bh);
+            if (c.roundRect) c.roundRect(x, (H - bh) / 2, bw * 0.7, bh, 0.5);
+            else c.rect(x, (H - bh) / 2, bw * 0.7, bh);
             c.fill();
           }
         }
@@ -138,152 +147,255 @@ export default function MiniPlayer() {
     if (c && liveCanvasRef.current) c.clearRect(0, 0, liveCanvasRef.current.width, liveCanvasRef.current.height);
   }
 
-  // ── Load track ────────────────────────────────────────────────────
-  const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);
+  const VIDEO_EXTS = new Set(["mp4","mkv","avi","mov","wmv","webm","m4v"]);
 
   useEffect(() => {
     if (!audioRef.current) return;
-    // Nunca tocar faixas de vídeo no MiniPlayer — vídeo tem player próprio
-    if (activeTrack && VIDEO_EXTS.has((activeTrack.format ?? "").toLowerCase())) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      loadedPath.current = null;
-      setIsPlaying(false);
-      stopLiveAnim();
-      return;
-    }
-    if (!activeTrack) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      loadedPath.current = null;
-      setIsPlaying(false);
-      stopLiveAnim();
-      return;
+    if (!activeTrack || VIDEO_EXTS.has((activeTrack.format ?? "").toLowerCase())) {
+      audioRef.current.pause(); audioRef.current.currentTime = 0;
+      loadedPath.current = null; setIsPlaying(false); stopLiveAnim(); return;
     }
     const shouldAutoPlay = consumeAutoPlay();
-
     if (loadedPath.current === activeTrack.path) {
-      // Same track: only start playing if autoPlay requested and not already playing
       if (shouldAutoPlay && !isPlayingRef.current) {
         setupAudioCtx().then(() => {
-          audioRef.current?.play().catch(console.error);
-          setIsPlaying(true);
-          startLiveAnim();
+          const audio = audioRef.current;
+          if (!audio) return;
+          const doPlay = () => {
+            audio.play()
+              .then(() => { setIsPlaying(true); startLiveAnim(); })
+              .catch((err) => {
+                if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+                  audio.addEventListener('canplay', () => {
+                    audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
+                  }, { once: true });
+                }
+              });
+          };
+          if (audio.readyState >= 2) doPlay();
+          else audio.addEventListener('canplay', doPlay, { once: true });
         });
       }
       return;
     }
-
-    // New track — stop current playback first, then load
-    audioRef.current.pause();
-    stopLiveAnim();
+    audioRef.current.pause(); stopLiveAnim();
     loadedPath.current = activeTrack.path;
-    const src = convertFileSrc(activeTrack.path);
-    audioRef.current.src = src;
+    audioRef.current.src = convertFileSrc(activeTrack.path);
     audioRef.current.volume = volume;
     audioRef.current.load();
-    setProgress(0);
-    setDuration(0);
-
+    setProgress(0); setDuration(0);
     if (isPlayingRef.current || shouldAutoPlay) {
-      const startPlayback = () => {
-        setIsPlaying(true);
-        startLiveAnim();
-      };
-      // Await AudioContext resume BEFORE play to prevent silent audio on Windows
       setupAudioCtx().then(() => {
-        audioRef.current!.play()
-          .then(startPlayback)
-          .catch(() => {
-            audioRef.current?.addEventListener('canplay', () => {
-              audioRef.current?.play().then(startPlayback).catch(console.error);
-            }, { once: true });
-          });
+        const attemptPlay = () => {
+          const audio = audioRef.current;
+          if (!audio) return;
+          audio.play()
+            .then(() => { setIsPlaying(true); startLiveAnim(); })
+            .catch((err) => {
+              // AbortError = load() interrupted play(); retry after canplay
+              if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+                audio.addEventListener('canplay', () => {
+                  audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
+                }, { once: true });
+              } else {
+                console.error('[MiniPlayer] play error:', err);
+              }
+            });
+        };
+        // If already have enough data, play immediately; otherwise wait for canplay
+        if (audioRef.current && audioRef.current.readyState >= 2) {
+          attemptPlay();
+        } else {
+          audioRef.current?.addEventListener('canplay', attemptPlay, { once: true });
+        }
       });
-    } else {
-      setIsPlaying(false);
-    }
+    } else { setIsPlaying(false); }
 
-    // Cover
     if (activeTrack.has_cover) {
       invoke<string | null>("read_cover_base64", { path: activeTrack.path })
         .then((b64) => setCoverUrl(b64 ? `data:image/jpeg;base64,${b64}` : null))
         .catch(() => setCoverUrl(null));
-    } else {
-      setCoverUrl(null);
-    }
+    } else { setCoverUrl(null); }
 
-    // Waveform
-    const cached = waveCache.get(activeTrack.path);
-    if (cached) { waveBarsRef.current = cached; setWaveBars(cached); return; }
+    const hit = getCachedWaveform(activeTrack.path);
+    if (hit) {
+      const rgb: WaveBarRGB[] = hit.map(b => ({ amp: b.amp, bass: b.bass, treble: b.treble }));
+      waveBarsRef.current = rgb; setWaveBars(rgb); return;
+    }
     setWaveBars(null);
-    invoke<number[]>("generate_waveform", { path: activeTrack.path, bars: PLAYER_BARS })
-      .then((data) => { waveCache.set(activeTrack.path, data); waveBarsRef.current = data; setWaveBars(data); })
+    loadWaveform(activeTrack.path)
+      .then((bars) => {
+        if (!bars) throw new Error();
+        const rgb: WaveBarRGB[] = bars.map(b => ({ amp: b.amp, bass: b.bass, treble: b.treble }));
+        setCachedWaveform(activeTrack.path, bars);
+        waveBarsRef.current = rgb;
+        setWaveBars(rgb);
+      })
       .catch(() => {
         const fb = makeFallback(activeTrack.path);
-        waveCache.set(activeTrack.path, fb);
         waveBarsRef.current = fb;
         setWaveBars(fb);
       });
-  // playerTrackId added so double-click on already-selected track re-triggers play
-  }, [activeTrack?.id, playerTrackId]);
+  }, [activeTrack?.id, playerTrackId, playerTrackNonce]);
 
-  // ── Audio event listeners ─────────────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => {
-      setProgress(audio.currentTime);
-      setPlayerPlayback(audio.currentTime, isFinite(audio.duration) ? audio.duration : 0);
-    };
+    const onTime = () => { setProgress(audio.currentTime); setPlayerPlayback(audio.currentTime, isFinite(audio.duration) ? audio.duration : 0); };
     const onDur  = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
     const onEnd  = () => {
-      setProgress(0);
-      stopLiveAnim();
+      setProgress(0); stopLiveAnim();
       const { tracks: all, playerTrackId: cur } = useAppStore.getState();
-      if (cur) {
-        const idx = all.findIndex((t) => t.id === cur);
-        const next = all[idx + 1];
-        if (next) { useAppStore.getState().setPlayerTrack(next.id); return; }
-      }
+      if (cur) { const idx = all.findIndex((t) => t.id === cur); const next = all[idx+1]; if (next) { useAppStore.getState().setPlayerTrack(next.id); return; } }
       setIsPlaying(false);
     };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onDur);
     audio.addEventListener("ended", onEnd);
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("loadedmetadata", onDur);
-      audio.removeEventListener("ended", onEnd);
-    };
+    return () => { audio.removeEventListener("timeupdate", onTime); audio.removeEventListener("loadedmetadata", onDur); audio.removeEventListener("ended", onEnd); };
   }, []);
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
-      if (e.key === " ")               { e.preventDefault(); togglePlay(); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); skipTrack(1); }
-      else if (e.key === "ArrowLeft")  { e.preventDefault(); skipTrack(-1); }
+      if (e.key === " ") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const { tracks: all, selectedIds: sel, clearSelection, toggleSelect } = useAppStore.getState();
+        const selArr = [...sel];
+        const anchorId = selArr[selArr.length - 1] ?? playerTrackId ?? null;
+        if (!anchorId) return;
+        const idx = all.findIndex((tr) => tr.id === anchorId);
+        if (idx < 0) return;
+        const nextIdx = e.key === "ArrowDown"
+          ? Math.min(all.length - 1, idx + 1)
+          : Math.max(0, idx - 1);
+        const next = all[nextIdx];
+        if (next && next.id !== anchorId) { clearSelection(); toggleSelect(next.id); }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault(); skipTrack(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault(); skipTrack(-1);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeTrack, isPlaying, volume]);
+  }, [activeTrack, isPlaying, volume, playerTrackId]);
+
+  useEffect(() => { return () => { cancelAnimationFrame(animFrameRef.current); audioCtxRef.current?.close().catch(() => {}); }; }, []);
+
+  useEffect(() => {
+    if (!seekRequest || !audioRef.current) return;
+    if (oneShotTimerRef.current) { clearTimeout(oneShotTimerRef.current); oneShotTimerRef.current = null; }
+    const t = seekRequest.ms / 1000;
+    audioRef.current.currentTime = Math.max(0, t);
+    setProgress(Math.max(0, t));
+    if (!isPlayingRef.current) {
+      setupAudioCtx().then(() => { audioRef.current?.play().catch(console.error); setIsPlaying(true); startLiveAnim(); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekRequest]);
+
+  // Scrub seek — toca na posição enquanto arrasta, pausa 250ms após o último pedido
+  useEffect(() => {
+    if (!scrubSeekRequest || !audioRef.current) return;
+    if (scrubTimerRef.current) { clearTimeout(scrubTimerRef.current); scrubTimerRef.current = null; }
+    if (oneShotTimerRef.current) { clearTimeout(oneShotTimerRef.current); oneShotTimerRef.current = null; }
+    const t = Math.max(0, scrubSeekRequest.ms / 1000);
+    audioRef.current.currentTime = t;
+    setProgress(t);
+    if (!isPlayingRef.current) {
+      setupAudioCtx().then(() => {
+        audioRef.current?.play().catch(() => {});
+        setIsPlaying(true);
+        startLiveAnim();
+      });
+    }
+    scrubTimerRef.current = setTimeout(() => {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      stopLiveAnim();
+      scrubTimerRef.current = null;
+    }, 250);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrubSeekRequest]);
+
+  // One-shot: play from position for 4s then stop
+  useEffect(() => {
+    if (!oneShotRequest || !audioRef.current) return;
+    if (oneShotTimerRef.current) { clearTimeout(oneShotTimerRef.current); oneShotTimerRef.current = null; }
+    const t = oneShotRequest.ms / 1000;
+    audioRef.current.currentTime = Math.max(0, t);
+    setProgress(Math.max(0, t));
+    setupAudioCtx().then(() => {
+      audioRef.current?.play().catch(console.error);
+      setIsPlaying(true);
+      startLiveAnim();
+      oneShotTimerRef.current = setTimeout(() => {
+        audioRef.current?.pause();
+        setIsPlaying(false);
+        stopLiveAnim();
+        oneShotTimerRef.current = null;
+      }, 4000);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oneShotRequest]);
+
+  // playRequest — duplo clique na tabela → play direto, sem flag module-level
+  useEffect(() => {
+    if (!playRequest || !audioRef.current) return;
+    const track = tracks.find((t) => t.id === playRequest.trackId);
+    if (!track) return;
+    if (oneShotTimerRef.current) { clearTimeout(oneShotTimerRef.current); oneShotTimerRef.current = null; }
+    audioRef.current.pause(); stopLiveAnim();
+    loadedPath.current = track.path;
+    audioRef.current.src = convertFileSrc(track.path);
+    audioRef.current.volume = volume;
+    audioRef.current.load();
+    setProgress(0); setDuration(0);
+    setupAudioCtx().then(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const doPlay = () => {
+        audio.play()
+          .then(() => { setIsPlaying(true); startLiveAnim(); })
+          .catch((err) => {
+            if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+              audio.addEventListener('canplay', () => {
+                audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
+              }, { once: true });
+            }
+          });
+      };
+      if (audio.readyState >= 2) doPlay();
+      else audio.addEventListener('canplay', doPlay, { once: true });
+    });
+    if (track.has_cover) {
+      invoke<string | null>("read_cover_base64", { path: track.path })
+        .then((b64) => setCoverUrl(b64 ? `data:image/jpeg;base64,${b64}` : null))
+        .catch(() => setCoverUrl(null));
+    } else { setCoverUrl(null); }
+    const hit = getCachedWaveform(track.path);
+    if (hit) { const rgb = hit.map(b => ({ amp: b.amp, bass: b.bass, treble: b.treble })); waveBarsRef.current = rgb; setWaveBars(rgb); }
+    else {
+      setWaveBars(null);
+      loadWaveform(track.path).then((bars) => {
+        if (!bars) throw new Error();
+        const rgb = bars.map(b => ({ amp: b.amp, bass: b.bass, treble: b.treble }));
+        setCachedWaveform(track.path, bars); waveBarsRef.current = rgb; setWaveBars(rgb);
+      }).catch(() => { const fb = makeFallback(track.path); waveBarsRef.current = fb; setWaveBars(fb); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playRequest]);
 
   async function togglePlay() {
     if (!audioRef.current || !activeTrack) return;
     if (!playerTrackId && selectedArr[0]) setPlayerTrack(selectedArr[0]);
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      stopLiveAnim();
-    } else {
-      await setupAudioCtx();
-      audioRef.current.play().catch(console.error);
-      setIsPlaying(true);
-      startLiveAnim();
-    }
+    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); stopLiveAnim(); }
+    else { await setupAudioCtx(); audioRef.current.play().catch(console.error); setIsPlaying(true); startLiveAnim(); }
   }
 
   function skipTrack(dir: 1 | -1) {
@@ -293,279 +405,378 @@ export default function MiniPlayer() {
     if (next) { setPlayerTrack(next.id); setIsPlaying(true); }
   }
 
-  const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const seekToMs = useCallback((ms: number) => {
     if (!audioRef.current || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const t = ((e.clientX - rect.left) / rect.width) * duration;
-    audioRef.current.currentTime = t;
-    setProgress(t);
+    audioRef.current.currentTime = Math.max(0, Math.min(ms / 1000, duration));
+    setProgress(audioRef.current.currentTime);
   }, [duration]);
 
+  const handleWfClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (scrubRef.current) return; // drag = scrub, not click
+    const svg = wfRef.current;
+    if (!svg || !duration) return;
+    const rect = svg.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    seekToMs((winStart + ratio * windowDur) * 1000);
+  }, [duration, seekToMs, winStart, windowDur]);
 
-  function fmt(s: number) {
-    if (!isFinite(s) || s < 0) return "0:00";
-    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  }
+  const handleWfMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0 || !duration || !audioRef.current) return;
+    e.preventDefault();
+    scrubRef.current = false;
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-      audioCtxRef.current?.close().catch(() => {});
+    const doSeek = (clientX: number) => {
+      const svg = wfRef.current;
+      if (!svg || !duration) return;
+      const rect = svg.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const t = (winStart + ratio * windowDur) * 1000;
+      if (audioRef.current) {
+        audioRef.current.currentTime = Math.max(0, Math.min(t / 1000, duration));
+        setProgress(audioRef.current.currentTime);
+      }
     };
-  }, []);
 
-  const pct = duration > 0 ? (progress / duration) * 100 : 0;
-  const displayBars = waveBars ?? makeFallback(activeTrack?.path ?? "");
+    doSeek(e.clientX);
 
-  const BAR_W    = 1.0;
-  const BAR_GAP  = 2.0;
-  const BAR_STRIDE = BAR_W + BAR_GAP;
-  const VB_W    = PLAYER_BARS * BAR_STRIDE;
-  const VB_H    = 40;
+    const onMove = (ev: MouseEvent) => {
+      scrubRef.current = true;
+      doSeek(ev.clientX);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setTimeout(() => { scrubRef.current = false; }, 50);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [duration, winStart, windowDur]);
 
-  // Volume icon: muted/low/high
+
+  const rawDisplayBars = (waveBars ?? makeFallback(activeTrack?.path ?? "")).slice(barStart, barEnd);
+  const MAX_MINI_BARS = 700;
+  const barStep = rawDisplayBars.length <= MAX_MINI_BARS ? 1 : Math.ceil(rawDisplayBars.length / MAX_MINI_BARS);
+  const displayBars = rawDisplayBars.length <= MAX_MINI_BARS
+    ? rawDisplayBars
+    : rawDisplayBars.filter((_, i) => i % barStep === 0);
+  const VB_W = displayBars.length * BAR_STR;
+  const localCues   = activeTrack?.cue_points ?? [];
+  const canEditCues = !!activeTrack;
+
   const volMuted = volume === 0;
   const volIcon = (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
       <path d="M1.5 4.5h2L6 2v8L3.5 7.5H1.5V4.5z" fill="currentColor"/>
-      {!volMuted && volume > 0.01 && (
-        <path d="M8 3.5a3.5 3.5 0 010 5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-      )}
-      {!volMuted && volume > 0.5 && (
-        <path d="M9.5 2a5.5 5.5 0 010 8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-      )}
-      {volMuted && (
-        <>
-          <path d="M8.5 4.5L11 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-          <path d="M11 4.5L8.5 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-        </>
-      )}
+      {!volMuted && volume > 0.01 && <path d="M8 3.5a3.5 3.5 0 010 5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>}
+      {!volMuted && volume > 0.5  && <path d="M9.5 2a5.5 5.5 0 010 8" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>}
+      {volMuted && (<><path d="M8.5 4.5L11 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/><path d="M11 4.5L8.5 7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></>)}
     </svg>
   );
 
   return (
-    <div className="bg-[#0E0D0C] select-none">
-      <audio ref={audioRef} />
+    <>
+      <div
+        className="bg-[#0E0D0C] select-none flex items-stretch"
+        style={{ height: 48 + WF_EXPANDED + 12 }}
+      >
+        <audio ref={(el) => { audioRef.current = el; globalAudio.el = el; }} preload="auto" />
 
-      {/* Progress line at top */}
-      <div className="h-px bg-[#23201E]">
-        <div className="h-full bg-[#D95340] transition-none" style={{ width: `${pct}%` }} />
-      </div>
-
-      <div className="flex items-center h-14 px-5 gap-0">
-
-        {/* ── ZONA 1: Capa + Info ───────────────────────────────── */}
-        <div className="flex items-center gap-3 w-56 shrink-0 min-w-0 pr-5">
-          <span className={`w-[5px] h-[5px] rounded-full shrink-0 transition-colors ${
-            isPlaying ? "bg-[#D95340]" : "bg-[#4C4743]"
-          }`} />
-
-          <div className="shrink-0 w-7 h-7 rounded overflow-hidden bg-[#23201E] border border-white/[0.05] flex items-center justify-center">
-            {coverUrl
-              ? <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-              : <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#605A55" strokeWidth="1.1" strokeLinecap="round">
-                  <circle cx="5" cy="4.5" r="2"/><path d="M1 9.5c0-2.21 1.79-4 4-4s4 1.79 4 4"/>
+        {/* Info */}
+        <div
+          className={`flex ${wfExpanded ? "flex-col items-center justify-center py-2" : "items-center"} gap-2.5 px-3 shrink-0`}
+          style={{ width: wfExpanded ? 148 : 230 }}
+        >
+          {/* Vinyl disc */}
+          {(() => {
+            const D = wfExpanded ? 64 : 52;
+            return (
+              <div className="shrink-0 relative" style={{ width: D, height: D }}>
+                <svg width={D} height={D} viewBox="0 0 44 44" className={isPlaying ? "mini-disc-spin" : ""}>
+                  <defs>
+                    <clipPath id="vinyl-art-clip">
+                      <circle cx="22" cy="22" r="11.5"/>
+                    </clipPath>
+                  </defs>
+                  <circle cx="22" cy="22" r="21.5" fill="#111010"/>
+                  <circle cx="22" cy="22" r="21.5" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="0.5"/>
+                  {[19.5, 17, 15, 13.5].map(r => (
+                    <circle key={r} cx="22" cy="22" r={r} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"/>
+                  ))}
+                  <circle cx="22" cy="22" r="12.5" fill="#1c1917"/>
+                  {coverUrl ? (
+                    <image href={coverUrl} x="10.5" y="10.5" width="23" height="23" clipPath="url(#vinyl-art-clip)"/>
+                  ) : (
+                    <>
+                      <circle cx="22" cy="22" r="11.5" fill="#23201E"/>
+                      <circle cx="22" cy="22" r="11.5" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"/>
+                    </>
+                  )}
+                  <circle cx="22" cy="22" r="1.8" fill="#0A0908"/>
                 </svg>
-            }
-          </div>
+                <span className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-[#0E0D0C] ${isPlaying ? "bg-[#D95340]" : "bg-[#3a3530]"}`}
+                  style={isPlaying ? { boxShadow: "0 0 5px rgba(217,83,64,0.7)" } : {}}/>
+              </div>
+            );
+          })()}
+          {wfExpanded ? (
+            <div className="flex flex-col items-center gap-0.5 min-w-0 w-full">
+              <p className="text-[8px] text-[#8F8883] truncate uppercase tracking-wide w-full text-center">{activeTrack?.artist ?? ""}</p>
+              <p className="text-[10px] font-semibold text-[#DCDAD8] truncate leading-tight w-full text-center">
+                {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#605A55] font-normal italic">sem faixa</span>}
+              </p>
+              {(activeTrack?.bpm || activeTrack?.key) && (
+                <div className="flex items-end gap-2.5 mt-1">
+                  {activeTrack?.bpm && (
+                    <div className="flex flex-col items-center leading-none">
+                      <span className="text-[22px] font-mono text-[#C97B40] font-bold tabular-nums leading-none">{parseFloat(activeTrack.bpm).toFixed(0)}</span>
+                      <span className="text-[8px] text-[#756D67] uppercase tracking-widest mt-0.5">bpm</span>
+                    </div>
+                  )}
+                  {activeTrack?.key && (
+                    <div className="flex flex-col items-center leading-none">
+                      <span className="text-[16px] font-mono font-bold text-[#8F8883] leading-none">{activeTrack.key}</span>
+                      <span className="text-[8px] text-[#756D67] uppercase tracking-widest mt-0.5">key</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold text-[#DCDAD8] truncate leading-tight">
+                {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#605A55] font-normal italic">sem faixa</span>}
+              </p>
+              <p className="text-[8px] text-[#8F8883] truncate uppercase tracking-wide">{activeTrack?.artist ?? ""}</p>
+            </div>
+          )}
+        </div>
 
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold text-[#DCDAD8] truncate leading-tight tracking-[-0.01em]">
-              {activeTrack?.title ?? activeTrack?.filename ?? <span className="text-[#605A55] font-normal italic">sem faixa</span>}
-            </p>
-            <p className="text-[9px] text-[#8F8883] truncate leading-none mt-[3px] tracking-wide uppercase">
-              {activeTrack?.artist ?? ""}
-            </p>
+        <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
+
+        {/* Transport + Volume */}
+        <div className="flex flex-col items-center justify-center gap-5 px-4 shrink-0" style={{ minWidth: 130 }}>
+          {/* Botões */}
+          <div className="flex items-center gap-3">
+            <button onClick={() => skipTrack(-1)} disabled={!activeTrack} className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="1.5" height="10" rx="0.5"/><path d="M10.5 1.5L4 6l6.5 4.5V1.5z"/></svg>
+            </button>
+            <button onClick={togglePlay} disabled={!activeTrack}
+              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 disabled:opacity-25 ${isPlaying ? "bg-[#D95340] shadow-[0_0_10px_rgba(217,83,64,0.35)]" : "bg-transparent border border-[#D95340]/70 hover:border-[#D95340]"}`}>
+              {isPlaying
+                ? <svg width="7" height="8" viewBox="0 0 8 9" fill="white"><rect x="0.5" y="0.5" width="2.5" height="8" rx="0.5"/><rect x="5" y="0.5" width="2.5" height="8" rx="0.5"/></svg>
+                : <svg width="7" height="8" viewBox="0 0 8 9" fill="#D95340" style={{ marginLeft: "1px" }}><path d="M1 0.5L7.5 4.5 1 8.5V0.5z"/></svg>
+              }
+            </button>
+            <button onClick={() => skipTrack(1)} disabled={!activeTrack} className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="9.5" y="1" width="1.5" height="10" rx="0.5"/><path d="M1.5 1.5L8 6 1.5 10.5V1.5z"/></svg>
+            </button>
+          </div>
+          {/* Volume — linha fina abaixo dos controles */}
+          <div className="flex items-center gap-1.5 w-full">
+            <button
+              onClick={() => { const v = volume > 0 ? 0 : 0.8; setVolume(v); if (gainNodeRef.current) gainNodeRef.current.gain.value = v; if (audioRef.current) audioRef.current.volume = v; }}
+              className="text-[#605A55] hover:text-[#8F8883] transition-colors shrink-0">
+              {volIcon}
+            </button>
+            <input
+              type="range" min={0} max={1} step={0.005}
+              value={volume}
+              onChange={(e) => { const v = parseFloat(e.target.value); setVolume(v); if (gainNodeRef.current) gainNodeRef.current.gain.value = v; if (audioRef.current) audioRef.current.volume = v; }}
+              className="volume-slider-horiz flex-1"
+              style={{ background: `linear-gradient(to right, #D95340 0%, #D95340 ${volume * 100}%, #2a2623 ${volume * 100}%, #2a2623 100%)` }}
+            />
           </div>
         </div>
 
-        {/* Separador */}
-        <div className="w-px h-6 bg-[#23201E] shrink-0" />
+        <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
 
-        {/* ── ZONA 2: Controles de transporte ──────────────────── */}
-        <div className="flex items-center gap-3.5 px-5 shrink-0">
-          <button onClick={() => skipTrack(-1)} disabled={!activeTrack}
-            className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <rect x="1" y="1" width="1.5" height="10" rx="0.5"/>
-              <path d="M10.5 1.5L4 6l6.5 4.5V1.5z"/>
-            </svg>
-          </button>
-
+        {/* ── Coluna CUE — card alto ──────────────────────────────────────── */}
+        <div className="flex items-stretch shrink-0 px-1.5 py-2" style={{ width: 76 }}>
           <button
-            onClick={togglePlay}
-            disabled={!activeTrack}
-            className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 disabled:opacity-25 ${
-              isPlaying
-                ? "bg-[#D95340] shadow-[0_0_12px_rgba(217,83,64,0.35)]"
-                : "bg-transparent border border-[#D95340]/70 hover:border-[#D95340] hover:bg-[#D95340]/8"
-            }`}
-          >
-            {isPlaying
-              ? <svg width="8" height="9" viewBox="0 0 8 9" fill="white">
-                  <rect x="0.5" y="0.5" width="2.5" height="8" rx="0.5"/>
-                  <rect x="5" y="0.5" width="2.5" height="8" rx="0.5"/>
-                </svg>
-              : <svg width="8" height="9" viewBox="0 0 8 9" fill="#D95340" style={{ marginLeft: "1px" }}>
-                  <path d="M1 0.5L7.5 4.5 1 8.5V0.5z"/>
-                </svg>
-            }
-          </button>
-
-          <button onClick={() => skipTrack(1)} disabled={!activeTrack}
-            className="text-[#756D67] hover:text-[#A8A3A0] disabled:opacity-25 transition-colors">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <rect x="9.5" y="1" width="1.5" height="10" rx="0.5"/>
-              <path d="M1.5 1.5L8 6 1.5 10.5V1.5z"/>
-            </svg>
+            onClick={() => canEditCues && activeTrack && setCueEditorTrack(activeTrack)}
+            title="Editar CUE Points"
+            disabled={!canEditCues}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all disabled:opacity-30"
+            style={{
+              background: (activeTrack?.cue_points?.length ?? 0) > 0 ? "rgba(180,30,30,0.35)" : "rgba(255,255,255,0.04)",
+              border: (activeTrack?.cue_points?.length ?? 0) > 0 ? "1px solid rgba(217,83,64,0.45)" : "1px solid rgba(255,255,255,0.10)",
+              color: (activeTrack?.cue_points?.length ?? 0) > 0 ? "#E08880" : "#605A55",
+            }}
+            onMouseEnter={(e) => { if (!canEditCues) return; e.currentTarget.style.background = "rgba(217,83,64,0.22)"; e.currentTarget.style.borderColor = "rgba(217,83,64,0.60)"; e.currentTarget.style.color = "#EDCFCC"; }}
+            onMouseLeave={(e) => {
+              const hasCues = (activeTrack?.cue_points?.length ?? 0) > 0;
+              e.currentTarget.style.background = hasCues ? "rgba(180,30,30,0.35)" : "rgba(255,255,255,0.04)";
+              e.currentTarget.style.borderColor = hasCues ? "rgba(217,83,64,0.45)" : "rgba(255,255,255,0.10)";
+              e.currentTarget.style.color = hasCues ? "#E08880" : "#605A55";
+            }}>
+            <span className="text-[15px] font-bold tracking-widest leading-none font-sans">CUE</span>
+            <span className="text-[15px] font-bold tracking-widest leading-none font-sans">POINT</span>
+            {(activeTrack?.cue_points?.length ?? 0) > 0 && (
+              <span className="text-[11px] font-mono opacity-60 mt-1">{activeTrack!.cue_points!.length}</span>
+            )}
+            {localCues.length > 0 && (
+              <div className="flex flex-wrap gap-0.5 justify-center mt-1.5">
+                {localCues.slice(0, 6).map((c, i) => (
+                  <button key={i} title={`CUE ${i+1}${c.label ? ` — ${c.label}` : ""} · ${fmt(c.position_ms / 1000)}`}
+                    onClick={(e) => { e.stopPropagation(); seekToMs(c.position_ms); }}
+                    className="w-3.5 h-3.5 rounded flex items-center justify-center text-white font-bold transition-opacity hover:opacity-80"
+                    style={{ background: c.color, fontSize: 6 }}>{i + 1}</button>
+                ))}
+              </div>
+            )}
           </button>
         </div>
 
-        {/* Separador */}
-        <div className="w-px h-6 bg-[#23201E] shrink-0" />
+        {/* ── Waveform progress ─────────────────────────────────────────── */}
+        <div className="flex-1 min-w-0 flex flex-col justify-center px-3"
+          style={{ paddingTop: wfExpanded ? 7 : 0, paddingBottom: wfExpanded ? 5 : 0, gap: wfExpanded ? 4 : 2 }}>
+          {/* Times */}
+          <div className="flex items-center justify-between pointer-events-none">
+            <span className="text-[11px] font-mono text-[#D95340] font-semibold tabular-nums">{fmt(progress)}</span>
+            <span className="text-[10px] font-mono text-[#605A55] tabular-nums">{fmt(duration)}</span>
+          </div>
 
-        {/* ── ZONA 3: Waveform seekável ─────────────────────────── */}
-        <div className="flex items-center gap-3 flex-1 min-w-0 px-5">
-          <span className="text-[10px] text-[#C97B40] font-mono tabular-nums shrink-0 w-7 text-right font-semibold">
-            {fmt(progress)}
-          </span>
-
-          <div
-            className="relative flex-1 cursor-pointer group"
-            style={{ height: 40 }}
-            onClick={handleSeek}
-            onMouseMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setHoverPct((e.clientX - rect.left) / rect.width);
-            }}
-            onMouseLeave={() => setHoverPct(null)}
-          >
-            <svg
-              width="100%"
-              height="100%"
-              viewBox={`0 0 ${VB_W} ${VB_H}`}
-              preserveAspectRatio="none"
-              className="absolute inset-0"
-            >
-              {displayBars.map((amp, i) => {
-                const barH   = Math.max(2, amp * (VB_H - 4));
-                const y      = (VB_H - barH) / 2;
-                const barPct = i / PLAYER_BARS;
-                const played  = pct > 0 && barPct < pct / 100;
-                const hovered = hoverPct !== null && barPct >= pct / 100 && barPct < hoverPct;
-                return (
-                  <rect
-                    key={i}
-                    x={i * BAR_STRIDE}
-                    y={y}
-                    width={BAR_W}
-                    height={barH}
-                    rx={0.6}
-                    fill="#D95340"
-                    opacity={
-                      played  ? 0.55 + amp * 0.45  :   // tocado → brilhante (já percorrido)
-                      hovered ? 0.25 + amp * 0.20  :   // hover na zona não tocada
-                      0.05 + amp * 0.12              // não tocado → escuro (a percorrer)
+          {/* SVG Waveform */}
+          <div className="relative rounded-sm overflow-hidden" style={{ height: wfH, transition: "height 0.2s ease" }}>
+            <svg ref={wfRef} width="100%" height="100%" viewBox={`0 0 ${VB_W} ${wfH}`} preserveAspectRatio="none"
+              className="absolute inset-0" style={{ cursor: "ew-resize" }}
+              onClick={handleWfClick}
+              onMouseDown={handleWfMouseDown}
+              onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHoverPct((e.clientX - r.left) / r.width); }}
+              onMouseLeave={() => setHoverPct(null)}>
+              {/* Beat grid — compassos com números */}
+              {wfExpanded && activeTrack?.bpm && duration > 0 && (() => {
+                const beatMs  = 60000 / parseFloat(activeTrack.bpm!);
+                const phaseMs = activeTrack.beat_phase_ms ?? 0;
+                const nodes: React.ReactNode[] = [];
+                let ms  = phaseMs % beatMs;
+                let measureNum = 0;
+                let idx = 0;
+                while (ms <= duration * 1000 && idx < 2000) {
+                  const beatIdx   = Math.round((ms - phaseMs) / beatMs);
+                  const isMeasure = ((beatIdx % 4) + 4) % 4 === 0;
+                  const isPhrase  = ((beatIdx % 16) + 16) % 16 === 0;
+                  if (isMeasure) {
+                    const x = ((ms / 1000 - winStart) / windowDur) * VB_W;
+                    nodes.push(
+                      <line key={`l${idx}`} x1={x} y1={0} x2={x} y2={wfH}
+                        stroke={isPhrase ? "rgba(201,123,64,0.50)" : "rgba(255,255,255,0.14)"}
+                        strokeWidth={isPhrase ? 1.2 : 0.7}
+                        vectorEffect="non-scaling-stroke" />
+                    );
+                    if (measureNum % 4 === 0 || isPhrase) {
+                      nodes.push(
+                        <text key={`t${idx}`} x={x + 2} y={wfH - 3}
+                          fill={isPhrase ? "rgba(201,123,64,0.65)" : "rgba(255,255,255,0.20)"}
+                          fontSize={7} fontFamily="monospace" style={{ pointerEvents: "none" }}>
+                          {measureNum + 1}
+                        </text>
+                      );
                     }
+                    measureNum++;
+                  }
+                  ms += beatMs;
+                  idx++;
+                }
+                return nodes;
+              })()}
+              {/* Transient strip — thin downward spikes from top (treble content) */}
+              {wfExpanded && displayBars.map((bar, i) => {
+                const transientZoneH = 12;
+                const spikeH = Math.max(0.5, bar.treble * transientZoneH);
+                const alpha = (0.35 + bar.treble * 0.55) * (0.4 + bar.amp * 0.6);
+                return (
+                  <line key={`tr${i}`}
+                    x1={i * BAR_STR + BAR_W / 2} y1={0}
+                    x2={i * BAR_STR + BAR_W / 2} y2={spikeH}
+                    stroke={`rgba(217,83,64,${alpha.toFixed(2)})`}
+                    strokeWidth={BAR_W}
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
                   />
                 );
               })}
+              {/* Bars — shifted down slightly to accommodate transient strip */}
+              {displayBars.map((bar, i) => {
+                const transientOffset = wfExpanded ? 12 : 0;
+                const availH = wfH - transientOffset;
+                const barH  = Math.max(wfExpanded ? 2 : 1.5, bar.amp * (availH - (wfExpanded ? 10 : 4)));
+                const midY  = transientOffset + availH / 2;
+                const y     = midY - barH / 2;
+                const barPos = (barStart + i * barStep) / PLAYER_BARS;
+                const barFrac = windowDur > 0 ? (barPos - winStart / duration) / (windowDur / duration) : barPos;
+                const played  = barFrac < winPct;
+                const hovered = hoverPct !== null && !played && barFrac < hoverPct;
+                return (
+                  <rect key={i} x={i * BAR_STR} y={y} width={BAR_W} height={barH} rx={0.3}
+                    fill={played ? "#D95340" : "#A8A3A0"}
+                    opacity={played ? 1 : hovered ? 0.75 + bar.amp * 0.15 : 0.55 + bar.amp * 0.25}
+                  />
+                );
+              })}
+              {/* Playhead */}
+              <line x1={winPct * VB_W} y1={0} x2={winPct * VB_W} y2={wfH} stroke="white" strokeWidth={1.5} opacity={0.65} />
             </svg>
 
-            {/* Live beat canvas — pulsa em cima das barras não tocadas */}
-            <canvas
-              ref={liveCanvasRef}
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              width={PLAYER_BARS * 4}
-              height={VB_H}
-            />
+            {/* Live canvas */}
+            <canvas ref={liveCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none"
+              width={PLAYER_BARS * 3} height={wfH} />
 
-            {/* Playhead — linha branca nítida */}
-            {pct > 0 && (
-              <div
-                className="absolute top-1 bottom-1 pointer-events-none rounded-full"
-                style={{
-                  left: `calc(${pct}% - 1px)`,
-                  width: "2px",
-                  background: "white",
-                  boxShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 2px white",
-                }}
-              />
-            )}
+            {/* CUE markers HTML overlay — tamanho fixo, sem distorção de SVG */}
+            {duration > 0 && localCues.map((cue, i) => {
+              const absPct = cue.position_ms / (duration * 1000);
+              if (absPct < 0 || absPct > 1) return null;
+              const TH = wfExpanded ? 10 : 8;
+              const TW = wfExpanded ? 5 : 4;
+              return (
+                <div key={i} className="absolute top-0 bottom-0"
+                  style={{ left: `${absPct * 100}%`, transform: "translateX(-50%)", width: 14, zIndex: 6, cursor: "pointer", pointerEvents: "auto" }}
+                  onClick={(e) => { e.stopPropagation(); seekToMs(cue.position_ms); }}>
+                  <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 0, height: 0, borderLeft: `${TW}px solid transparent`, borderRight: `${TW}px solid transparent`, borderTop: `${TH}px solid ${cue.color}`, opacity: 0.92 }} />
+                  <div style={{ position: "absolute", top: 1, left: "50%", transform: "translateX(-50%)", fontSize: wfExpanded ? 6 : 5, color: "white", fontFamily: "monospace", fontWeight: "bold", lineHeight: 1, pointerEvents: "none", userSelect: "none" }}>{i + 1}</div>
+                  <div style={{ position: "absolute", top: TH, left: "50%", transform: "translateX(-50%)", width: wfExpanded ? 1 : 0.8, bottom: 0, background: cue.color, opacity: 0.45 }} />
+                </div>
+              );
+            })}
 
             {/* Hover tooltip */}
             {hoverPct !== null && duration > 0 && (
-              <div
-                className="absolute bottom-full mb-1 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#1c1715] border border-white/[0.08] text-[9px] font-mono text-[#C2BEBC] pointer-events-none whitespace-nowrap z-10"
-                style={{ left: `${hoverPct * 100}%` }}
-              >
-                {fmt(hoverPct * duration)}
+              <div className="absolute bottom-full mb-0.5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[#1c1715] border border-white/[0.08] text-[8px] font-mono text-[#C2BEBC] pointer-events-none whitespace-nowrap z-10"
+                style={{ left: `${hoverPct * 100}%` }}>
+                {fmt(winStart + hoverPct * windowDur)}
               </div>
             )}
           </div>
 
-          <span className="text-[10px] text-[#C97B40] font-mono tabular-nums shrink-0 w-7 font-semibold">
-            {fmt(duration)}
-          </span>
-
-          {/* Volume inline — ícone + slider nativo (fluido, sem re-render no drag) */}
-          <div className="flex items-center gap-1.5 shrink-0 ml-1">
-            <button
-              onClick={() => {
-                const v = volume > 0 ? 0 : 0.8;
-                setVolume(v);
-                if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
-                if (audioRef.current) audioRef.current.volume = v;
-              }}
-              className="text-[#605A55] hover:text-[#8F8883] transition-colors"
-              title={`Volume: ${Math.round(volume * 100)}%`}
-            >
-              {volIcon}
-            </button>
-
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.005}
-              value={volume}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                setVolume(v);
-                if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
-                if (audioRef.current) audioRef.current.volume = v;
-              }}
-              className="volume-slider w-16 cursor-pointer"
-              title={`Volume: ${Math.round(volume * 100)}%`}
-              style={{
-                background: `linear-gradient(to right, #C97B40 0%, #C97B40 ${volume * 100}%, #2a2623 ${volume * 100}%, #2a2623 100%)`,
-              }}
-            />
-          </div>
         </div>
 
-        {/* Separador */}
-        <div className="w-px h-6 bg-[#23201E] shrink-0" />
 
-        {/* ── ZONA 4: BPM · Tom ────────────────────────────────── */}
-        <div className="flex items-center gap-3 pl-5 shrink-0">
-          {activeTrack?.bpm && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-mono tabular-nums text-[#C97B40] font-semibold">
-                {parseFloat(activeTrack.bpm).toFixed(0)}
-              </span>
-              <span className="text-[8px] text-[#605A55] uppercase tracking-widest">bpm</span>
+        {/* BPM · Key — só no compacto; expandido exibe no info esquerdo */}
+        {!wfExpanded && (activeTrack?.bpm || activeTrack?.key) && (
+          <>
+            <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
+            <div className="flex items-center gap-3 px-3 shrink-0">
+              {activeTrack?.bpm && (
+                <div className="flex flex-col items-center leading-none">
+                  <span className="text-[20px] font-mono text-[#C97B40] font-bold tabular-nums leading-none">{parseFloat(activeTrack.bpm).toFixed(0)}</span>
+                  <span className="text-[7px] text-[#4C4743] uppercase tracking-widest mt-0.5">bpm</span>
+                </div>
+              )}
+              {activeTrack?.key && (
+                <div className="flex flex-col items-center leading-none">
+                  <span className="text-[15px] font-mono font-bold text-[#8F8883] leading-none">{activeTrack.key}</span>
+                  <span className="text-[7px] text-[#4C4743] uppercase tracking-widest mt-0.5">key</span>
+                </div>
+              )}
             </div>
-          )}
-          {activeTrack?.key && (
-            <span className="text-[9px] font-mono font-bold text-[#8F8883]">
-              {activeTrack.key}
-            </span>
-          )}
-        </div>
+          </>
+        )}
+
+        {/* Zona reservada para o botão do agente AI (fixed bottom-[68px] right-4, w-12) */}
+        <div className="shrink-0" style={{ width: 72 }} />
 
       </div>
-    </div>
+
+    </>
   );
 }

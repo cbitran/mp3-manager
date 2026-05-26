@@ -9,6 +9,7 @@ const FILE_MANAGER = IS_WIN ? "Explorer" : "Finder";
 
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
+  onBrowse?: (path: string) => void;
   onAnalyzeBpmFolder?: (folderPath: string) => void;
   onEnrichFolder?: (folderPath: string) => void;
   onExportPlaylist?: (pl: Playlist) => void;
@@ -19,7 +20,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
@@ -292,28 +293,35 @@ export default function Sidebar({ onFolderSelect, onAnalyzeBpmFolder, onEnrichFo
             </span>
           </button>
           {devicesExpanded && volumes.map((v) => (
-            <button
-              key={v.path}
-              onClick={() => invoke("open_folder", { path: v.path }).catch(() => {})}
-              title={`Abrir no ${FILE_MANAGER}`}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors hover:bg-white/[0.04] group"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-[#605A55] shrink-0">
-                <rect x="1" y="3" width="10" height="7" rx="1.5"/>
-                <path d="M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/>
-                <circle cx="9" cy="6.5" r=".8" fill="currentColor" stroke="none"/>
-              </svg>
-              <span className="text-[11px] text-[#8F8883] group-hover:text-[#C2BEBC] transition-colors truncate">{v.name}</span>
-              <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" className="text-[#4C4743] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-                <path d="M2 8L8 2M5 2h3v3"/>
-              </svg>
-            </button>
+            <div key={v.path} className="flex items-center group">
+              <button
+                onClick={() => onBrowse ? onBrowse(v.path) : invoke("open_folder", { path: v.path }).catch(() => {})}
+                title={v.name}
+                className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-l-md text-left transition-colors hover:bg-white/[0.04]"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-[#605A55] shrink-0">
+                  <rect x="1" y="3" width="10" height="7" rx="1.5"/>
+                  <path d="M4 3V2a1 1 0 011-1h2a1 1 0 011 1v1"/>
+                  <circle cx="9" cy="6.5" r=".8" fill="currentColor" stroke="none"/>
+                </svg>
+                <span className="text-[11px] text-[#8F8883] group-hover:text-[#C2BEBC] transition-colors truncate">{v.name}</span>
+              </button>
+              <button
+                onClick={() => invoke("open_folder", { path: v.path }).catch(() => {})}
+                title={`Abrir no ${FILE_MANAGER}`}
+                className="px-1.5 py-1.5 rounded-r-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/[0.04]"
+              >
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" className="text-[#4C4743]">
+                  <path d="M2 8L8 2M5 2h3v3"/>
+                </svg>
+              </button>
+            </div>
           ))}
         </div>
       )}
 
       {/* Footer stats */}
-      <div className="mt-auto px-4 py-3 border-t border-white/[0.06]">
+      <div className="mt-auto px-4 py-3">
         <p className="text-[11px] text-[#8F8883]">
           {t("sidebar.tracksCount", { count: tracks.length })}
         </p>

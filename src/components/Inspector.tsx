@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
@@ -74,6 +74,44 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
   const [coverDataUrl, setCoverDataUrl]   = useState<string | null>(null);
 
   const isVinylPlaying = playerTrackId === first?.id && isPlayingGlobal;
+  const bastaoRef   = useRef<HTMLDivElement>(null);
+  const discTimeRef = useRef<HTMLDivElement>(null);
+  const bastaoRafRef = useRef<number>(0);
+
+  // Bastão + info overlay — rAF com interpolação de tempo real (60fps suave)
+  useEffect(() => {
+    cancelAnimationFrame(bastaoRafRef.current);
+    let lastPP = useAppStore.getState().playerProgress;
+    let lastPPTime = performance.now();
+
+    function fmtDec(s: number) {
+      return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}.${Math.floor((s % 1) * 10)}`;
+    }
+    function fmt(s: number) {
+      return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    }
+
+    function tick(now: DOMHighResTimeStamp) {
+      const { playerProgress: pp, playerDuration: pd, isPlayingGlobal: playing } = useAppStore.getState();
+      if (pp !== lastPP) { lastPP = pp; lastPPTime = now; }
+      const interpolated = playing ? lastPP + (now - lastPPTime) / 1000 : lastPP;
+
+      if (bastaoRef.current) {
+        const angle = (interpolated / (60 / 33.33) * 360) % 360;
+        bastaoRef.current.style.transform = `rotate(${angle}deg)`;
+      }
+      if (discTimeRef.current && pd > 0) {
+        const remain = Math.max(0, pd - interpolated);
+        const els = discTimeRef.current.children;
+        if (els[0]) els[0].textContent = fmtDec(interpolated);
+        if (els[1]) els[1].textContent = `-${fmt(remain)}`;
+      }
+      bastaoRafRef.current = requestAnimationFrame(tick);
+    }
+
+    tick(performance.now());
+    return () => cancelAnimationFrame(bastaoRafRef.current);
+  }, [isVinylPlaying]);
 
   useEffect(() => {
     if (!first) return;
@@ -335,7 +373,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 className="absolute inset-0 rounded-full overflow-hidden"
                 style={{
                   background: "#100e0d",
-                  animation: isVinylPlaying ? "vinyl-spin 4s linear infinite" : undefined,
+                  animation: isVinylPlaying ? "vinyl-spin 1.8s linear infinite" : undefined,
                 }}
               >
                 {/* Ranhuras SVG — alta visibilidade */}
@@ -382,6 +420,30 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 />
               </div>
 
+              {/* Bastão Serato/Rekordbox — rotação 60fps via rAF, sem re-render React */}
+              <div
+                ref={bastaoRef}
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  transformOrigin: "50% 50%",
+                  opacity: isVinylPlaying ? 1 : 0.3,
+                  transition: "opacity 0.4s ease",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "3.5%",
+                    left: "calc(50% - 2.5%)",
+                    width: "5%",
+                    height: "10%",
+                    background: "linear-gradient(180deg, #F5A868 0%, #C97B40 100%)",
+                    borderRadius: "99px",
+                    boxShadow: "0 0 10px rgba(233,146,76,0.7)",
+                  }}
+                />
+              </div>
+
               {/* Reflexo estático */}
               <div
                 className="absolute inset-0 rounded-full pointer-events-none"
@@ -389,6 +451,30 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                   background: "radial-gradient(ellipse at 32% 28%, rgba(255,255,255,0.07) 0%, transparent 52%)",
                 }}
               />
+
+              {/* Jog-wheel info overlay — BPM estático React, tempo via rAF ref */}
+              {isVinylPlaying && (
+                <div className="absolute inset-0 rounded-full pointer-events-none flex flex-col items-center justify-center gap-0"
+                  style={{ background: "radial-gradient(circle at center, rgba(0,0,0,0.55) 0%, transparent 72%)" }}>
+                  {first?.bpm && (
+                    <span className="font-mono font-bold tabular-nums"
+                      style={{ fontSize: "20px", color: "#FFFFFF", lineHeight: 1, textShadow: "0 0 8px rgba(0,0,0,0.9)" }}>
+                      {parseFloat(first.bpm).toFixed(1)}
+                    </span>
+                  )}
+                  {/* Tempo — atualizado pelo rAF, não pelo React state */}
+                  <div ref={discTimeRef} className="flex flex-col items-center mt-1">
+                    <span className="font-mono tabular-nums"
+                      style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", textShadow: "0 0 6px rgba(0,0,0,0.9)" }}>
+                      0:00.0
+                    </span>
+                    <span className="font-mono tabular-nums"
+                      style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", textShadow: "0 0 6px rgba(0,0,0,0.9)" }}>
+                      -0:00
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Sombra e brilho coral quando tocando */}
               <div

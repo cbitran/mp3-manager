@@ -32,7 +32,7 @@
       "shortcuts": "Atalhos",
       "license": "Licença",
       "language": "Idioma",
-      "accessibility": "Acessibilidade"
+      "accessibility": "Acesso"
     },
     "accessibility": {
       "fontSize": "Tamanho da Fonte",
@@ -81,9 +81,10 @@
       "visibility": "Visibilidade das colunas",
       "showAll": "Mostrar todas",
       "resetDefault": "Restaurar padrão",
+      "colTitle": "Título",
       "colAlbum": "Álbum",
       "colGenre": "Gênero",
-      "colArtist": "Artista standalone",
+      "colArtist": "Artista",
       "colYear": "Ano",
       "colWave": "Onda",
       "colStatus": "Status ●",

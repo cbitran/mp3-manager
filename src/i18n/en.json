@@ -32,7 +32,7 @@
       "shortcuts": "Shortcuts",
       "license": "License",
       "language": "Language",
-      "accessibility": "Accessibility"
+      "accessibility": "Access"
     },
     "accessibility": {
       "fontSize": "Font Size",
@@ -81,9 +81,10 @@
       "visibility": "Column visibility",
       "showAll": "Show all",
       "resetDefault": "Reset to default",
+      "colTitle": "Title",
       "colAlbum": "Album",
       "colGenre": "Genre",
-      "colArtist": "Artist (standalone)",
+      "colArtist": "Artist",
       "colYear": "Year",
       "colWave": "Waveform",
       "colStatus": "Status ●",

@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "./store";
 import TrackTable from "./components/TrackTable";
 import Inspector from "./components/Inspector";
+import CuePointsModal from "./components/CuePointsModal";
 import Sidebar from "./components/Sidebar";
 import MiniPlayer from "./components/MiniPlayer";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
@@ -30,6 +31,7 @@ import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
 import VideoPlayerModal from "./components/VideoPlayerModal";
 import EnrichResultModal from "./components/EnrichResultModal";
 import AIAssistant from "./components/AIAssistant";
+import FolderBrowser from "./components/FolderBrowser";
 import NewTracksModal from "./components/NewTracksModal";
 import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
 import CreatePlaylistModal from "./components/CreatePlaylistModal";
@@ -142,6 +144,8 @@ export default function App() {
 
   const allTracks = useAppStore((s) => s.tracks);
   const playerTrackId = useAppStore((s) => s.playerTrackId);
+  const cueEditorTrack = useAppStore((s) => s.cueEditorTrack);
+  const setCueEditorTrack = useAppStore((s) => s.setCueEditorTrack);
   const activePlaylistId = useAppStore((s) => s.activePlaylistId);
   const playlists = useAppStore((s) => s.playlists);
   const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null;
@@ -303,6 +307,7 @@ export default function App() {
   const [tourPlayerVisible, setTourPlayerVisible] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
+  const [browsePath, setBrowsePath] = useState<string | null>(null);
   const isOnline = useIsOnline();
   // Fecha o banner automaticamente quando a conexão voltar
   useEffect(() => { if (isOnline) setShowOfflineBanner(false); }, [isOnline]);
@@ -326,6 +331,16 @@ export default function App() {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Garante largura mínima na abertura (macOS restaura tamanho salvo, ignorando tauri.conf)
+  useEffect(() => {
+    const MIN_W = 1340;
+    if (window.innerWidth < MIN_W) {
+      import("@tauri-apps/api/dpi").then(({ LogicalSize }) => {
+        getCurrentWindow().setSize(new LogicalSize(MIN_W, Math.max(window.innerHeight, 820))).catch(() => {});
+      }).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -363,7 +378,17 @@ export default function App() {
         setIsDragOver(false);
         const paths = event.payload.paths;
         if (paths.length > 0) {
-          scanFolder(paths[0]);
+          const droppedPath = paths[0];
+          const fileName = droppedPath.split("/").pop() ?? droppedPath;
+          const lastDot = fileName.lastIndexOf(".");
+          const ext = lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : "";
+          const ALLOWED = new Set(["mp3","flac","aiff","aif","wav","m4a","mp4","aac",
+            "ogg","opus","wma","mkv","avi","mov","wmv","webm","m4v","mpeg","mpg","mp2","wv"]);
+          if (ext && !ALLOWED.has(ext)) {
+            toast("Apenas arquivos de áudio/vídeo ou pastas são aceitos.", "info");
+            return;
+          }
+          scanFolder(droppedPath);
         }
       }
     }).then((fn) => { unlisten = fn; });
@@ -651,7 +676,6 @@ export default function App() {
           setEnrichDoneIds((prev) => new Set([...prev, track.id]));
           setTimeout(() => {
             setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
-            useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
           }, 700);
           setEnrichProgress({ done: i + 1, total: targets.length });
           if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 250));
@@ -716,7 +740,6 @@ export default function App() {
           setEnrichDoneIds((prev) => new Set([...prev, track.id]));
           setTimeout(() => {
             setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
-            useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
           }, 700);
           setEnrichProgress({ done: i + 1, total: targets.length });
           if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 350));
@@ -864,7 +887,6 @@ export default function App() {
         setEnrichDoneIds((prev) => new Set([...prev, track.id]));
         setTimeout(() => {
           setEnrichDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
-          useAppStore.setState((s) => ({ selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)) }));
         }, 700);
         setEnrichProgress({ done: i + 1, total: targets.length });
         if (i < targets.length - 1) await new Promise<void>((res) => setTimeout(res, 400));
@@ -966,9 +988,6 @@ export default function App() {
         setBpmDoneIds((prev) => new Set([...prev, track.id]));
         setTimeout(() => {
           setBpmDoneIds((prev) => { const n = new Set(prev); n.delete(track.id); return n; });
-          useAppStore.setState((s) => ({
-            selectedIds: new Set([...s.selectedIds].filter((id) => id !== track.id)),
-          }));
         }, 700);
 
         setBpmProgress({ done: i + 1, total: targets.length });
@@ -1356,8 +1375,13 @@ export default function App() {
         data-tauri-drag-region
         className="flex flex-col border-b border-white/[0.05] bg-[#23201E]"
         style={{ cursor: "default" }}
+        onMouseDown={(e) => {
+          const target = e.target as HTMLElement;
+          if (!target.closest('button, input, select, a, [role="button"]')) {
+            getCurrentWindow().startDragging().catch(() => {});
+          }
+        }}
         onDoubleClick={(e) => {
-          // Duplo clique em área vazia da toolbar → maximizar/restaurar (comportamento macOS)
           const target = e.target as HTMLElement;
           if (target.closest('button, input, select, a, [role="button"]')) return;
           getCurrentWindow().toggleMaximize().catch(() => {});
@@ -1602,10 +1626,6 @@ export default function App() {
               title={t("app.closePlaylist")}
             >×</button>
           </div>
-        ) : allTracks.length > 0 ? (
-          <span className="text-[11px] text-[#605A55] font-mono ml-1 whitespace-nowrap shrink-0">
-            {t("sidebar.tracksCount", { count: allTracks.length })}
-          </span>
         ) : null}
 
         {/* Filter chips */}
@@ -1956,11 +1976,12 @@ export default function App() {
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden border-b border-white/[0.07]">
         {showSidebar && (
           <div className="shrink-0 flex relative" style={{ width: sidebarWidth }}>
             <Sidebar
                 onFolderSelect={scanFolder}
+                onBrowse={(path) => setBrowsePath(path)}
                 onAnalyzeBpmFolder={(folderPath) => {
                   const folderTracks = allTracks.filter((t) => t.path.startsWith(folderPath + "/") || t.path.startsWith(folderPath + "\\"));
                   if (folderTracks.length === 0) { toast("Nenhuma faixa nesta pasta", "info"); return; }
@@ -1996,6 +2017,27 @@ export default function App() {
         )}
 
         <div className="flex flex-col flex-1 overflow-hidden">
+          {/* CUE Editor inline — substitui a tabela quando ativo */}
+          {cueEditorTrack && (
+            <CuePointsModal
+              inline
+              track={cueEditorTrack}
+              onClose={() => setCueEditorTrack(null)}
+              onSaved={(cues) => {
+                useAppStore.getState().updateTrack({ ...cueEditorTrack, cue_points: cues });
+                setCueEditorTrack(null);
+              }}
+            />
+          )}
+          {/* Folder Browser — substitui a tabela quando navegando */}
+          {!cueEditorTrack && browsePath && (
+            <FolderBrowser
+              rootPath={browsePath}
+              onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
+              onClose={() => setBrowsePath(null)}
+            />
+          )}
+          {!cueEditorTrack && !browsePath && <>
           {/* Abas Áudio / Vídeo — faixa centralizada abaixo do toolbar */}
           {allTracks.length > 0 && (
             <div className="flex items-center justify-center py-1.5 border-b border-white/[0.04] shrink-0">
@@ -2211,6 +2253,7 @@ export default function App() {
                 : panel;
             })()}
           </div>
+          </>}
         </div>
       </div>
 

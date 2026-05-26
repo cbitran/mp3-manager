@@ -32,6 +32,8 @@ export interface Track {
   comment?: string;
   total_tracks?: number;
   cue_points: CuePoint[];
+  beat_phase_ms?: number | null;
+  beat_anchors?: { beat_index: number; position_ms: number }[] | null;
 }
 
 export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
@@ -171,12 +173,29 @@ interface AppState {
 
   // Player
   playerTrackId: string | null;
+  playerTrackNonce: number;          // incrementa em cada setPlayerTrack p/ forçar re-render
   setPlayerTrack: (id: string | null) => void;
   isPlayingGlobal: boolean;
   setIsPlayingGlobal: (playing: boolean) => void;
   playerProgress: number;   // segundos atuais
   playerDuration: number;   // duração total
   setPlayerPlayback: (progress: number, duration: number) => void;
+  seekRequest: { ms: number; ts: number } | null;
+  requestSeek: (ms: number) => void;
+  oneShotRequest: { ms: number; ts: number } | null;
+  requestOneShot: (ms: number) => void;
+  scrubSeekRequest: { ms: number; ts: number } | null;
+  requestScrubSeek: (ms: number) => void;
+  playRequest: { trackId: string; ts: number } | null;
+  requestPlay: (trackId: string) => void;
+
+  cueEditorTrack: Track | null;
+  setCueEditorTrack: (track: Track | null) => void;
+
+  quantizeEnabled: boolean;
+  setQuantizeEnabled: (v: boolean) => void;
+  quantizeResolution: number;
+  setQuantizeResolution: (v: number) => void;
 
   isTrialActivated: () => boolean;
   isTrialExpired: () => boolean;
@@ -193,12 +212,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   tracks: [],
   selectedIds: new Set(),
   playerTrackId: null,
-  setPlayerTrack: (id) => set({ playerTrackId: id }),
+  playerTrackNonce: 0,
+  setPlayerTrack: (id) => set((s) => ({ playerTrackId: id, playerTrackNonce: s.playerTrackNonce + 1 })),
   isPlayingGlobal: false,
   setIsPlayingGlobal: (isPlayingGlobal) => set({ isPlayingGlobal }),
   playerProgress: 0,
   playerDuration: 0,
   setPlayerPlayback: (playerProgress, playerDuration) => set({ playerProgress, playerDuration }),
+  seekRequest: null,
+  requestSeek: (ms) => set({ seekRequest: { ms, ts: Date.now() } }),
+  oneShotRequest: null,
+  requestOneShot: (ms) => set({ oneShotRequest: { ms, ts: Date.now() } }),
+  scrubSeekRequest: null,
+  requestScrubSeek: (ms) => set({ scrubSeekRequest: { ms, ts: Date.now() } }),
+  playRequest: null,
+  requestPlay: (trackId) => set({ playRequest: { trackId, ts: Date.now() }, playerTrackId: trackId }),
+  cueEditorTrack: null,
+  setCueEditorTrack: (track) => set({ cueEditorTrack: track }),
+  quantizeEnabled: localStorage.getItem("tagwave_quantize") === "true",
+  setQuantizeEnabled: (v) => {
+    localStorage.setItem("tagwave_quantize", String(v));
+    set({ quantizeEnabled: v });
+  },
+  quantizeResolution: parseInt(localStorage.getItem("tagwave_quantize_res") ?? "4", 10),
+  setQuantizeResolution: (v) => {
+    localStorage.setItem("tagwave_quantize_res", String(v));
+    set({ quantizeResolution: v });
+  },
   filterTab: "all",
   genreFilter: null,
   searchQuery: "",

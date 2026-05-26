@@ -29,9 +29,9 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   } = useAppStore();
 
   const COLUMN_ORDER: { id: string; label: string }[] = [
+    { id: "title_artist",  label: t("settings.columns.colTitle")    },
     { id: "album",         label: t("settings.columns.colAlbum")    },
     { id: "genre",         label: t("settings.columns.colGenre")    },
-    { id: "artist",        label: t("settings.columns.colArtist")   },
     { id: "year_col",      label: t("settings.columns.colYear")     },
     { id: "waveform",      label: t("settings.columns.colWave")     },
     { id: "status",        label: t("settings.columns.colStatus")   },
@@ -41,6 +41,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     { id: "cue_points",    label: t("settings.columns.colCue")      },
     { id: "duration_secs", label: t("settings.columns.colDuration") },
     { id: "file_size",     label: t("settings.columns.colSize")     },
+    { id: "bitrate",       label: t("settings.columns.colBitrate")  },
+    { id: "comment",       label: t("settings.columns.colComment")  },
   ];
 
   const DJ_OPTIONS = DJ_OPTION_IDS.map((id) => ({
@@ -138,7 +140,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     >
       <div
         className="relative flex flex-col rounded-xl shadow-2xl overflow-hidden bg-[#1c1715] border border-white/[0.08]"
-        style={{ width: 580, maxHeight: "82vh" }}
+        style={{ width: 640, maxHeight: "82vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -158,12 +160,12 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Tabs */}
-        <div className="flex px-5 border-b border-white/[0.06] overflow-x-auto">
+        <div className="flex px-4 border-b border-white/[0.06] overflow-x-auto">
           {TABS.map((tb) => (
             <button
               key={tb.id}
               onClick={() => setTab(tb.id)}
-              className={`px-4 py-3 text-[12px] font-semibold transition-colors border-b-2 -mb-px whitespace-nowrap ${
+              className={`px-2.5 pt-3 pb-[14px] text-[11px] font-semibold transition-colors border-b-2 -mb-px whitespace-nowrap ${
                 tab === tb.id
                   ? "text-[#D95340] border-[#D95340]"
                   : "text-[#605A55] border-transparent hover:text-[#8F8883]"

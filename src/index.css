@@ -393,7 +393,48 @@ html[data-theme="light"] input[type="checkbox"]:hover {
   background: rgba(0,0,0,0.06);
 }
 
-/* ── Volume slider nativo (MiniPlayer) ───────────────────────────────────── */
+/* ── Volume slider horizontal fino (MiniPlayer) ──────────────────────────── */
+.volume-slider-horiz {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  border-radius: 9999px;
+  outline: none;
+  border: none;
+  cursor: pointer;
+}
+.volume-slider-horiz::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #D95340;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(217,83,64,0.45);
+  transition: transform 0.1s, box-shadow 0.1s;
+  margin-top: -3.5px;
+}
+.volume-slider-horiz::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 7px rgba(217,83,64,0.7);
+}
+.volume-slider-horiz::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #D95340;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(217,83,64,0.45);
+}
+.volume-slider-horiz::-moz-range-track {
+  height: 2px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+/* ── Volume slider nativo legado (mantido por compatibilidade) ───────────── */
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -408,23 +449,23 @@ html[data-theme="light"] input[type="checkbox"]:hover {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: #C97B40;
+  background: #D95340;
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(201,123,64,0.5);
+  box-shadow: 0 0 4px rgba(217,83,64,0.45);
   transition: transform 0.1s, box-shadow 0.1s;
 }
 .volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 8px rgba(201,123,64,0.7);
+  box-shadow: 0 0 8px rgba(217,83,64,0.7);
 }
 .volume-slider::-moz-range-thumb {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: #C97B40;
+  background: #D95340;
   border: none;
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(201,123,64,0.5);
+  box-shadow: 0 0 4px rgba(217,83,64,0.45);
 }
 .volume-slider::-moz-range-track {
   height: 3px;
@@ -516,3 +557,13 @@ html[data-color="deuteranopia"] .hover\:text-\[\#E07364\]:hover  { color: #3B82F
 html[data-color="deuteranopia"] input[type="checkbox"]:checked   { background-color: #2563EB !important; border-color: #2563EB !important; }
 html[data-color="deuteranopia"] input[type="range"]              { accent-color: #2563EB !important; }
 html[data-color="deuteranopia"] ::selection                      { background: #2563EB; }
+
+/* ── Disco MiniPlayer ─────────────────────────────────────────── */
+@keyframes mini-disc-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.mini-disc-spin {
+  animation: mini-disc-spin 1.8s linear infinite;
+  transform-origin: center;
+}

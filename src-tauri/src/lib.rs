@@ -100,14 +100,50 @@ fn build_serato_markers2(cues: &[CuePoint]) -> Vec<u8> {
     payload
 }
 
+// ── CUE sidecar helpers (para formatos sem suporte a ID3) ───────────────────
+
+fn cue_sidecar_path(path: &Path) -> std::path::PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    let hash = format!("{:x}", hasher.finalize())[..24].to_string();
+    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    std::path::PathBuf::from(home).join(".tagwave").join("cues").join(format!("{}.json", hash))
+}
+
+fn load_cue_sidecar(path: &Path) -> Vec<CuePoint> {
+    let sp = cue_sidecar_path(path);
+    fs::read(&sp).ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn save_cue_sidecar(path: &Path, cues: &[CuePoint]) -> Result<(), String> {
+    let sp = cue_sidecar_path(path);
+    if let Some(parent) = sp.parent() { fs::create_dir_all(parent).ok(); }
+    let json = serde_json::to_vec(cues).map_err(|e| e.to_string())?;
+    fs::write(&sp, json).map_err(|e| e.to_string())
+}
+
+fn is_id3_format(ext: &str) -> bool {
+    matches!(ext, "mp3" | "aif" | "aiff")
+}
+
 #[tauri::command]
 fn get_cue_points(path: String) -> Vec<CuePoint> {
     let p = Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    if ext != "mp3" && ext != "aif" && ext != "aiff" { return Vec::new(); }
-    match id3::Tag::read_from_path(p) {
-        Ok(tag) => parse_serato_cue_points(&tag),
-        Err(_)  => Vec::new(),
+    if is_id3_format(&ext) {
+        match id3::Tag::read_from_path(p) {
+            Ok(tag) => {
+                let serato = parse_serato_cue_points(&tag);
+                if !serato.is_empty() { return serato; }
+                // fallback: sidecar (caso tenha sido salvo antes como sidecar)
+                load_cue_sidecar(p)
+            }
+            Err(_) => load_cue_sidecar(p),
+        }
+    } else {
+        load_cue_sidecar(p)
     }
 }
 
@@ -115,29 +151,26 @@ fn get_cue_points(path: String) -> Vec<CuePoint> {
 fn save_cue_points(path: String, cues: Vec<CuePoint>) -> Result<(), String> {
     let p = Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    if ext != "mp3" && ext != "aif" && ext != "aiff" {
-        return Err("Formato não suportado para escrita de CUE Points".to_string());
+
+    if is_id3_format(&ext) {
+        let mut tag = id3::Tag::read_from_path(p).unwrap_or_else(|_| id3::Tag::new());
+        tag.remove_encapsulated_object(Some("application/octet-stream"), Some(""), Some("Serato Markers2"), None::<&[u8]>);
+        if !cues.is_empty() {
+            let payload = build_serato_markers2(&cues);
+            let b64_bytes = base64::engine::general_purpose::STANDARD.encode(&payload).into_bytes();
+            tag.add_frame(id3::Frame::with_content("GEOB", id3::Content::EncapsulatedObject(
+                id3::frame::EncapsulatedObject {
+                    mime_type: "application/octet-stream".to_string(),
+                    filename: String::new(),
+                    description: "Serato Markers2".to_string(),
+                    data: b64_bytes,
+                }
+            )));
+        }
+        tag.write_to_path(p, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    } else {
+        save_cue_sidecar(p, &cues)?;
     }
-    let mut tag = id3::Tag::read_from_path(p).unwrap_or_else(|_| id3::Tag::new());
-
-    // Remove existing Serato Markers2 frame
-    tag.remove_encapsulated_object(Some("application/octet-stream"), Some(""), Some("Serato Markers2"), None::<&[u8]>);
-
-    if !cues.is_empty() {
-        let payload = build_serato_markers2(&cues);
-        let b64_data = base64::engine::general_purpose::STANDARD.encode(&payload);
-        let b64_bytes = b64_data.into_bytes();
-        tag.add_frame(id3::Frame::with_content("GEOB", id3::Content::EncapsulatedObject(
-            id3::frame::EncapsulatedObject {
-                mime_type: "application/octet-stream".to_string(),
-                filename: String::new(),
-                description: "Serato Markers2".to_string(),
-                data: b64_bytes,
-            }
-        )));
-    }
-
-    tag.write_to_path(p, id3::Version::Id3v24).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -170,6 +203,16 @@ pub struct Track {
     pub total_tracks: Option<u32>,
     #[serde(default)]
     pub cue_points: Vec<CuePoint>,
+    #[serde(default)]
+    pub beat_phase_ms: Option<f32>,
+    #[serde(default)]
+    pub beat_anchors: Option<Vec<BeatAnchor>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BeatAnchor {
+    pub beat_index: u32,
+    pub position_ms: f32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -219,12 +262,20 @@ fn read_track(path: &Path) -> Option<Track> {
     let track_number = tag.and_then(|t| t.track());
     let has_cover    = tag.map(|t| !t.pictures().is_empty()).unwrap_or(false);
 
-    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS — read via id3 crate for MP3/AIFF
-    let (bpm, key, rating, comment, total_tracks, cue_points) = if format == "MP3" || format == "AIFF" || format == "AIF" {
+    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS, BEAT_PHASE, BEAT_ANCHORS — read via id3 crate for MP3/AIFF
+    let (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors) = if format == "MP3" || format == "AIFF" || format == "AIF" {
         if let Ok(id3tag) = id3::Tag::read_from_path(path) {
             let bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
-                if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
-            }).filter(|s| !s.is_empty());
+                if let id3::Content::Text(t) = f.content() {
+                    let s = t.trim().to_string();
+                    // Valida que é numérico e dentro de faixa razoável (20–300 BPM)
+                    if s.parse::<f64>().map(|v| v >= 20.0 && v <= 300.0).unwrap_or(false) {
+                        Some(s)
+                    } else {
+                        None
+                    }
+                } else { None }
+            });
             let key = id3tag.frames().find(|f| f.id() == "TKEY").and_then(|f| {
                 if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
             }).filter(|s| !s.is_empty());
@@ -239,9 +290,15 @@ fn read_track(path: &Path) -> Option<Track> {
                 } else { None }
             });
             let cue_points = parse_serato_cue_points(&id3tag);
-            (bpm, key, rating, comment, total_tracks, cue_points)
+            let beat_phase_ms = id3tag.extended_texts()
+                .find(|e| e.description == "TAGWAVE_BEAT_PHASE")
+                .and_then(|e| e.value.parse::<f32>().ok());
+            let beat_anchors = id3tag.extended_texts()
+                .find(|e| e.description == "TAGWAVE_BEAT_ANCHORS")
+                .and_then(|e| serde_json::from_str::<Vec<BeatAnchor>>(&e.value).ok());
+            (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors)
         } else {
-            (None, None, None, None, None, Vec::new())
+            (None, None, None, None, None, Vec::new(), None, None)
         }
     } else {
         // For FLAC/OGG: BPM and KEY in Vorbis comments
@@ -252,7 +309,9 @@ fn read_track(path: &Path) -> Option<Track> {
         let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
         let total_tracks = tag.and_then(|t| t.track_total());
-        (bpm, key, None, comment, total_tracks, Vec::new())
+        // For non-ID3 formats, load beat_anchors from sidecar
+        let beat_anchors = load_beat_anchor_sidecar(path);
+        (bpm, key, None, comment, total_tracks, Vec::new(), None, beat_anchors)
     };
 
     let mut issues = Vec::new();
@@ -267,6 +326,7 @@ fn read_track(path: &Path) -> Option<Track> {
         title, artist, album, genre, year, track_number, bpm, key, rating,
         duration_secs, file_size_bytes, has_cover, cover_version: 0, issues,
         bitrate_kbps, sample_rate_hz, modified_at, comment, total_tracks, cue_points,
+        beat_phase_ms, beat_anchors,
     })
 }
 
@@ -515,6 +575,61 @@ fn list_subfolders(path: String) -> Result<Vec<String>, String> {
     Ok(subs)
 }
 
+#[derive(Serialize, Clone)]
+struct FsDirEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    has_subdirs: bool,
+    audio_count: u32,
+}
+
+#[tauri::command]
+fn list_dir_contents(path: String) -> Result<Vec<FsDirEntry>, String> {
+    let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
+    let mut result: Vec<FsDirEntry> = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') { continue; }
+        let entry_path = entry.path();
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            let mut has_subdirs = false;
+            let mut audio_count: u32 = 0;
+            if let Ok(sub_entries) = std::fs::read_dir(&entry_path) {
+                for sub in sub_entries.flatten() {
+                    let sub_name = sub.file_name().to_string_lossy().to_string();
+                    if sub_name.starts_with('.') { continue; }
+                    if sub.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        has_subdirs = true;
+                    } else {
+                        let is_audio = sub.path().extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| AUDIO_EXTENSIONS.iter().any(|&a| e.eq_ignore_ascii_case(a)))
+                            .unwrap_or(false);
+                        if is_audio { audio_count += 1; }
+                    }
+                }
+            }
+            result.push(FsDirEntry { name, path: entry_path.to_string_lossy().to_string(), is_dir: true, has_subdirs, audio_count });
+        } else {
+            let is_audio = entry_path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| AUDIO_EXTENSIONS.iter().any(|&a| e.eq_ignore_ascii_case(a)))
+                .unwrap_or(false);
+            if is_audio {
+                result.push(FsDirEntry { name, path: entry_path.to_string_lossy().to_string(), is_dir: false, has_subdirs: false, audio_count: 0 });
+            }
+        }
+    }
+    result.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+    Ok(result)
+}
+
 #[tauri::command]
 fn list_volumes() -> Vec<serde_json::Value> {
     #[cfg(target_os = "macos")]
@@ -761,77 +876,175 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
     Ok(Some(bpm))
 }
 
+// ── Waveform disk cache ───────────────────────────────────────────────────────
+
+fn wave_cache_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    std::path::PathBuf::from(home).join(".tagwave").join("wave_cache")
+}
+
+fn wave_cache_key(path: &str, bars: usize) -> Option<String> {
+    let mtime = std::fs::metadata(path).ok()?
+        .modified().ok()?
+        .duration_since(std::time::UNIX_EPOCH).ok()?
+        .as_secs();
+    let mut h = Sha256::new();
+    h.update(path.as_bytes());
+    h.update(mtime.to_le_bytes());
+    h.update(bars.to_le_bytes());
+    Some(format!("{:x}", h.finalize())[..24].to_string())
+}
+
+fn read_wave_cache(path: &str, bars: usize) -> Option<Vec<f32>> {
+    let key   = wave_cache_key(path, bars)?;
+    let bytes = std::fs::read(wave_cache_dir().join(format!("{}.bin", key))).ok()?;
+    if bytes.len() != bars * 3 * 4 { return None; }
+    Some(bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
+}
+
+fn write_wave_cache(path: &str, bars: usize, data: &[f32]) {
+    let Some(key) = wave_cache_key(path, bars) else { return };
+    let dir = wave_cache_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let bytes: Vec<u8> = data.iter().flat_map(|&f| f.to_le_bytes()).collect();
+    let _ = std::fs::write(dir.join(format!("{}.bin", key)), bytes);
+}
+
 // Retorna Vec de tamanho bars*3: [amp, bass, treble, ...]
-// Usa seek para ler apenas ~4 KB por barra — sem carregar o arquivo inteiro.
 #[tauri::command]
 fn generate_waveform_rgb(path: String, bars: usize) -> Result<Vec<f32>, String> {
-    use std::io::{Read, Seek, SeekFrom};
+    if bars == 0 { return Ok(vec![]); }
 
-    if bars == 0 {
-        return Ok(vec![]);
+    // Cache em disco — hit = microsegundos (sem decode de áudio)
+    if let Some(cached) = read_wave_cache(&path, bars) {
+        return Ok(cached);
     }
 
-    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-    let file_len = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())? as usize;
-
-    // Detectar e pular cabeçalho ID3 (primeiros 10 bytes)
-    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    let mut hdr = [0u8; 10];
-    let audio_start = if file.read(&mut hdr).ok() == Some(10) && &hdr[..3] == b"ID3" {
-        let sz = ((hdr[6] as usize & 0x7F) << 21)
-               | ((hdr[7] as usize & 0x7F) << 14)
-               | ((hdr[8] as usize & 0x7F) << 7)
-               | (hdr[9] as usize & 0x7F);
-        (10 + sz).min(file_len)
-    } else {
-        0
+    // Decodifica áudio real com symphonia → PCM mono f32
+    let result = match decode_pcm_mono(&path) {
+        Ok(samples) if samples.len() >= bars => {
+            build_waveform_rgb_from_pcm(&samples, bars)?
+        }
+        _ => {
+            // fallback: retorna forma neutra com variação sintética
+            vec![0.35f32, 0.5, 0.3].into_iter().cycle().take(bars * 3).collect()
+        }
     };
 
-    let audio_len = file_len.saturating_sub(audio_start);
-    if audio_len < bars {
-        return Ok(vec![0.3, 0.5, 0.5].into_iter().cycle().take(bars * 3).collect());
+    // Salva em disco para próximas chamadas (app restart, scroll)
+    write_wave_cache(&path, bars, &result);
+
+    Ok(result)
+}
+
+fn decode_pcm_mono(path: &str) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
+    decode_pcm_with_sr(path).map(|(s, _)| s)
+}
+
+// Returns (mono_samples, sample_rate_hz)
+fn decode_pcm_with_sr(path: &str) -> Result<(Vec<f32>, u32), Box<dyn std::error::Error + Send + Sync>> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+    use symphonia::core::errors::Error as SymphoniaError;
+
+    let file = std::fs::File::open(path)?;
+    let mss  = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
     }
 
-    // Lê SAMPLE_BYTES por barra via seek — nunca carrega o arquivo inteiro
-    const SAMPLE_BYTES: usize = 4096;
-    let bar_span = audio_len / bars;
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())?;
+
+    let mut format = probed.format;
+
+    let track = format.tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+        .ok_or("no audio track")?;
+
+    let track_id    = track.id;
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())?;
+
+    let mut mono: Vec<f32> = Vec::with_capacity((sample_rate as usize) * 60 * 5);
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(SymphoniaError::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(SymphoniaError::ResetRequired) => { decoder.reset(); continue; }
+            Err(_) => break,
+        };
+        if packet.track_id() != track_id { continue; }
+
+        let audio_buf = match decoder.decode(&packet) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        let spec = *audio_buf.spec();
+        let ch = spec.channels.count().max(1);
+        let mut sample_buf = SampleBuffer::<f32>::new(audio_buf.capacity() as u64, spec);
+        sample_buf.copy_interleaved_ref(audio_buf);
+        let samples = sample_buf.samples();
+
+        mono.extend(samples.chunks(ch).map(|c| c.iter().sum::<f32>() / ch as f32));
+    }
+
+    Ok((mono, sample_rate))
+}
+
+fn build_waveform_rgb_from_pcm(samples: &[f32], bars: usize) -> Result<Vec<f32>, String> {
+    let total = samples.len();
+    let spb   = (total / bars).max(1); // samples per bar
 
     let mut amps    = vec![0.0f32; bars];
     let mut basses  = vec![0.0f32; bars];
     let mut trebles = vec![0.0f32; bars];
-    let mut buf = vec![0u8; SAMPLE_BYTES];
 
     for i in 0..bars {
-        let pos = audio_start + i * bar_span;
-        if file.seek(SeekFrom::Start(pos as u64)).is_err() { continue; }
-        let n = file.read(&mut buf).unwrap_or(0);
-        if n < 2 { continue; }
-        let slice = &buf[..n];
+        let s = i * spb;
+        let e = ((i + 1) * spb).min(total);
+        let sl = &samples[s..e];
+        if sl.is_empty() { continue; }
 
-        let sum_abs: u64 = slice.iter()
-            .map(|&b| (b as i16 - 128).unsigned_abs() as u64)
-            .sum();
-        amps[i] = sum_abs as f32 / (n as f32 * 128.0);
+        // Amplitude: blend RMS + peak para boa dinâmica visual
+        let rms  = (sl.iter().map(|&x| x * x).sum::<f32>() / sl.len() as f32).sqrt();
+        let peak = sl.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
+        amps[i] = rms * 0.65 + peak * 0.35;
 
-        let dec_sum: f32 = slice.iter().step_by(8)
-            .map(|&b| { let v = (b as f32 - 128.0) / 128.0; v * v })
+        // Bass: energia de componentes lentos (sub-amostrado a ~100 samples)
+        let step = (sl.len() / 16).max(1);
+        let bass_sq: f32 = sl.chunks(step)
+            .map(|c| { let a = c.iter().sum::<f32>() / c.len() as f32; a * a })
             .sum();
-        let dec_n = (n / 8).max(1) as f32;
-        basses[i] = (dec_sum / dec_n).sqrt();
+        basses[i] = (bass_sq / ((sl.len() / step).max(1) as f32)).sqrt();
 
-        let diff_sq: f32 = slice.windows(2)
-            .map(|w| { let d = w[1] as f32 - w[0] as f32; d * d })
-            .sum();
-        trebles[i] = (diff_sq / (n - 1) as f32).sqrt() / 256.0;
+        // Treble: energia de variações rápidas (diferenças adjacentes)
+        let diff_sq: f32 = sl.windows(2).map(|w| { let d = w[1] - w[0]; d * d }).sum();
+        trebles[i] = (diff_sq / (sl.len().saturating_sub(1)).max(1) as f32).sqrt();
     }
 
+    // Normaliza canais individualmente
     let norm = |v: &mut Vec<f32>| {
         let mx = v.iter().cloned().fold(1e-9f32, f32::max);
-        v.iter_mut().for_each(|x| *x /= mx);
+        if mx > 1e-9 { v.iter_mut().for_each(|x| *x /= mx); }
     };
     norm(&mut amps);
     norm(&mut basses);
     norm(&mut trebles);
+
+    // Gamma 0.55 → expande a faixa dinâmica visualmente (partes silenciosas ficam mais visíveis)
+    amps.iter_mut().for_each(|a| *a = a.powf(0.55));
 
     let mut out = Vec::with_capacity(bars * 3);
     for i in 0..bars {
@@ -840,6 +1053,309 @@ fn generate_waveform_rgb(path: String, bars: usize) -> Result<Vec<f32>, String> 
         out.push(trebles[i]);
     }
     Ok(out)
+}
+
+// ── Structure Analysis (multi-band IIR) ───────────────────────────────────────
+
+// Discrete one-pole IIR low-pass: y[n] = (1-a)*y[n-1] + a*x[n]
+// alpha = 2π·fc / (2π·fc + SR)   (bilinear-transform approximation)
+#[inline]
+fn one_pole_lp(samples: &[f32], alpha: f32) -> Vec<f32> {
+    let mut out = Vec::with_capacity(samples.len());
+    let mut y = 0.0f32;
+    for &x in samples {
+        y = (1.0 - alpha) * y + alpha * x;
+        out.push(y);
+    }
+    out
+}
+
+// Returns bars * 6 floats: [sub_bass, bass, mid, treble, amp, onset]
+// Bands (IIR): sub_bass <80 Hz · bass 80-300 Hz · mid 300-2500 Hz · treble >2500 Hz
+fn build_structure_bands(samples: &[f32], bars: usize, sr: u32) -> Result<Vec<f32>, String> {
+    let sr_f = sr as f32;
+    let alpha = |fc: f32| -> f32 {
+        let w = 2.0 * std::f32::consts::PI * fc;
+        w / (w + sr_f)
+    };
+
+    let lp80   = one_pole_lp(samples, alpha(80.0));
+    let lp300  = one_pole_lp(samples, alpha(300.0));
+    let lp2500 = one_pole_lp(samples, alpha(2500.0));
+
+    let total = samples.len();
+    let spb   = (total / bars).max(1);
+
+    let mut sub_bass = vec![0.0f32; bars];
+    let mut bass_b   = vec![0.0f32; bars];
+    let mut mid_b    = vec![0.0f32; bars];
+    let mut treble_b = vec![0.0f32; bars];
+    let mut amp_b    = vec![0.0f32; bars];
+    let mut onset_b  = vec![0.0f32; bars];
+
+    let mut pe_sub = 0.0f32;
+    let mut pe_bas = 0.0f32;
+    let mut pe_mid = 0.0f32;
+    let mut pe_tr  = 0.0f32;
+
+    for i in 0..bars {
+        let s = i * spb;
+        let e = ((i + 1) * spb).min(total);
+        if s >= e { continue; }
+        let n = (e - s) as f32;
+
+        let rms = |v: &[f32]| -> f32 {
+            (v.iter().map(|&x| x * x).sum::<f32>() / n).sqrt()
+        };
+
+        let e_sub = rms(&lp80[s..e.min(lp80.len())]);
+        let e_bas = {
+            let sq: f32 = (s..e.min(lp300.len())).map(|j| { let v = lp300[j] - lp80[j]; v*v }).sum();
+            (sq / n).sqrt()
+        };
+        let e_mid = {
+            let sq: f32 = (s..e.min(lp2500.len())).map(|j| { let v = lp2500[j] - lp300[j]; v*v }).sum();
+            (sq / n).sqrt()
+        };
+        let e_tr = {
+            let sq: f32 = (s..e.min(lp2500.len())).map(|j| { let v = samples[j] - lp2500[j]; v*v }).sum();
+            (sq / n).sqrt()
+        };
+        let e_amp = rms(&samples[s..e]);
+
+        // Half-rectified multi-band flux (onset strength)
+        // Sub-bass onset weighted 2.5× → kick drum = most DJ-relevant transient
+        let onset = (e_sub - pe_sub).max(0.0) * 2.5
+                  + (e_bas - pe_bas).max(0.0) * 1.5
+                  + (e_mid - pe_mid).max(0.0) * 1.0
+                  + (e_tr  - pe_tr ).max(0.0) * 0.6;
+
+        sub_bass[i] = e_sub;
+        bass_b[i]   = e_bas;
+        mid_b[i]    = e_mid;
+        treble_b[i] = e_tr;
+        amp_b[i]    = e_amp;
+        onset_b[i]  = onset;
+
+        pe_sub = e_sub;
+        pe_bas = e_bas;
+        pe_mid = e_mid;
+        pe_tr  = e_tr;
+    }
+
+    let norm = |v: &mut Vec<f32>| {
+        let mx = v.iter().cloned().fold(1e-9f32, f32::max);
+        if mx > 1e-9 { v.iter_mut().for_each(|x| *x /= mx); }
+    };
+    norm(&mut sub_bass);
+    norm(&mut bass_b);
+    norm(&mut mid_b);
+    norm(&mut treble_b);
+    norm(&mut amp_b);
+    norm(&mut onset_b);
+
+    let mut out = Vec::with_capacity(bars * 6);
+    for i in 0..bars {
+        out.push(sub_bass[i]);
+        out.push(bass_b[i]);
+        out.push(mid_b[i]);
+        out.push(treble_b[i]);
+        out.push(amp_b[i]);
+        out.push(onset_b[i]);
+    }
+    Ok(out)
+}
+
+// ── Beat Grid Detection ───────────────────────────────────────────────────────
+
+fn detect_bpm_onset(onset: &[f32], fps: usize) -> f32 {
+    let n = onset.len();
+    let min_lag = ((fps as f32 * 60.0 / 200.0) as usize).max(1);
+    let max_lag = ((fps as f32 * 60.0 / 60.0) as usize).min(n.saturating_sub(1) / 4);
+    if min_lag >= max_lag { return 120.0; }
+    let mut best_lag = min_lag;
+    let mut best_corr = f32::NEG_INFINITY;
+    for lag in min_lag..=max_lag {
+        let corr: f32 = onset.iter().zip(&onset[lag..]).map(|(&a, &b)| a * b).sum();
+        if corr > best_corr { best_corr = corr; best_lag = lag; }
+    }
+    let raw_bpm = 60.0 * fps as f32 / best_lag as f32;
+    let mut bpm = raw_bpm;
+    while bpm < 60.0  { bpm *= 2.0; }
+    while bpm > 180.0 { bpm /= 2.0; }
+    (bpm * 2.0).round() / 2.0
+}
+
+fn gaussian_smooth_f32(arr: &[f32], sigma: f32) -> Vec<f32> {
+    let n = arr.len();
+    if n == 0 { return vec![]; }
+    let rad = (sigma * 3.0).ceil() as usize;
+    let inv2s2 = 1.0 / (2.0 * sigma * sigma);
+    let mut out = vec![0.0f32; n];
+    for i in 0..n {
+        let mut sum = 0.0f32;
+        let mut w   = 0.0f32;
+        let lo = i.saturating_sub(rad);
+        let hi = (i + rad).min(n - 1);
+        for j in lo..=hi {
+            let d = (i as i32 - j as i32) as f32;
+            let wt = (-d * d * inv2s2).exp();
+            sum += arr[j] * wt;
+            w   += wt;
+        }
+        out[i] = if w > 1e-9 { sum / w } else { 0.0 };
+    }
+    out
+}
+
+#[tauri::command]
+fn detect_beat_grid(path: String, hint_bpm: Option<f32>) -> Result<serde_json::Value, String> {
+    let (samples, sr) = decode_pcm_with_sr(&path)
+        .map_err(|e| format!("decode: {}", e))?;
+
+    let fallback_bpm = hint_bpm.filter(|&b| b >= 20.0 && b <= 250.0).unwrap_or(120.0);
+
+    if samples.len() < 4410 {
+        return Ok(serde_json::json!({ "bpm": fallback_bpm, "phase_ms": 0.0 }));
+    }
+
+    // Onset strength envelope at 100 fps
+    let fps: usize = 100;
+    let hop = (sr as usize / fps).max(1);
+    let frame_count = samples.len() / hop;
+
+    let energy: Vec<f32> = (0..frame_count).map(|i| {
+        let s = i * hop;
+        let e = ((i + 1) * hop).min(samples.len());
+        let sl = &samples[s..e];
+        if sl.is_empty() { return 0.0f32; }
+        (sl.iter().map(|&x| x * x).sum::<f32>() / sl.len() as f32).sqrt()
+    }).collect();
+
+    let mut onset = vec![0.0f32; frame_count];
+    for i in 2..frame_count {
+        onset[i] = (energy[i] - energy[i - 1]).max(0.0)
+                 + (energy[i] - energy[i - 2]).max(0.0) * 0.5;
+    }
+    let max_onset = onset.iter().cloned().fold(1e-9f32, f32::max);
+    if max_onset > 1e-9 { onset.iter_mut().for_each(|x| *x /= max_onset); }
+
+    // BPM: use hint if provided, otherwise auto-detect
+    let bpm = if let Some(h) = hint_bpm.filter(|&b| b >= 20.0 && b <= 250.0) {
+        h
+    } else {
+        detect_bpm_onset(&onset, fps)
+    };
+
+    // Phase detection: find offset (within one beat period) that maximizes onset energy
+    let period = (fps as f32 * 60.0 / bpm).round() as usize;
+    if period == 0 {
+        return Ok(serde_json::json!({ "bpm": bpm, "phase_ms": 0.0 }));
+    }
+
+    // Sum onset values at each possible phase, looking at the first 32 beats
+    let search_end = (period * 32).min(frame_count);
+    let mut phase_scores = vec![0.0f32; period];
+    for i in 0..search_end {
+        phase_scores[i % period] += onset[i];
+    }
+
+    let smoothed = gaussian_smooth_f32(&phase_scores, (period as f32 * 0.03).max(1.0));
+
+    let best_phase = smoothed.iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+
+    let phase_ms = (best_phase as f32 / fps as f32) * 1000.0;
+
+    Ok(serde_json::json!({ "bpm": bpm, "phase_ms": phase_ms }))
+}
+
+#[tauri::command]
+fn save_beat_grid(path: String, phase_ms: f32) -> Result<(), String> {
+    let ext = std::path::Path::new(&path)
+        .extension().and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase()).unwrap_or_default();
+    if ext != "mp3" && ext != "aiff" && ext != "aif" { return Ok(()); }
+
+    let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+    tag.remove_extended_text(Some("TAGWAVE_BEAT_PHASE"), None);
+    tag.add_frame(id3::frame::ExtendedText {
+        description: "TAGWAVE_BEAT_PHASE".to_string(),
+        value: format!("{:.2}", phase_ms),
+    });
+    ensure_writable(&path);
+    tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+}
+
+// ── Beat Anchors ──────────────────────────────────────────────────────────────
+
+fn beat_anchor_sidecar_path(path: &Path) -> std::path::PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    let hash = format!("{:x}", hasher.finalize())[..24].to_string();
+    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    std::path::PathBuf::from(home).join(".tagwave").join("cues").join(format!("{}_anchors.json", hash))
+}
+
+fn load_beat_anchor_sidecar(path: &Path) -> Option<Vec<BeatAnchor>> {
+    let sp = beat_anchor_sidecar_path(path);
+    fs::read(&sp).ok().and_then(|b| serde_json::from_slice(&b).ok())
+}
+
+#[tauri::command]
+fn save_beat_anchors(path: String, anchors: Vec<BeatAnchor>) -> Result<(), String> {
+    let p = Path::new(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+    if is_id3_format(&ext) {
+        let mut tag = id3::Tag::read_from_path(p).unwrap_or_else(|_| id3::Tag::new());
+        tag.remove_extended_text(Some("TAGWAVE_BEAT_ANCHORS"), None);
+        if !anchors.is_empty() {
+            let json = serde_json::to_string(&anchors).map_err(|e| e.to_string())?;
+            tag.add_frame(id3::frame::ExtendedText {
+                description: "TAGWAVE_BEAT_ANCHORS".to_string(),
+                value: json,
+            });
+        }
+        ensure_writable(&path);
+        tag.write_to_path(p, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    } else {
+        let sp = beat_anchor_sidecar_path(p);
+        if let Some(parent) = sp.parent() { fs::create_dir_all(parent).ok(); }
+        let json = serde_json::to_vec(&anchors).map_err(|e| e.to_string())?;
+        fs::write(&sp, json).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn load_beat_anchors(path: String) -> Vec<BeatAnchor> {
+    let p = Path::new(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+    if is_id3_format(&ext) {
+        if let Ok(tag) = id3::Tag::read_from_path(p) {
+            if let Some(anchors) = tag.extended_texts()
+                .find(|e| e.description == "TAGWAVE_BEAT_ANCHORS")
+                .and_then(|e| serde_json::from_str::<Vec<BeatAnchor>>(&e.value).ok())
+            {
+                return anchors;
+            }
+        }
+    }
+    load_beat_anchor_sidecar(p).unwrap_or_default()
+}
+
+#[tauri::command]
+fn analyze_structure_bands(path: String, bars: usize) -> Result<Vec<f32>, String> {
+    if bars == 0 { return Ok(vec![]); }
+    match decode_pcm_with_sr(&path) {
+        Ok((samples, sr)) if samples.len() >= 2 => build_structure_bands(&samples, bars, sr),
+        _ => Ok(vec![0.0f32; bars * 6]),
+    }
 }
 
 // ── Filename Cleanup ──────────────────────────────────────────────────────────
@@ -2156,10 +2672,16 @@ pub fn run() {
             find_new_files,
             scan_specific_files,
             list_volumes,
+            list_dir_contents,
             activate_license_key,
             check_license_status,
             get_cue_points,
             save_cue_points,
+            analyze_structure_bands,
+            detect_beat_grid,
+            save_beat_grid,
+            save_beat_anchors,
+            load_beat_anchors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
