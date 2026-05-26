@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { type WaveBar } from "../lib/waveformAnalyzer";
 import { loadWaveform, WAVEFORM_BARS } from "../lib/waveformCache";
 import { type Track, type CuePoint, useAppStore } from "../store";
@@ -135,11 +135,89 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
   const [isHoveringWf, setIsHoveringWf] = useState(false);
   const hoverRafRef  = useRef<number | null>(null);
 
-  const svgRef       = useRef<SVGSVGElement>(null);
-  const dragRef      = useRef<{ cueIdx: number } | null>(null);
-  const warpDragRef  = useRef<{ beatIndex: number } | null>(null);
-  const panMovedRef  = useRef(false);
-  const historyRef   = useRef<CuePoint[][]>([]);
+  const svgRef        = useRef<SVGSVGElement>(null);
+  const dragRef       = useRef<{ cueIdx: number } | null>(null);
+  const warpDragRef   = useRef<{ beatIndex: number } | null>(null);
+  const panMovedRef   = useRef(false);
+  const skipClickRef  = useRef(false); // bloqueia handleWaveformClick após retorno ao original
+  const historyRef    = useRef<CuePoint[][]>([]);
+
+  // ── Scrub audio estilo Serato ──────────────────────────────────────────────
+  // WebKit exige que AudioContext seja criado DENTRO de um gesto do usuário
+  // (mousedown) para iniciar no estado "running". Por isso, criamos preguiçosamente.
+  // O PCM é decodificado pelo Rust (22050 Hz mono f32-LE) e lido como Float32Array,
+  // evitando decodeAudioData assíncrono e zero latência no scrub.
+  const scrubPcmRef  = useRef<Float32Array | null>(null);
+  const scrubCtxRef  = useRef<AudioContext | null>(null);
+  const scrubGainRef = useRef<GainNode | null>(null);
+  const scrubBufRef  = useRef<AudioBuffer | null>(null);
+  const scrubNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const [scrubMs, setScrubMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    scrubPcmRef.current = null;
+    scrubBufRef.current = null;
+
+    invoke<string>("get_scrub_pcm", { path: track.path })
+      .then((pcmPath) => {
+        if (cancelled) return null;
+        return fetch(convertFileSrc(pcmPath)).then((r) => r.arrayBuffer());
+      })
+      .then((ab) => {
+        if (cancelled || !ab) return;
+        scrubPcmRef.current = new Float32Array(ab);
+        // Se o AudioContext já foi criado por um mousedown anterior, monta o buffer agora
+        buildScrubBuf();
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      try { scrubNodeRef.current?.stop(); } catch { /* */ }
+      scrubNodeRef.current = null;
+      scrubBufRef.current  = null;
+      scrubPcmRef.current  = null;
+      scrubCtxRef.current?.close().catch(() => {});
+      scrubCtxRef.current  = null;
+      scrubGainRef.current = null;
+    };
+  }, [track.path]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function buildScrubBuf() {
+    const ctx = scrubCtxRef.current;
+    const pcm = scrubPcmRef.current;
+    if (!ctx || !pcm || pcm.length === 0 || scrubBufRef.current) return;
+    const buf = ctx.createBuffer(1, pcm.length, 22050);
+    buf.copyToChannel(pcm, 0);
+    scrubBufRef.current = buf;
+  }
+
+  // Deve ser chamado de dentro do mousedown (gesto do usuário) para garantir "running"
+  function ensureAudioCtx() {
+    if (scrubCtxRef.current) return;
+    const ctx  = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.85;
+    gain.connect(ctx.destination);
+    scrubCtxRef.current  = ctx;
+    scrubGainRef.current = gain;
+    buildScrubBuf();
+  }
+
+  function playScrubAt(ms: number) {
+    const ctx  = scrubCtxRef.current;
+    const buf  = scrubBufRef.current;
+    const gain = scrubGainRef.current;
+    try { scrubNodeRef.current?.stop(); } catch { /* */ }
+    scrubNodeRef.current = null;
+    if (!ctx || !buf || !gain) return;
+    const node = ctx.createBufferSource();
+    node.buffer = buf;
+    node.connect(gain);
+    node.start(0, Math.max(0, Math.min(ms / 1000, buf.duration - 0.01)));
+    scrubNodeRef.current = node;
+  }
 
   function pushHistory() {
     const snap = cues.map((c) => ({ ...c }));
@@ -202,6 +280,7 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
   }
 
   function handleWaveformClick(e: React.MouseEvent<SVGSVGElement>) {
+    if (skipClickRef.current) { skipClickRef.current = false; return; }
     if (panMovedRef.current) { panMovedRef.current = false; return; }
     if (dragRef.current) return;
     if (warpDragRef.current) return;
@@ -275,51 +354,85 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
     window.addEventListener("mouseup", onUp);
   }, [duration, winStart, winEnd, track.path]);
 
-  // Arraste esquerdo com zoom > 1 ou botão do meio = pan; zoom = 1 = scrub
+  // Botão esquerdo = scrub (qualquer zoom); botão do meio = pan
   function handleWaveformMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0 && e.button !== 1) return;
-    const isPan = zoom > 1 || e.button === 1;
+    const isPan = e.button === 1;
     if (isPan) e.preventDefault();
-    const startX = e.clientX;
+    const startX      = e.clientX;
     const startCenter = winCenter;
     panMovedRef.current = false;
-    const wasAudioPaused = globalAudio.el?.paused ?? true;
 
-    const onMove = (ev: MouseEvent) => {
-      if (Math.abs(ev.clientX - startX) > 3) panMovedRef.current = true;
-      if (!panMovedRef.current) return;
-
-      if (isPan) {
+    if (isPan) {
+      // ── Pan via botão do meio ─────────────────────────────────
+      const onMove = (ev: MouseEvent) => {
+        if (Math.abs(ev.clientX - startX) > 3) panMovedRef.current = true;
+        if (!panMovedRef.current) return;
         const svg = svgRef.current;
         if (!svg) return;
         const w = svg.getBoundingClientRect().width;
         const dx = (ev.clientX - startX) / w;
         const winW = winEnd - winStart;
-        const newCenter = Math.max(winW / 2, Math.min(1 - winW / 2, startCenter - dx * winW * 2));
-        setWinCenter(newCenter);
-      } else {
-        // Scrub — seek direto no áudio, sem passar pelo store
-        const svg = svgRef.current;
-        if (!svg || duration <= 0) return;
-        const rect = svg.getBoundingClientRect();
-        const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-        const absFrac = winStart + ratio * (winEnd - winStart);
-        const rawMs = Math.round(absFrac * duration);
-        const ms = quantizeEnabled ? snapToBeat(rawMs) : rawMs;
-        setHoverMs(ms);
-        setIsHoveringWf(true);
-        if (globalAudio.el) {
-          globalAudio.el.currentTime = ms / 1000;
-          if (globalAudio.el.paused) globalAudio.el.play().catch(() => {});
-        }
-      }
+        setWinCenter(Math.max(winW / 2, Math.min(1 - winW / 2, startCenter - dx * winW * 2)));
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        setTimeout(() => { panMovedRef.current = false; }, 50);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      return;
+    }
+
+    // ── Scrub via botão esquerdo ───────────────────────────────
+    // Cria AudioContext dentro do mousedown (gesto do usuário) → WebKit inicia "running"
+    ensureAudioCtx();
+
+    const wasAudioPaused = globalAudio.el?.paused ?? true;
+    if (!wasAudioPaused) globalAudio.el?.pause();
+
+    // Posição original — para restaurar no mouseup sem arraste
+    const originalMs = (globalAudio.el?.currentTime ?? 0) * 1000;
+
+    // Preview imediato ao pressionar (antes de arrastar)
+    const clickedMs = xToMs(e.clientX);
+    if (globalAudio.el) globalAudio.el.currentTime = clickedMs / 1000;
+    setScrubMs(clickedMs);
+    playScrubAt(clickedMs);
+
+    const onMove = (ev: MouseEvent) => {
+      if (Math.abs(ev.clientX - startX) > 3) panMovedRef.current = true;
+      if (!panMovedRef.current) return;
+      const svg = svgRef.current;
+      if (!svg || duration <= 0) return;
+      const rect  = svg.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      const absFrac = winStart + ratio * (winEnd - winStart);
+      const rawMs   = Math.round(absFrac * duration);
+      const ms      = quantizeEnabled ? snapToBeat(rawMs) : rawMs;
+      setHoverMs(ms);
+      setIsHoveringWf(true);
+      setScrubMs(ms);
+      if (globalAudio.el) globalAudio.el.currentTime = ms / 1000;
+      playScrubAt(ms);
     };
+
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      // Pausa ao soltar se estava pausado antes do scrub
-      if (!isPan && wasAudioPaused && globalAudio.el && !globalAudio.el.paused) {
-        globalAudio.el.pause();
+      try { scrubNodeRef.current?.stop(); } catch { /* */ }
+      scrubNodeRef.current = null;
+      setScrubMs(null);
+
+      if (!panMovedRef.current) {
+        // Click sem arraste → retorna à posição original
+        skipClickRef.current = true;
+        if (globalAudio.el) globalAudio.el.currentTime = originalMs / 1000;
+        if (!wasAudioPaused && globalAudio.el) globalAudio.el.play().catch(() => {});
+      } else {
+        // Arrastou → mantém nova posição, retoma play se estava tocando
+        if (!wasAudioPaused && globalAudio.el) globalAudio.el.play().catch(() => {});
       }
       setTimeout(() => { panMovedRef.current = false; }, 50);
     };
@@ -521,7 +634,7 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
                 ))}
               </div>
               {zoom > 1 && (
-                <span className="text-[9px] ml-auto" style={{ color: "#3a3530" }}>Scroll para zoom · arraste para navegar</span>
+                <span className="text-[9px] ml-auto" style={{ color: "#3a3530" }}>Scroll para zoom · botão do meio para navegar</span>
               )}
             </div>
             {/* Row 2: Quantize */}
@@ -596,7 +709,7 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
               viewBox={`0 0 ${VB_W} ${wfH}`}
               preserveAspectRatio="none"
               className="block"
-              style={{ cursor: zoom > 1 ? "grab" : (canEdit ? "crosshair" : "default") }}
+              style={{ cursor: canEdit ? "crosshair" : "default" }}
               onClick={canEdit ? handleWaveformClick : undefined}
               onMouseDown={handleWaveformMouseDown}
               onWheel={handleWheel}
@@ -651,9 +764,11 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
                 );
               })()}
 
-              {/* Playhead */}
-              {playerTrackId === track.id && duration > 0 && (() => {
-                const progFrac = playerProgress / (duration / 1000);
+              {/* Playhead — scrubMs durante scrub (imediato), playerProgress fora */}
+              {duration > 0 && (() => {
+                const posMs = scrubMs !== null ? scrubMs : (playerTrackId === track.id ? playerProgress * 1000 : null);
+                if (posMs === null) return null;
+                const progFrac = posMs / duration;
                 if (progFrac < winStart || progFrac > winEnd) return null;
                 const x = ((progFrac - winStart) / (winEnd - winStart)) * VB_W;
                 return (

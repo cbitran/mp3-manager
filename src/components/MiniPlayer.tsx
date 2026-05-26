@@ -593,7 +593,11 @@ export default function MiniPlayer() {
         {/* ── Coluna CUE — card alto ──────────────────────────────────────── */}
         <div className="flex items-stretch shrink-0 px-1.5 py-2" style={{ width: 76 }}>
           <button
-            onClick={() => canEditCues && activeTrack && setCueEditorTrack(activeTrack)}
+            onClick={() => {
+              if (!canEditCues || !activeTrack) return;
+              if (playerTrackId !== activeTrack.id) setPlayerTrack(activeTrack.id);
+              setCueEditorTrack(activeTrack);
+            }}
             title="Editar CUE Points"
             disabled={!canEditCues}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all disabled:opacity-30"

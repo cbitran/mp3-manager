@@ -910,6 +910,60 @@ fn write_wave_cache(path: &str, bars: usize, data: &[f32]) {
     let _ = std::fs::write(dir.join(format!("{}.bin", key)), bytes);
 }
 
+// ── Scrub PCM cache ───────────────────────────────────────────────────────────
+// Decodifica a faixa para PCM mono 22050 Hz f32-LE e salva em disco.
+// Retorna o caminho do arquivo de cache para que o TypeScript leia via fetch(convertFileSrc).
+// Cache hit = leitura de arquivo (ms); miss = decode completo (~1-3 s).
+
+const SCRUB_SR: u32 = 22050;
+
+fn pcm_cache_key(path: &str) -> Option<String> {
+    let mtime = std::fs::metadata(path).ok()?
+        .modified().ok()?
+        .duration_since(std::time::UNIX_EPOCH).ok()?
+        .as_secs();
+    let mut h = Sha256::new();
+    h.update(path.as_bytes());
+    h.update(mtime.to_le_bytes());
+    h.update(b"scrub_pcm_22050_v1");
+    Some(format!("{:x}", h.finalize())[..24].to_string())
+}
+
+#[tauri::command]
+fn get_scrub_pcm(path: String) -> Result<String, String> {
+    let cache_dir = wave_cache_dir();
+    let key = pcm_cache_key(&path).ok_or("cache key error")?;
+    let cache_path = cache_dir.join(format!("{}_pcm.bin", key));
+
+    if cache_path.exists() {
+        return Ok(cache_path.to_string_lossy().into_owned());
+    }
+
+    let (mono, sample_rate) = decode_pcm_with_sr(&path)
+        .map_err(|e| format!("decode: {}", e))?;
+
+    let resampled: Vec<f32> = if sample_rate == SCRUB_SR {
+        mono
+    } else {
+        let ratio = sample_rate as f64 / SCRUB_SR as f64;
+        let out_len = (mono.len() as f64 / ratio).floor() as usize;
+        (0..out_len).map(|i| {
+            let src_pos = i as f64 * ratio;
+            let src_i = src_pos as usize;
+            let frac = (src_pos - src_i as f64) as f32;
+            let a = mono.get(src_i).copied().unwrap_or(0.0);
+            let b = mono.get(src_i + 1).copied().unwrap_or(0.0);
+            a + (b - a) * frac
+        }).collect()
+    };
+
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let bytes: Vec<u8> = resampled.iter().flat_map(|&f| f.to_le_bytes()).collect();
+    std::fs::write(&cache_path, &bytes).map_err(|e| format!("write cache: {}", e))?;
+
+    Ok(cache_path.to_string_lossy().into_owned())
+}
+
 // Retorna Vec de tamanho bars*3: [amp, bass, treble, ...]
 #[tauri::command]
 fn generate_waveform_rgb(path: String, bars: usize) -> Result<Vec<f32>, String> {
@@ -2682,6 +2736,7 @@ pub fn run() {
             save_beat_grid,
             save_beat_anchors,
             load_beat_anchors,
+            get_scrub_pcm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
