@@ -38,7 +38,6 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
   async function apply() {
     setApplying(true);
     const targets = visible.filter((i) => selected.has(i.path));
-    console.log("[FilenameMetaPrompt] apply targets:", targets.map(t => ({ path: t.path, title: t.extractedTitle, artist: t.extractedArtist })));
     let saved = 0;
     for (const issue of targets) {
       const payload = {
@@ -49,10 +48,8 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
         trackNumber: null, totalTracks: null,
         bpm: null, key: null, rating: null, comment: null,
       };
-      console.log("[FilenameMetaPrompt] invoking save_tags:", payload);
       try {
         await invoke("save_tags", payload);
-        console.log("[FilenameMetaPrompt] save_tags OK para:", issue.path);
         saved++;
         onApplied(
           issue.path,
@@ -63,7 +60,6 @@ export default function FilenameMetaPrompt({ issues, onDismiss, onApplied }: Pro
         console.error("[FilenameMetaPrompt] save_tags FALHOU para:", issue.path, err);
       }
     }
-    console.log("[FilenameMetaPrompt] concluído:", saved, "de", targets.length, "salvas");
     setApplying(false);
     setDone(true);
     setTimeout(onDismiss, 1200);
