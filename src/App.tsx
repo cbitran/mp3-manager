@@ -968,16 +968,24 @@ export default function App() {
             const bpmStr = bpm % 1 === 0 ? String(bpm) : bpm.toFixed(1);
             // Sempre lê a versão mais recente da faixa para não sobrescrever campos enriquecidos
             const fresh = useAppStore.getState().tracks.find((t2) => t2.path === track.path) ?? track;
+            // Se a faixa não tem key, tenta obter do Spotify (credenciais padrão embutidas)
+            let resolvedKey = fresh.key ?? null;
+            if (!resolvedKey && (fresh.title || fresh.artist)) {
+              try {
+                const sp = await enrichTrackFull(fresh.title ?? fresh.filename, fresh.artist ?? "");
+                resolvedKey = sp?.features?.key ?? null;
+              } catch { /* sem key — não bloqueia */ }
+            }
             await invoke("save_tags", {
               path: fresh.path,
               title: fresh.title ?? null, artist: fresh.artist ?? null,
               album: fresh.album ?? null, genre: fresh.genre ?? null,
               year: fresh.year ?? null, trackNumber: fresh.track_number ?? null,
               totalTracks: fresh.total_tracks ?? null, bpm: bpmStr,
-              key: fresh.key ?? null, rating: fresh.rating ?? null,
+              key: resolvedKey, rating: fresh.rating ?? null,
               comment: fresh.comment ?? null,
             }).catch((e) => console.error("[bpm-analysis] save_tags:", e));
-            useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr });
+            useAppStore.getState().updateTrack({ ...fresh, bpm: bpmStr, key: resolvedKey ?? fresh.key });
             analyzed++;
           }
         } catch { /* pula faixas com erro */ }
