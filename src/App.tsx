@@ -27,6 +27,7 @@ import Onboarding, { shouldShowOnboarding } from "./components/Onboarding";
 import ProductTour, { shouldShowTour } from "./components/ProductTour";
 import Settings from "./components/Settings";
 import TrialInfoModal from "./components/TrialInfoModal";
+import UpdateModal from "./components/UpdateModal";
 import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
 import VideoPlayerModal from "./components/VideoPlayerModal";
 import EnrichResultModal from "./components/EnrichResultModal";
@@ -1203,10 +1204,17 @@ export default function App() {
 
   const [appLoading, setAppLoading] = useState<"startup" | "closing" | null>("startup");
   const [appVersion, setAppVersion] = useState("");
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showTrialInfo, setShowTrialInfo] = useState(false);
   const isSavingRef = useRef(false);
 
-  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+  useEffect(() => {
+    getVersion().then((v) => {
+      setAppVersion(v);
+      // Checa update 8 segundos após startup para não bloquear carregamento
+      setTimeout(() => setShowUpdateModal(true), 8000);
+    }).catch(() => {});
+  }, []);
 
   // Reabre o painel e troca para aba "Selecionado" quando o usuário seleciona uma faixa
   useEffect(() => {
@@ -2366,6 +2374,10 @@ export default function App() {
       )}
       <ToastContainer />
       <AIAssistant />
+
+      {showUpdateModal && appVersion && (
+        <UpdateModal currentVersion={appVersion} onClose={() => setShowUpdateModal(false)} />
+      )}
 
       {/* Modal de novas faixas detectadas */}
       {newTracksModal && (

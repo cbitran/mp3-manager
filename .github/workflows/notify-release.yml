@@ -1,0 +1,35 @@
+name: Notify Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send release email via Resend
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RELEASE_TAG:    ${{ github.ref_name }}
+          RELEASE_URL:    ${{ github.event.release.html_url }}
+          RELEASE_NAME:   ${{ github.event.release.name }}
+          RELEASE_BODY:   ${{ github.event.release.body }}
+        run: |
+          BODY_ESCAPED=$(echo "$RELEASE_BODY" | head -c 2000 | python3 -c "
+          import sys, json
+          text = sys.stdin.read()
+          lines = text.strip().split('\n')
+          html = '<br>'.join(lines)
+          print(json.dumps(html))
+          " | tr -d '"')
+
+          curl -s -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"TagWave <releases@updates.tagwave.app>\",
+              \"to\": [\"celio.bitran@gmail.com\"],
+              \"subject\": \"TagWave $RELEASE_TAG lançado\",
+              \"html\": \"<h2>TagWave $RELEASE_TAG</h2><p><a href='$RELEASE_URL'>Ver release e baixar</a></p><hr><p>$BODY_ESCAPED</p>\"
+            }"
