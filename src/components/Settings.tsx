@@ -10,7 +10,7 @@ import { DEFAULT_SHORTCUTS, formatShortcut, captureKey } from "../shortcuts";
 
 interface DjSoftwareInfo { id: string; name: string; installed: boolean; }
 
-type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts" | "language" | "accessibility";
+type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts" | "language" | "accessibility" | "privacy";
 
 const DJ_OPTION_IDS = ["serato", "rekordbox", "traktor", "vdj", "djay", "engine_dj", "none"] as const;
 
@@ -26,6 +26,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     activateLicense, isTrialActivated,
     daysElapsed, daysRemaining, tracksAnalyzed, tagsEnriched, estimatedTimeSaved,
     shortcutOverrides, setShortcutOverride, resetSingleShortcut, resetShortcutOverrides,
+    enrichmentOptIn, setEnrichmentOptIn, privacyAcceptedVersion,
   } = useAppStore();
 
   const COLUMN_ORDER: { id: string; label: string }[] = [
@@ -121,6 +122,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     { id: "language",     label: t("settings.tabs.language")     },
     { id: "accessibility",label: t("settings.tabs.accessibility")},
     { id: "license",      label: t("settings.tabs.license")      },
+    { id: "privacy",      label: "Privacidade"                   },
   ];
 
   const LANG_OPTIONS = [
@@ -612,6 +614,112 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* ── PRIVACIDADE ── */}
+          {tab === "privacy" && (
+            <div className="space-y-6">
+
+              {/* Enriquecimento */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-[#8F8883]">
+                  Enriquecimento de Metadados
+                </p>
+                <p className="text-[11px] text-[#4C4743] mb-3">
+                  Quando ativado, o TagWave envia título e artista para Spotify e iTunes
+                  para buscar BPM, tom e capas de álbum.
+                </p>
+                <label className="flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-colors hover:bg-white/[0.02]"
+                  style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#C2BEBC]">
+                      Permitir envio de metadados externos
+                    </p>
+                    <p className="text-[11px] text-[#4C4743] mt-0.5">
+                      Spotify Web API, Apple iTunes Search API, Last.fm
+                    </p>
+                  </div>
+                  <div
+                    onClick={() => setEnrichmentOptIn(!enrichmentOptIn)}
+                    className="shrink-0 rounded-full transition-colors relative cursor-pointer"
+                    style={{
+                      width: 32, height: 18,
+                      background: enrichmentOptIn ? "#D95340" : "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 left-0.5 rounded-full bg-white shadow transition-transform"
+                      style={{
+                        width: 14, height: 14,
+                        transform: enrichmentOptIn ? "translateX(14px)" : "translateX(0)",
+                      }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              {/* Dados enviados */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-3 text-[#8F8883]">
+                  Dados Enviados para Serviços Externos
+                </p>
+                <div className="space-y-2">
+                  {[
+                    { name: "Spotify Web API",          data: "Título, artista → BPM, tom, capa" },
+                    { name: "Apple iTunes Search API",  data: "Título, artista → metadados, capa" },
+                    { name: "Last.fm API",               data: "Artista → informações complementares" },
+                    { name: "LemonSqueezy",              data: "Chave de licença + ID anônimo da máquina" },
+                  ].map((row) => (
+                    <div key={row.name}
+                      className="flex items-start gap-3 px-3 py-2.5 rounded-lg"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#605A55] mt-1.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-semibold text-[#8F8883]">{row.name}</p>
+                        <p className="text-[10px] text-[#4C4743]">{row.data}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* O que não é coletado */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-3 text-[#8F8883]">
+                  O Que Nunca Sai do Seu Computador
+                </p>
+                <div className="space-y-1.5">
+                  {[
+                    "Arquivos de áudio (nunca enviados)",
+                    "Histórico de reprodução",
+                    "Arquivos pessoais ou de trabalho",
+                    "Telemetria ou analytics de uso",
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-2.5">
+                      <svg width="11" height="9" viewBox="0 0 11 9" fill="none" stroke="#5BA055" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="1 4.5 4 7.5 10 1.5"/>
+                      </svg>
+                      <span className="text-[11px] text-[#605A55]">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Aceite e contato */}
+              <div className="px-4 py-3 rounded-lg" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <p className="text-[11px] text-[#4C4743]">
+                  <span className="text-[#605A55] font-semibold">Aceite registrado:</span>{" "}
+                  {privacyAcceptedVersion
+                    ? `Versão ${privacyAcceptedVersion} · LGPD — Lei 13.709/2018`
+                    : "Pendente"}
+                </p>
+                <p className="text-[11px] text-[#4C4743] mt-1">
+                  <span className="text-[#605A55] font-semibold">Contato / exclusão de dados:</span>{" "}
+                  celio.bitran@gmail.com
+                </p>
               </div>
 
             </div>

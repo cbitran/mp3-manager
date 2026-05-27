@@ -2694,15 +2694,22 @@ fn scan_specific_files(paths: Vec<String>) -> Vec<Track> {
 
 // ── Licenciamento (LemonSqueezy) ─────────────────────────────────────────────
 
-/// Mude para `true` quando o produto estiver criado no LemonSqueezy.
+// Em debug (dev/beta) aceita qualquer chave. Em release, valida contra o LS.
+#[cfg(debug_assertions)]
 const LICENSING_ENABLED: bool = false;
+#[cfg(not(debug_assertions))]
+const LICENSING_ENABLED: bool = true;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct LicenseFile {
-    key:          String,
-    instance_id:  String,
-    email:        String,
-    activated_at: String,
+    key:              String,
+    instance_id:      String,
+    email:            String,
+    activated_at:     String,
+    #[serde(default)]
+    last_validated:   String,
+    #[serde(default)]
+    fingerprint:      String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -2723,6 +2730,19 @@ fn machine_name() -> String {
         .unwrap_or_else(|_| "TagWave".to_string())
 }
 
+/// Hash determinístico da máquina — identifica o dispositivo sem armazenar PII.
+fn machine_fingerprint() -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let hostname = machine_name();
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "user".to_string());
+    let mut h = DefaultHasher::new();
+    format!("tw:{}:{}", hostname, username).hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
 /// Ativa uma chave de licença. Quando LICENSING_ENABLED = false, aceita qualquer
 /// chave com ≥ 10 caracteres e salva localmente (modo beta/dev).
 #[tauri::command]
@@ -2735,12 +2755,16 @@ async fn activate_license_key(
         return Err("Chave muito curta".to_string());
     }
 
+    let fp = machine_fingerprint();
+
     if !LICENSING_ENABLED {
         let info = LicenseFile {
-            key:          key.clone(),
-            instance_id:  "dev-instance".to_string(),
-            email:        "beta@tagwave.app".to_string(),
-            activated_at: chrono::Utc::now().to_rfc3339(),
+            key:            key.clone(),
+            instance_id:    "dev-instance".to_string(),
+            email:          "beta@tagwave.app".to_string(),
+            activated_at:   chrono::Utc::now().to_rfc3339(),
+            last_validated: chrono::Utc::now().to_rfc3339(),
+            fingerprint:    fp,
         };
         save_license_file(&app, &info);
         return Ok(LicenseStatus {
@@ -2762,7 +2786,7 @@ async fn activate_license_key(
         .header("Accept", "application/json")
         .json(&serde_json::json!({
             "license_key":   key,
-            "instance_name": format!("TagWave on {}", machine_name()),
+            "instance_name": format!("TagWave/{} on {}", fp, machine_name()),
         }))
         .send()
         .await
@@ -2780,12 +2804,15 @@ async fn activate_license_key(
 
     let instance_id = body["instance"]["id"].as_str().unwrap_or("").to_string();
     let email       = body["license_key"]["customer_email"].as_str().unwrap_or("").to_string();
+    let now         = chrono::Utc::now().to_rfc3339();
 
     let info = LicenseFile {
-        key: key.clone(),
-        instance_id: instance_id.clone(),
-        email: email.clone(),
-        activated_at: chrono::Utc::now().to_rfc3339(),
+        key:            key.clone(),
+        instance_id:    instance_id.clone(),
+        email:          email.clone(),
+        activated_at:   now.clone(),
+        last_validated: now,
+        fingerprint:    fp,
     };
     save_license_file(&app, &info);
 
@@ -2805,6 +2832,23 @@ async fn check_license_status(app: tauri::AppHandle) -> Result<LicenseStatus, St
     let info: LicenseFile = serde_json::from_str(&content).map_err(|_| "Arquivo de licença corrompido")?;
 
     if !LICENSING_ENABLED {
+        return Ok(LicenseStatus {
+            valid: true,
+            email: info.email,
+            instance_id: info.instance_id,
+            error: None,
+        });
+    }
+
+    // Revalidação periódica: só chama o servidor se passaram > 7 dias
+    let needs_revalidation = {
+        let last = if info.last_validated.is_empty() { &info.activated_at } else { &info.last_validated };
+        chrono::DateTime::parse_from_rfc3339(last)
+            .map(|dt| chrono::Utc::now().signed_duration_since(dt).num_days() >= 7)
+            .unwrap_or(true)
+    };
+
+    if !needs_revalidation {
         return Ok(LicenseStatus {
             valid: true,
             email: info.email,
@@ -2837,10 +2881,15 @@ async fn check_license_status(app: tauri::AppHandle) -> Result<LicenseStatus, St
         return Err(body["error"].as_str().unwrap_or("Licença revogada").to_string());
     }
 
+    // Atualiza timestamp de última validação
+    let mut updated = info;
+    updated.last_validated = chrono::Utc::now().to_rfc3339();
+    save_license_file(&app, &updated);
+
     Ok(LicenseStatus {
         valid: true,
-        email: info.email,
-        instance_id: info.instance_id,
+        email: updated.email,
+        instance_id: updated.instance_id,
         error: None,
     })
 }

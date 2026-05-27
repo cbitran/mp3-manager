@@ -70,6 +70,10 @@ const TAGS_ENRICHED_KEY  = "tagwave_tagsEnriched";
 const LICENSE_KEY_STORE   = "tagwave_licenseKey";
 const LICENSE_EMAIL_STORE = "tagwave_licenseEmail";
 
+export const CURRENT_PRIVACY_VERSION = "1.0";
+const PRIVACY_VERSION_KEY  = "tw_privacy_v";
+const ENRICHMENT_OPT_IN_KEY = "tw_enrichment_optin";
+
 function initTrialStart(): Date {
   const stored = localStorage.getItem(TRIAL_START_KEY);
   if (stored) return new Date(stored);
@@ -206,6 +210,12 @@ interface AppState {
   recordEnrichment: (count: number) => void;
   activateLicense: (key: string, email?: string) => void;
   extendForBeta: () => void;
+
+  // Privacidade e consentimento (LGPD)
+  privacyAcceptedVersion: string | null;
+  enrichmentOptIn: boolean;
+  acceptPrivacy: () => void;
+  setEnrichmentOptIn: (v: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -531,6 +541,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const yesterday = new Date(Date.now() - 86_400_000);
     localStorage.setItem(TRIAL_START_KEY, yesterday.toISOString());
     set({ trialStartDate: yesterday });
+  },
+
+  // Privacidade
+  privacyAcceptedVersion: localStorage.getItem(PRIVACY_VERSION_KEY),
+  enrichmentOptIn: localStorage.getItem(ENRICHMENT_OPT_IN_KEY) !== "false",
+  acceptPrivacy: () => {
+    localStorage.setItem(PRIVACY_VERSION_KEY, CURRENT_PRIVACY_VERSION);
+    set({ privacyAcceptedVersion: CURRENT_PRIVACY_VERSION });
+  },
+  setEnrichmentOptIn: (v) => {
+    localStorage.setItem(ENRICHMENT_OPT_IN_KEY, String(v));
+    set({ enrichmentOptIn: v });
   },
 
   filteredTracks: () => {

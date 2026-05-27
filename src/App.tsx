@@ -17,6 +17,7 @@ import MiniPlayer from "./components/MiniPlayer";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
 import MissingMetaPrompt from "./components/MissingMetaPrompt";
 import TrialExpiredModal from "./components/TrialExpiredModal";
+import FirstLaunchModal from "./components/FirstLaunchModal";
 import FilenamePrompt, { type FilenameIssue } from "./components/FilenamePrompt";
 import FilenameMetaPrompt, { type FilenameMetaIssue } from "./components/FilenameMetaPrompt";
 import DuplicatePrompt, { type DuplicateGroup } from "./components/DuplicatePrompt";
@@ -2415,6 +2416,7 @@ export default function App() {
         </div>
       )}
 
+      <FirstLaunchModal />
       <TrialExpiredModal />
       {showTrialInfo && !isTrialActivated() && (
         <TrialInfoModal onClose={() => setShowTrialInfo(false)} />
