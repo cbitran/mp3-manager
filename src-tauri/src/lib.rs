@@ -315,9 +315,14 @@ fn read_track(path: &Path) -> Option<Track> {
         let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
         let total_tracks = tag.and_then(|t| t.track_total());
+        // WAV: ID3v2 via lofty armazena POPM como Binary — get_string retorna None; pular para evitar silêncio enganoso
+        let rating = if format != "WAV" {
+            tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Popularimeter))
+                .and_then(|s| s.parse::<u8>().ok())
+        } else { None };
         // For non-ID3 formats, load beat_anchors from sidecar
         let beat_anchors = load_beat_anchor_sidecar(path);
-        (bpm, key, None, comment, total_tracks, Vec::new(), None, beat_anchors)
+        (bpm, key, rating, comment, total_tracks, Vec::new(), None, beat_anchors)
     };
 
     let mut issues = Vec::new();
@@ -457,6 +462,8 @@ fn save_tags(
         if let Some(v) = bpm    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Bpm,        LoftyVal::Text(v))); } }
         if let Some(v) = key    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::InitialKey, LoftyVal::Text(v))); } }
         if let Some(v) = comment { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Comment,  LoftyVal::Text(v))); } }
+        // WAV: ID3v2 via lofty não expõe POPM como Text — rating salvo só para FLAC/OGG/M4A
+        if let Some(r) = rating { if fmt != "WAV" { tag.insert(LoftyItem::new(LoftyKey::Popularimeter, LoftyVal::Text(r.to_string()))); } }
         ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     }

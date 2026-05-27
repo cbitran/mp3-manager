@@ -75,7 +75,8 @@ export default function App() {
 
   const { t } = useTranslation();
 
-  const IS_WIN = !/^Mac/.test(navigator.platform);
+  const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
+                 navigator.userAgent.toLowerCase().includes("windows");
   const CMD = IS_WIN ? "Ctrl+" : "⌘";
 
   const promotePendingTracks = useAppStore((s) => s.promotePendingTracks);

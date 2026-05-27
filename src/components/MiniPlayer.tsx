@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore, consumeAutoPlay, Track } from "../store";
 import { loadWaveform, setCachedWaveform, getCachedWaveform, WAVEFORM_BARS } from "../lib/waveformCache";
@@ -62,14 +62,21 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
   const oneShotTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubRef         = useRef(false);
   const scrubTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref para a lista filtrada — acessível dentro de closures de event listeners (sem stale capture)
+  const displayTracksRef = useRef<Track[]>(displayTracks ?? tracks);
   // Persiste o Track object mesmo quando a pasta muda e o track sai da lista
   const cachedActiveTrackRef = useRef<import("../store").Track | null>(null);
 
   const selectedArr = [...selectedIds];
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
   const foundTrack  = tracks.find((t) => t.id === activeId) ?? null;
-  if (foundTrack) cachedActiveTrackRef.current = foundTrack;
   const activeTrack = foundTrack ?? (activeId ? cachedActiveTrackRef.current : null);
+
+  // Atualizar refs APÓS o render (evita mutação no corpo do render — regra do React)
+  useLayoutEffect(() => {
+    if (foundTrack) cachedActiveTrackRef.current = foundTrack;
+    displayTracksRef.current = displayTracks ?? tracks;
+  });
 
   const wfH       = WF_EXPANDED;
   const windowDur = duration;
@@ -253,8 +260,9 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
     const onDur  = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
     const onEnd  = () => {
       setProgress(0); stopLiveAnim();
-      const { tracks: all, playerTrackId: cur } = useAppStore.getState();
-      if (cur) { const idx = all.findIndex((t) => t.id === cur); const next = all[idx+1]; if (next) { useAppStore.getState().setPlayerTrack(next.id); return; } }
+      const { playerTrackId: cur } = useAppStore.getState();
+      const list = displayTracksRef.current;
+      if (cur) { const idx = list.findIndex((t) => t.id === cur); const next = list[idx+1]; if (next) { useAppStore.getState().setPlayerTrack(next.id); return; } }
       setIsPlaying(false);
     };
     const onError = () => {
