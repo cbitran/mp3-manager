@@ -149,6 +149,154 @@ export default function App() {
   const playerTrackId = useAppStore((s) => s.playerTrackId);
   const activePlaylistId = useAppStore((s) => s.activePlaylistId);
   const playlists = useAppStore((s) => s.playlists);
+
+  // ── Drag de faixas para playlist ────────────────────────────────
+  const ghostRef = useRef<HTMLDivElement>(null);
+
+  const handleTrackDragStart = (dragIds: string[], startX: number, startY: number) => {
+    const { setDragState } = useAppStore.getState();
+    setDragState({ isDragging: true, draggedTrackIds: dragIds, hoveredPlaylistId: null });
+
+    if (ghostRef.current) {
+      const label = ghostRef.current.querySelector<HTMLElement>('#drag-ghost-label');
+      if (label) label.textContent = dragIds.length === 1 ? '1 faixa' : `${dragIds.length} faixas`;
+      ghostRef.current.style.display = 'flex';
+      ghostRef.current.style.left = `${startX + 14}px`;
+      ghostRef.current.style.top = `${startY - 20}px`;
+    }
+    document.body.style.cursor = 'grabbing';
+
+    const onMove = (mv: MouseEvent) => {
+      if (ghostRef.current) {
+        ghostRef.current.style.left = `${mv.clientX + 14}px`;
+        ghostRef.current.style.top = `${mv.clientY - 20}px`;
+      }
+    };
+
+    const onUp = async () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      if (ghostRef.current) ghostRef.current.style.display = 'none';
+
+      const st = useAppStore.getState();
+      const { draggedTrackIds, hoveredPlaylistId } = st.dragState;
+      st.clearDragState();
+
+      if (!hoveredPlaylistId || draggedTrackIds.length === 0) return;
+      const playlist = st.playlists.find((p) => p.id === hoveredPlaylistId);
+      if (!playlist) return;
+
+      const trackPaths = draggedTrackIds
+        .map((id) => st.tracks.find((t) => t.id === id)?.path)
+        .filter(Boolean) as string[];
+      if (trackPaths.length === 0) return;
+
+      const newPaths = trackPaths.filter((p) => !playlist.trackPaths.includes(p));
+      if (newPaths.length === 0) {
+        toast(`Faixas já estão em "${playlist.name}"`, 'info');
+        return;
+      }
+
+      st.addTracksToPlaylist(hoveredPlaylistId, newPaths);
+
+      const gp = playlist.globalProperties;
+      if (gp?.enabled && gp.activeFields.length > 0) {
+        const snapshots = newPaths.map((p) => {
+          const tr = st.tracks.find((t) => t.path === p);
+          return { path: p, album: tr?.album, genre: tr?.genre, comment: tr?.comment };
+        });
+
+        for (const path of newPaths) {
+          await invoke('save_tags', {
+            path, title: null, artist: null, year: null, trackNumber: null,
+            totalTracks: null, bpm: null, key: null, rating: null,
+            album: gp.activeFields.includes('album') ? gp.album ?? null : null,
+            genre: gp.activeFields.includes('genre') ? gp.genre ?? null : null,
+            comment: gp.activeFields.includes('comment') ? gp.comment ?? null : null,
+          }).catch(() => {});
+          if (gp.activeFields.includes('cover') && gp.cover) {
+            await invoke('save_cover_from_file', { path, imagePath: gp.cover }).catch(() => {});
+          }
+        }
+
+        const fresh = useAppStore.getState();
+        for (const path of newPaths) {
+          const tr = fresh.tracks.find((t) => t.path === path);
+          if (!tr) continue;
+          fresh.updateTrack({
+            ...tr,
+            album: gp.activeFields.includes('album') ? gp.album ?? tr.album : tr.album,
+            genre: gp.activeFields.includes('genre') ? gp.genre ?? tr.genre : tr.genre,
+            comment: gp.activeFields.includes('comment') ? gp.comment ?? tr.comment : tr.comment,
+            has_cover: gp.activeFields.includes('cover') && !!gp.cover ? true : tr.has_cover,
+            cover_version: gp.activeFields.includes('cover') && !!gp.cover ? (tr.cover_version ?? 0) + 1 : tr.cover_version,
+          });
+        }
+
+        useAppStore.getState().pushUndoEntry({
+          description: `${newPaths.length} faixa${newPaths.length > 1 ? 's' : ''} em "${playlist.name}"`,
+          playlistId: hoveredPlaylistId,
+          addedPaths: newPaths,
+          metadataSnapshot: snapshots,
+        });
+
+        toast(
+          `${newPaths.length} faixa${newPaths.length > 1 ? 's adicionadas' : ' adicionada'} — propriedades aplicadas`,
+          'success'
+        );
+      } else {
+        toast(
+          newPaths.length === 1
+            ? `Faixa adicionada a "${playlist.name}"`
+            : `${newPaths.length} faixas adicionadas a "${playlist.name}"`,
+          'success'
+        );
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  // ── Undo global (Cmd+Z / Ctrl+Z) ─────────────────────────────────
+  useEffect(() => {
+    const handler = async (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const isUndo = (isMac ? e.metaKey : e.ctrlKey) && !e.shiftKey && e.key === 'z';
+      if (!isUndo) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+
+      const entry = useAppStore.getState().popUndoEntry();
+      if (!entry) { toast('Nada para desfazer', 'info'); return; }
+
+      const st = useAppStore.getState();
+      const pl = st.playlists.find((p) => p.id === entry.playlistId);
+      if (pl) {
+        st.updatePlaylist(entry.playlistId, {
+          trackPaths: pl.trackPaths.filter((p) => !entry.addedPaths.includes(p)),
+        });
+      }
+
+      for (const snap of entry.metadataSnapshot) {
+        await invoke('save_tags', {
+          path: snap.path, title: null, artist: null, year: null,
+          trackNumber: null, totalTracks: null, bpm: null, key: null, rating: null,
+          album: snap.album ?? '',
+          genre: snap.genre ?? '',
+          comment: snap.comment ?? '',
+        }).catch(() => {});
+        const tr = useAppStore.getState().tracks.find((t) => t.path === snap.path);
+        if (tr) useAppStore.getState().updateTrack({ ...tr, album: snap.album, genre: snap.genre, comment: snap.comment });
+      }
+
+      toast(`Desfeito: ${entry.description}`, 'success');
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
   const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null;
   const baseFiltered = filteredTracks();
 
@@ -2264,6 +2412,7 @@ export default function App() {
                 onOpenFolder={pickFolder}
                 onEnrich={(trackId) => batchEnrich("all", undefined, trackId)}
                 resetColToken={colResetToken}
+                onTrackDragStart={handleTrackDragStart}
               />
             </div>
             {showRightPanel && allTracks.length > 0 && (() => {
@@ -2453,6 +2602,20 @@ export default function App() {
       )}
       <ToastContainer />
       <AIAssistant />
+
+      {/* Ghost de drag — posicionado pelo handleTrackDragStart */}
+      <div
+        ref={ghostRef}
+        style={{ display: 'none', position: 'fixed', zIndex: 9999, pointerEvents: 'none', top: 0, left: 0 }}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c1715] border border-[#D95340]/50 shadow-2xl text-[12px] text-[#C2BEBC]"
+      >
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="text-[#D95340] opacity-80 shrink-0">
+          <rect x="1" y="1" width="9" height="2" rx="0.5"/>
+          <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
+          <rect x="1" y="8" width="5" height="2" rx="0.5"/>
+        </svg>
+        <span id="drag-ghost-label">1 faixa</span>
+      </div>
 
       {/* Overlay bloqueante durante scan — impede interação e crash em pastas grandes */}
       {isScanning && (

@@ -416,6 +416,7 @@ export default function TrackTable({
   onOpenFolder,
   onEnrich,
   resetColToken,
+  onTrackDragStart,
 }: {
   tracks: Track[];
   compact?: boolean;
@@ -426,6 +427,7 @@ export default function TrackTable({
   onOpenFolder?: () => void;
   onEnrich?: (trackId?: string) => void;
   resetColToken?: number;
+  onTrackDragStart?: (trackIds: string[], startX: number, startY: number) => void;
 }) {
   const {
     selectedIds,
@@ -1331,6 +1333,28 @@ export default function TrackTable({
                 onClick={(e) => handleRowClick(row.id, i, e)}
                 onDoubleClick={() => handleRowDoubleClick(row.id)}
                 onContextMenu={(e) => handleContextMenu(e, row.original)}
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return;
+                  if ((e.target as HTMLElement).closest('button, input, [data-no-drag]')) return;
+                  const startX = e.clientX;
+                  const startY = e.clientY;
+                  let fired = false;
+                  const dragIds = selectedIds.size > 1 && selectedIds.has(row.id)
+                    ? [...selectedIds]
+                    : [row.id];
+                  const onMove = (mv: MouseEvent) => {
+                    if (!fired && (Math.abs(mv.clientX - startX) > 6 || Math.abs(mv.clientY - startY) > 6)) {
+                      fired = true;
+                      onTrackDragStart?.(dragIds, mv.clientX, mv.clientY);
+                    }
+                  };
+                  const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                  };
+                  document.addEventListener('mousemove', onMove);
+                  document.addEventListener('mouseup', onUp);
+                }}
                 className={`cursor-pointer transition-all duration-150 border-b ${
                   isEnriching
                     ? "bg-[#D95340]/[0.07] border-[#D95340]/[0.10]"

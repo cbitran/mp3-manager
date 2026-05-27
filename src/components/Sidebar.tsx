@@ -4,6 +4,7 @@ import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "./Toast";
+import PlaylistSettingsModal from "./PlaylistSettingsModal";
 
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
@@ -43,6 +44,9 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
+  const [settingsPlaylist, setSettingsPlaylist] = useState<Playlist | null>(null);
+  const dragState = useAppStore((s) => s.dragState);
+  const setDragState = useAppStore((s) => s.setDragState);
   const [devicesExpanded, setDevicesExpanded] = useState(true);
   const dragCounterRef = useRef(0);
   const hoveredFolderRef = useRef<{ path: string; name: string } | null>(null);
@@ -58,6 +62,10 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (dragState.isDragging && playlists.length > 0) setSidebarTab("playlists");
+  }, [dragState.isDragging, playlists.length]);
 
   // Contagem de faixas por pasta, calculada a partir das faixas atualmente carregadas
   const folderTrackCount = (folderPath: string) => {
@@ -322,6 +330,10 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                     isActive={activePlaylistId === pl.id}
                     onOpen={() => setActivePlaylistId(pl.id)}
                     onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
+                    isDragging={dragState.isDragging}
+                    isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}
+                    onDragEnter={() => setDragState({ hoveredPlaylistId: pl.id })}
+                    onDragLeave={() => setDragState({ hoveredPlaylistId: null })}
                   />
                 ))
               : (
@@ -409,6 +421,16 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           style={{ left: playlistCtx.x, top: playlistCtx.y }}
           onClick={() => setPlaylistCtx(null)}
         >
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={() => { setSettingsPlaylist(playlistCtx.pl); setPlaylistCtx(null); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+              <circle cx="5.5" cy="5.5" r="1.5"/>
+              <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.4 2.4l.7.7M8.5 8.5l-.7-.7M8.5 2.4l-.7.7M2.4 8.5l.7-.7"/>
+            </svg>
+            Configurações
+          </button>
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
             onClick={() => { setActivePlaylistId(playlistCtx.pl.id); setPlaylistCtx(null); }}
@@ -614,6 +636,14 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
         </div>
       )}
 
+      {/* Playlist Settings Modal */}
+      {settingsPlaylist && (
+        <PlaylistSettingsModal
+          playlist={settingsPlaylist}
+          onClose={() => setSettingsPlaylist(null)}
+        />
+      )}
+
       {/* Delete Dialog */}
       {deleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -814,29 +844,42 @@ const DJ_BADGE: Record<string, string> = {
 };
 
 function PlaylistRow({
-  pl, isActive, onOpen, onContextMenu,
+  pl, isActive, onOpen, onContextMenu, isDragging, isHoveredDrop, onDragEnter, onDragLeave,
 }: {
   pl: Playlist;
   isActive: boolean;
   onOpen: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  isDragging?: boolean;
+  isHoveredDrop?: boolean;
+  onDragEnter?: () => void;
+  onDragLeave?: () => void;
 }) {
   return (
     <button
-      onClick={onOpen}
+      onClick={isDragging ? undefined : onOpen}
       onContextMenu={onContextMenu}
+      onMouseEnter={() => isDragging && onDragEnter?.()}
+      onMouseLeave={() => isDragging && onDragLeave?.()}
       className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors group
-        ${isActive
+        ${isHoveredDrop
+          ? "bg-[#D95340]/25 border border-[#D95340]/50 text-[#F5F5F4]"
+          : isActive
           ? "bg-[#D95340]/15 text-[#F5F5F4] border border-[#D95340]/20"
+          : isDragging
+          ? "border border-dashed border-white/10 text-[#8F8883]"
           : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
         }`}
     >
-      <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="shrink-0 opacity-50 text-[#D95340]">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className={`shrink-0 ${isHoveredDrop ? "opacity-80 text-[#D95340]" : "opacity-50 text-[#D95340]"}`}>
         <rect x="1" y="1" width="9" height="2" rx="0.5"/>
         <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
         <rect x="1" y="8" width="5" height="2" rx="0.5"/>
       </svg>
       <span className="flex-1 truncate text-[11px]">{pl.name}</span>
+      {pl.pendingRulesApply && (
+        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" title="Regras pendentes de aplicação" />
+      )}
       <span className={`text-[9px] font-mono tabular-nums ${isActive ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
         {pl.trackPaths.length}
       </span>

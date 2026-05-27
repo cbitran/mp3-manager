@@ -38,6 +38,15 @@ export interface Track {
 
 export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
 
+export interface PlaylistGlobalProperties {
+  enabled: boolean;
+  activeFields: ('cover' | 'album' | 'genre' | 'comment')[];
+  cover?: string;
+  album?: string;
+  genre?: string;
+  comment?: string;
+}
+
 export interface Playlist {
   id: string;
   name: string;
@@ -45,6 +54,21 @@ export interface Playlist {
   createdAt: number;
   updatedAt: number;
   lastExportedTo?: string[];
+  globalProperties?: PlaylistGlobalProperties;
+  pendingRulesApply?: boolean;
+}
+
+export interface DragState {
+  isDragging: boolean;
+  draggedTrackIds: string[];
+  hoveredPlaylistId: string | null;
+}
+
+export interface UndoEntry {
+  description: string;
+  playlistId: string;
+  addedPaths: string[];
+  metadataSnapshot: { path: string; album?: string; genre?: string; comment?: string }[];
 }
 
 const LAST_FOLDER_KEY    = "mp3mgr_lastFolder";
@@ -174,6 +198,16 @@ interface AppState {
   addTracksToPlaylist: (id: string, trackPaths: string[]) => void;
   removeTrackFromPlaylist: (id: string, trackPath: string) => void;
   setActivePlaylistId: (id: string | null) => void;
+
+  // Drag state (não persiste — apenas memória)
+  dragState: DragState;
+  setDragState: (partial: Partial<DragState>) => void;
+  clearDragState: () => void;
+
+  // Undo stack (não persiste — apenas memória)
+  undoStack: UndoEntry[];
+  pushUndoEntry: (entry: UndoEntry) => void;
+  popUndoEntry: () => UndoEntry | null;
 
   // Player
   playerTrackId: string | null;
@@ -343,6 +377,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ playlists: next });
   },
   setActivePlaylistId: (activePlaylistId) => set({ activePlaylistId }),
+
+  dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null },
+  setDragState: (partial) => set((s) => ({ dragState: { ...s.dragState, ...partial } })),
+  clearDragState: () => set({ dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null } }),
+
+  undoStack: [],
+  pushUndoEntry: (entry) => set((s) => ({ undoStack: [entry, ...s.undoStack].slice(0, 10) })),
+  popUndoEntry: () => {
+    const stack = get().undoStack;
+    if (stack.length === 0) return null;
+    set({ undoStack: stack.slice(1) });
+    return stack[0];
+  },
 
   // Trial state
   trialStartDate: initTrialStart(),
