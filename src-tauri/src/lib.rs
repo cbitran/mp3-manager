@@ -2488,6 +2488,35 @@ fn open_dj_app(software_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn download_update(url: String, dest: String) -> Result<String, String> {
+    let bytes = reqwest::get(&url)
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &path.replace('/', "\\")])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
 // Encerra o processo imediatamente — usado pelo handler onCloseRequested
@@ -2769,6 +2798,8 @@ pub fn run() {
             save_beat_anchors,
             load_beat_anchors,
             get_scrub_pcm,
+            open_file,
+            download_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
