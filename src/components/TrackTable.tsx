@@ -97,6 +97,7 @@ const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path
 import { openPath } from "@tauri-apps/plugin-opener";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { queuedInvoke } from "../lib/ipcQueue";
+import { toast } from "./Toast";
 
 const col = createColumnHelper<Track>();
 
@@ -1477,6 +1478,43 @@ export default function TrackTable({
             <path d="M1 9h8M6.5 1.5l2 2-5 5H1.5v-2l5-5z"/>
           </svg>
           {t("table.editArtist")}
+        </button>
+        {/* Renomear pelo metadado */}
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={async () => {
+            const isBatch = selectedIds.size > 1 && selectedIds.has(contextMenu.track.id);
+            const paths = isBatch
+              ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
+              : [contextMenu.track.path];
+            setContextMenu(null);
+            interface RenameResult { old_path: string; new_path: string; }
+            const results = await invoke<RenameResult[]>("rename_from_tags", { paths });
+            if (results.length === 0) {
+              toast("Nenhum arquivo renomeado — metadados insuficientes ou nome já correto.", "info");
+              return;
+            }
+            results.forEach(({ old_path, new_path }) => {
+              const track = tracks.find((t) => t.path === old_path);
+              if (track) {
+                const newFilename = new_path.split(/[\\/]/).pop() ?? new_path;
+                useAppStore.getState().updateTrack({ ...track, path: new_path, filename: newFilename });
+              }
+            });
+            toast(
+              results.length === 1
+                ? `Arquivo renomeado para "${results[0].new_path.split(/[\\/]/).pop()}"`
+                : `${results.length} arquivos renomeados pelo metadado`,
+              "success"
+            );
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+            <path d="M1 5h8M5 1l4 4-4 4"/>
+          </svg>
+          {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
+            ? `Renomear ${selectedIds.size} arquivos pelo metadado`
+            : "Renomear arquivo pelo metadado"}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button

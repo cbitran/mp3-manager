@@ -2488,6 +2488,120 @@ fn open_dj_app(software_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct RenameResult {
+    pub old_path: String,
+    pub new_path: String,
+}
+
+fn sanitize_filename(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim()
+        .trim_end_matches('.')
+        .to_string()
+}
+
+#[tauri::command]
+fn rename_from_tags(paths: Vec<String>) -> Vec<RenameResult> {
+    let mut results = Vec::new();
+    for path in &paths {
+        let p = Path::new(path);
+        let ext = match p.extension().and_then(|e| e.to_str()) {
+            Some(e) => e.to_lowercase(),
+            None => continue,
+        };
+        let parent = match p.parent() { Some(d) => d, None => continue };
+
+        // Lê título e artista dos metadados
+        let (title, artist) = if ext == "mp3" || ext == "aiff" || ext == "aif" {
+            let tag = id3::Tag::read_from_path(path).ok();
+            (
+                tag.as_ref().and_then(|t| t.title()).map(|s| s.to_string()),
+                tag.as_ref().and_then(|t| t.artist()).map(|s| s.to_string()),
+            )
+        } else {
+            match Probe::open(path).and_then(|p| p.read()) {
+                Ok(tagged) => {
+                    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+                    (
+                        tag.and_then(|t| t.title()).map(|s| s.to_string()),
+                        tag.and_then(|t| t.artist()).map(|s| s.to_string()),
+                    )
+                }
+                Err(_) => continue,
+            }
+        };
+
+        let title = match title.as_deref().filter(|s| !s.trim().is_empty()) {
+            Some(t) => sanitize_filename(t),
+            None => continue, // sem título: pula
+        };
+        let stem = match artist.as_deref().filter(|s| !s.trim().is_empty()) {
+            Some(a) => format!("{} - {}", sanitize_filename(a), title),
+            None => title,
+        };
+
+        let new_name = format!("{}.{}", stem, ext);
+        let new_path = parent.join(&new_name);
+
+        if new_path == p { continue; } // já tem o nome correto
+        if new_path.exists() { continue; } // conflito: pula
+
+        ensure_writable(path);
+        if fs::rename(path, &new_path).is_ok() {
+            results.push(RenameResult {
+                old_path: path.clone(),
+                new_path: new_path.to_string_lossy().into_owned(),
+            });
+        }
+    }
+    results
+}
+
+#[tauri::command]
+fn save_cover_batch_from_file(paths: Vec<String>, image_path: String) -> Result<u32, String> {
+    let cover_data = fs::read(&image_path).map_err(|e| e.to_string())?;
+    let is_png = image_path.to_lowercase().ends_with(".png");
+    let mut ok: u32 = 0;
+    for path in &paths {
+        let fmt = file_format(Path::new(path));
+        let result = if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+            let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
+            let mut tag = id3::Tag::read_from_path(path).unwrap_or_else(|_| id3::Tag::new());
+            tag.remove("APIC");
+            tag.add_frame(Picture {
+                mime_type: mime,
+                picture_type: PictureType::CoverFront,
+                description: String::new(),
+                data: cover_data.clone(),
+            });
+            ensure_writable(path);
+            tag.write_to_path(path, id3::Version::Id3v24).map_err(|e| e.to_string())
+        } else {
+            let lofty_mime = if is_png { LoftyMime::Png } else { LoftyMime::Jpeg };
+            match Probe::open(path).and_then(|p| p.read()) {
+                Ok(mut tagged) => {
+                    if let Some(tag) = tagged.primary_tag_mut() {
+                        tag.remove_picture_type(LoftyPicType::CoverFront);
+                        tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data.clone()));
+                        ensure_writable(path);
+                        tagged.save_to_path(path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
+                    } else { Err("sem tag".into()) }
+                }
+                Err(e) => Err(e.to_string()),
+            }
+        };
+        if result.is_ok() { ok += 1; }
+    }
+    Ok(ok)
+}
+
 #[tauri::command]
 async fn download_update(url: String, dest: String) -> Result<String, String> {
     let bytes = reqwest::get(&url)
@@ -2800,6 +2914,8 @@ pub fn run() {
             get_scrub_pcm,
             open_file,
             download_update,
+            rename_from_tags,
+            save_cover_batch_from_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
