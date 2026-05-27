@@ -15,8 +15,11 @@ interface Props {
   onClose: () => void;
 }
 
+// Normaliza backslashes para forward slashes (compatibilidade Windows)
+const norm = (p: string) => p.replace(/\\/g, "/");
+
 export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props) {
-  const [currentPath, setCurrentPath] = useState(rootPath);
+  const [currentPath, setCurrentPath] = useState(norm(rootPath));
   const [history, setHistory] = useState<string[]>([]);
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,7 +39,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
 
   function navigate(path: string) {
     setHistory((h) => [...h, currentPath]);
-    setCurrentPath(path);
+    setCurrentPath(norm(path));
   }
 
   function goBack() {
@@ -52,12 +55,17 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
     setCurrentPath(path);
   }
 
-  // Build breadcrumb segments from path
+  // Build breadcrumb segments from path (já normalizado com forward slashes)
   const segments = currentPath.replace(/\/$/, "").split("/").filter(Boolean);
-  const crumbs = segments.map((seg, i) => ({
-    name: seg,
-    path: "/" + segments.slice(0, i + 1).join("/"),
-  }));
+  // Windows: "F:" é o primeiro segmento — reconstrói "F:/" em vez de "/F:"
+  const isWinDrive = segments[0]?.match(/^[A-Z]:$/i);
+  const crumbs = segments.map((seg, i) => {
+    const parts = segments.slice(0, i + 1);
+    const path = isWinDrive
+      ? parts.join("/") + (i === 0 ? "/" : "")
+      : "/" + parts.join("/");
+    return { name: seg, path };
+  });
 
   const folders = entries?.filter((e) => e.is_dir) ?? [];
   const files   = entries?.filter((e) => !e.is_dir) ?? [];

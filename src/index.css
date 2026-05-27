@@ -3,6 +3,7 @@
 
 /* ─── DS TagWave — Color Primitives ─────────────────────────────── */
 :root {
+  color-scheme: dark;
   /* Coral (accent principal) */
   --coral-50:  #FCF3F2;
   --coral-100: #F5D3CE;
@@ -93,6 +94,7 @@ html, body {
   padding: 0;
   background: var(--bg-base);
   color: var(--text-primary);
+  color-scheme: dark;
 }
 
 body {
