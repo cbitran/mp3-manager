@@ -483,6 +483,7 @@ export default function TrackTable({
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+  const lastClickRef = useRef<{ id: string; time: number }>({ id: "", time: 0 });
   const dragColIdRef = useRef<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [draggingColId, setDraggingColId] = useState<string | null>(null);
@@ -1012,6 +1013,14 @@ export default function TrackTable({
     (id: string, idx: number, e: React.MouseEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
       if ((e.target as HTMLElement).tagName === "BUTTON") return;
+      // Detecção manual de duplo clique (fallback para VMs e WebView2 com timing irregular)
+      const now = Date.now();
+      if (lastClickRef.current.id === id && now - lastClickRef.current.time < 400) {
+        lastClickRef.current = { id: "", time: 0 };
+        requestPlay(id);
+        return;
+      }
+      lastClickRef.current = { id, time: now };
 
       const rows = sortedRowsRef.current;
 
@@ -1032,7 +1041,7 @@ export default function TrackTable({
         anchorIdRef.current = id;
       }
     },
-    [toggleSelect, selectAll, clearSelection]
+    [toggleSelect, selectAll, clearSelection, requestPlay]
   );
 
   const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);
