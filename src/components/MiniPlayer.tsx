@@ -767,26 +767,6 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
         </div>
 
 
-        {/* BPM · Key — só no compacto; expandido exibe no info esquerdo */}
-        {!wfExpanded && (activeTrack?.bpm || activeTrack?.key) && (
-          <>
-            <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
-            <div className="flex items-center gap-3 px-3 shrink-0">
-              {activeTrack?.bpm && (
-                <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
-                  <span className="font-mono font-bold tabular-nums" style={{ fontSize: 20, color: "#C97B40", lineHeight: 1 }}>{parseFloat(activeTrack.bpm).toFixed(0)}</span>
-                  <span className="uppercase tracking-widest" style={{ fontSize: 7, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>bpm</span>
-                </div>
-              )}
-              {activeTrack?.key && (
-                <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
-                  <span className="font-mono font-bold" style={{ fontSize: 15, color: "#8F8883", lineHeight: 1 }}>{activeTrack.key}</span>
-                  <span className="uppercase tracking-widest" style={{ fontSize: 7, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>key</span>
-                </div>
-              )}
-            </div>
-          </>
-        )}
 
         {/* Zona reservada para o botão do agente AI (fixed bottom-[68px] right-4, w-12) */}
         <div className="shrink-0" style={{ width: 72 }} />

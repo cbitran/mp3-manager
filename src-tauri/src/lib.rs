@@ -268,8 +268,8 @@ fn read_track(path: &Path) -> Option<Track> {
     let track_number = tag.and_then(|t| t.track());
     let has_cover    = tag.map(|t| !t.pictures().is_empty()).unwrap_or(false);
 
-    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS, BEAT_PHASE, BEAT_ANCHORS — read via id3 crate for MP3/AIFF
-    let (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors) = if format == "MP3" || format == "AIFF" || format == "AIF" {
+    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS, BEAT_PHASE, BEAT_ANCHORS — read via id3 crate for MP3/AIFF/WAV
+    let (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors) = if format == "MP3" || format == "AIFF" || format == "AIF" || format == "WAV" {
         if let Ok(id3tag) = id3::Tag::read_from_path(path) {
             let bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
                 if let id3::Content::Text(t) = f.content() {
@@ -315,11 +315,9 @@ fn read_track(path: &Path) -> Option<Track> {
         let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
         let total_tracks = tag.and_then(|t| t.track_total());
-        // WAV: ID3v2 via lofty armazena POPM como Binary — get_string retorna None; pular para evitar silêncio enganoso
-        let rating = if format != "WAV" {
-            tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Popularimeter))
-                .and_then(|s| s.parse::<u8>().ok())
-        } else { None };
+        // FLAC/OGG: Popularimeter → vorbis "RATING" (texto). M4A: "rate" atom (UTF8 pelo TagWave).
+        let rating = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Popularimeter))
+            .and_then(|s| s.parse::<u8>().ok());
         // For non-ID3 formats, load beat_anchors from sidecar
         let beat_anchors = load_beat_anchor_sidecar(path);
         (bpm, key, rating, comment, total_tracks, Vec::new(), None, beat_anchors)
@@ -417,8 +415,8 @@ fn save_tags(
     rating: Option<u8>, comment: Option<String>, total_tracks: Option<u32>,
 ) -> Result<(), String> {
     let fmt = file_format(Path::new(&path));
-    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
-        // id3 para formatos que usam ID3v2 nativamente
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
+        // id3 para formatos que usam ID3v2 nativamente (WAV = ID3v2 em chunk RIFF)
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
         if let Some(v) = title        { tag.set_title(v); }
         if let Some(v) = artist       { tag.set_artist(v); }
@@ -449,7 +447,7 @@ fn save_tags(
         ensure_writable(&path);
         tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
     } else {
-        // lofty para FLAC, OGG, OPUS, WAV, M4A, AAC, WMA, etc.
+        // lofty para FLAC, OGG, OPUS, M4A, AAC, WMA, etc. (WAV usa id3 acima)
         let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
         let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
         if let Some(v) = title        { tag.set_title(v.into()); }
@@ -462,8 +460,8 @@ fn save_tags(
         if let Some(v) = bpm    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Bpm,        LoftyVal::Text(v))); } }
         if let Some(v) = key    { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::InitialKey, LoftyVal::Text(v))); } }
         if let Some(v) = comment { if !v.is_empty() { tag.insert(LoftyItem::new(LoftyKey::Comment,  LoftyVal::Text(v))); } }
-        // WAV: ID3v2 via lofty não expõe POPM como Text — rating salvo só para FLAC/OGG/M4A
-        if let Some(r) = rating { if fmt != "WAV" { tag.insert(LoftyItem::new(LoftyKey::Popularimeter, LoftyVal::Text(r.to_string()))); } }
+        // FLAC/OGG/M4A: Popularimeter → campo de texto persistido pelo lofty
+        if let Some(r) = rating { tag.insert(LoftyItem::new(LoftyKey::Popularimeter, LoftyVal::Text(r.to_string()))); }
         ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     }
