@@ -215,7 +215,7 @@ const TitleArtistCell = memo(function TitleArtistCell({ track }: { track: Track 
               title ? "text-[13px] font-medium text-[#F5F5F4]" : "text-xs italic text-[#756D67]"
             }`}
             onDoubleClick={(e) => {
-              if (!IS_WIN_TABLE && !e.metaKey) return; // macOS: Cmd+dbl = editar, dbl simples = tocar
+              if (IS_WIN_TABLE || !e.metaKey) return; // Windows: dbl toca; macOS: só Cmd+dbl edita
               e.stopPropagation();
               setEditing("title");
               setEditValue(title ?? filename);
@@ -259,6 +259,7 @@ const ArtistEditCell = memo(function ArtistEditCell({ track }: { track: Track })
   useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
 
   function open(e: React.MouseEvent) {
+    if (IS_WIN_TABLE) return; // Windows: dbl toca; edição via context menu
     e.stopPropagation();
     setVal(track.artist ?? "");
     setEditing(true);
