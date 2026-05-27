@@ -1496,11 +1496,15 @@ export default function App() {
             <button
               onClick={restoreFromFilename}
               disabled={restoringFromName || enriching || isScanning}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40 transition-colors whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors whitespace-nowrap shrink-0 ${
                 selectedIds.size > 0
-                  ? "bg-[#D95340]/15 text-[#D95340] border border-[#D95340]/25 hover:bg-[#D95340]/25"
-                  : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
+                  ? "bg-[#D95340]/15 border border-[#D95340]/25 hover:bg-[#D95340]/25"
+                  : "hover:bg-white/[0.04]"
               }`}
+              style={{
+                color: selectedIds.size > 0 ? "#D95340" : "#8F8883",
+                opacity: (restoringFromName || enriching || isScanning) ? 0.45 : 1
+              }}
               title={t("toolbar.restoreFromNames")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -1518,7 +1522,8 @@ export default function App() {
             <button
               onClick={undoEnrich}
               disabled={enriching}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#EAB308] hover:text-[#F59E0B] hover:bg-yellow-500/[0.08] border border-yellow-500/20 disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold hover:bg-yellow-500/[0.08] border border-yellow-500/20 transition-colors whitespace-nowrap shrink-0"
+              style={{ color: "#EAB308", opacity: enriching ? 0.45 : 1 }}
               title={t("toolbar.undoEnrich")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -1533,11 +1538,15 @@ export default function App() {
               data-tour="analyze-bpm"
               onClick={() => batchAnalyzeBpm()}
               disabled={analyzingBpm || isScanning || enriching}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold disabled:opacity-40 transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 ${
                 analyzingBpm
-                  ? "text-[#D95340] bg-[#D95340]/[0.08] border border-[#D95340]/[0.30]"
-                  : "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
+                  ? "bg-[#D95340]/[0.08] border border-[#D95340]/[0.30]"
+                  : "hover:bg-white/[0.04]"
               }`}
+              style={{
+                color: analyzingBpm ? "#D95340" : "#8F8883",
+                opacity: (analyzingBpm || isScanning || enriching) ? (analyzingBpm ? 1 : 0.45) : 1
+              }}
               title={t("toolbar.analyzeBpmTooltip")}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -1555,7 +1564,8 @@ export default function App() {
               <button
                 onClick={() => batchEnrich("all")}
                 disabled={enriching || isScanning}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold hover:bg-white/[0.04] transition-colors whitespace-nowrap shrink-0"
+                style={{ color: "#8F8883", opacity: (enriching || isScanning) ? 0.45 : 1 }}
                 title={t("toolbar.enrichTooltip")}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -1627,11 +1637,8 @@ export default function App() {
               <button
                 disabled={exporting || !canExport}
                 title={canExport ? undefined : t("toolbar.selectToExport")}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 ${
-                  canExport
-                    ? "text-[#756D67] hover:text-[#8F8883] hover:bg-white/[0.04]"
-                    : "text-[#4C4743] cursor-not-allowed"
-                }`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${canExport ? "hover:bg-white/[0.04]" : "cursor-not-allowed"}`}
+                style={{ color: "#8F8883", opacity: (exporting || !canExport) ? 0.45 : 1 }}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5.5 1v6M3 4l2.5-3 2.5 3"/>
