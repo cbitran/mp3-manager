@@ -1765,11 +1765,21 @@ fn export_rekordbox(tracks: Vec<Track>, output_path: String) -> Result<usize, St
         let year    = track.year.map(|y| y.to_string()).unwrap_or_default();
         let dur_s   = track.duration_secs.map(|d| format!("{:.3}", d)).unwrap_or_default();
         let size    = track.file_size_bytes;
-        // Rekordbox expects file:// URI
+        // Rekordbox expects a proper file:// URI — encode special URL chars
+        let encode_path = |p: &str| -> String {
+            p.replace('%', "%25")
+             .replace('#', "%23")
+             .replace(' ', "%20")
+             .replace('(', "%28")
+             .replace(')', "%29")
+             .replace('&', "%26")
+             .replace('+', "%2B")
+             .replace('?', "%3F")
+        };
         let loc = if track.path.starts_with('/') {
-            format!("file://{}", track.path.replace(' ', "%20"))
+            format!("file://{}", encode_path(&track.path))
         } else {
-            format!("file:///{}", track.path.replace('\\', "/").replace(' ', "%20"))
+            format!("file:///{}", encode_path(&track.path.replace('\\', "/")))
         };
 
         xml.push_str(&format!(
@@ -2271,10 +2281,12 @@ fn write_serato_crate(tracks: &[Track], path: &Path) -> Result<(), String> {
         //        arquivos na raiz /Users/...   → "Macintosh HD/Users/..."
         // Windows: "C:/Users/..." (forward slashes, as-is)
         #[cfg(target_os = "macos")]
-        let serato_path = if let Some(rest) = track.path.strip_prefix("/Volumes/") {
-            rest.to_string()
+        let serato_path = if track.path.starts_with("/Volumes/") {
+            // External volume: Serato stores as "Macintosh HD/Volumes/DriveName/..."
+            format!("Macintosh HD{}", track.path)
         } else {
-            format!("Macintosh HD/{}", track.path.trim_start_matches('/'))
+            // Boot disk: strip leading slash (Serato stores as "Users/..." not "/Users/...")
+            track.path.trim_start_matches('/').to_string()
         };
         #[cfg(target_os = "windows")]
         let serato_path = track.path.replace('\\', "/");

@@ -485,7 +485,8 @@ export default function App() {
   async function exportToDj(softwareId: string) {
     const targets = requireExportTargets();
     if (!targets) return;
-    const folderName = lastFolder ? lastFolder.split(/[\\/]/).filter(Boolean).pop() ?? "TagWave" : "TagWave";
+    const folderName = activePlaylist?.name
+      ?? (lastFolder ? lastFolder.split(/[\\/]/).filter(Boolean).pop() ?? "TagWave" : "TagWave");
     setExporting(true);
     try {
       await invoke("export_playlist_to_dj", {
