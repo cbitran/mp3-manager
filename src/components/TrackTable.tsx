@@ -95,6 +95,7 @@ const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path
   );
 });
 import { openPath } from "@tauri-apps/plugin-opener";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { queuedInvoke } from "../lib/ipcQueue";
 import { toast } from "./Toast";
@@ -1515,6 +1516,52 @@ export default function TrackTable({
           {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
             ? `Renomear ${selectedIds.size} arquivos pelo metadado`
             : "Renomear arquivo pelo metadado"}
+        </button>
+        {/* Trocar capa em lote */}
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={async () => {
+            const isBatch = selectedIds.size > 1 && selectedIds.has(contextMenu.track.id);
+            const paths = isBatch
+              ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
+              : [contextMenu.track.path];
+            setContextMenu(null);
+            const imagePath = await openFileDialog({
+              filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }],
+              multiple: false,
+            });
+            if (!imagePath || typeof imagePath !== "string") return;
+            const ok = await invoke<number>("save_cover_batch_from_file", {
+              paths,
+              imagePath,
+            }).catch(() => 0);
+            if (ok === 0) {
+              toast("Nenhuma capa aplicada — verifique os arquivos.", "error");
+              return;
+            }
+            paths.forEach((p) => {
+              const track = tracks.find((t) => t.path === p);
+              if (track) useAppStore.getState().updateTrack({
+                ...track,
+                has_cover: true,
+                cover_version: (track.cover_version ?? 0) + 1,
+                issues: track.issues.filter((i) => i !== "sem capa"),
+              });
+            });
+            toast(
+              ok === 1 ? "Capa aplicada com sucesso." : `Capa aplicada em ${ok} faixas.`,
+              "success"
+            );
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+            <rect x="1" y="1" width="8" height="8" rx="1"/>
+            <circle cx="3.5" cy="3.5" r="1"/>
+            <path d="M1 7l2.5-2.5 2 2 1.5-1.5 2 2"/>
+          </svg>
+          {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
+            ? `Trocar capa de ${selectedIds.size} faixas`
+            : "Trocar capa"}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
