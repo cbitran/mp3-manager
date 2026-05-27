@@ -3,6 +3,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore, consumeAutoPlay, Track } from "../store";
 import { loadWaveform, setCachedWaveform, getCachedWaveform, WAVEFORM_BARS } from "../lib/waveformCache";
 import { globalAudio } from "../lib/globalAudio";
+import { toast } from "./Toast";
 
 const PLAYER_BARS = WAVEFORM_BARS;
 
@@ -165,10 +166,13 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
             audio.play()
               .then(() => { setIsPlaying(true); startLiveAnim(); })
               .catch((err) => {
-                if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+                const name = (err as DOMException)?.name;
+                if (name === 'AbortError' || audio.readyState < 2) {
                   audio.addEventListener('canplay', () => {
                     audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
                   }, { once: true });
+                } else if (name === 'NotAllowedError') {
+                  toast("Clique em play para iniciar a reprodução.", "info");
                 }
               });
           };
@@ -192,11 +196,13 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
           audio.play()
             .then(() => { setIsPlaying(true); startLiveAnim(); })
             .catch((err) => {
-              // AbortError = load() interrupted play(); retry after canplay
-              if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+              const name = (err as DOMException)?.name;
+              if (name === 'AbortError' || audio.readyState < 2) {
                 audio.addEventListener('canplay', () => {
                   audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
                 }, { once: true });
+              } else if (name === 'NotAllowedError') {
+                toast("Clique em play para iniciar a reprodução.", "info");
               } else {
                 console.error('[MiniPlayer] play error:', err);
               }
@@ -249,10 +255,32 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
       if (cur) { const idx = all.findIndex((t) => t.id === cur); const next = all[idx+1]; if (next) { useAppStore.getState().setPlayerTrack(next.id); return; } }
       setIsPlaying(false);
     };
+    const onError = () => {
+      const err = audio.error;
+      if (!err) return;
+      const msgs: Record<number, string> = {
+        1: "Carregamento cancelado.",
+        2: "Erro de rede ao carregar o áudio.",
+        3: "Erro ao decodificar o arquivo. Formato não suportado ou arquivo corrompido.",
+        4: "Formato de áudio não suportado neste sistema.",
+      };
+      const msg = msgs[err.code] ?? `Erro de áudio (${err.code}).`;
+      const hint = IS_WIN && err.code === 4
+        ? " No Windows, instale o Media Feature Pack se o problema persistir."
+        : "";
+      toast(msg + hint, "error");
+      setIsPlaying(false);
+    };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onDur);
     audio.addEventListener("ended", onEnd);
-    return () => { audio.removeEventListener("timeupdate", onTime); audio.removeEventListener("loadedmetadata", onDur); audio.removeEventListener("ended", onEnd); };
+    audio.addEventListener("error", onError);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("loadedmetadata", onDur);
+      audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("error", onError);
+    };
   }, []);
 
   useEffect(() => {
@@ -363,10 +391,13 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
         audio.play()
           .then(() => { setIsPlaying(true); startLiveAnim(); })
           .catch((err) => {
-            if ((err as DOMException)?.name === 'AbortError' || audio.readyState < 2) {
+            const name = (err as DOMException)?.name;
+            if (name === 'AbortError' || audio.readyState < 2) {
               audio.addEventListener('canplay', () => {
                 audio.play().then(() => { setIsPlaying(true); startLiveAnim(); }).catch(console.error);
               }, { once: true });
+            } else if (name === 'NotAllowedError') {
+              toast("Clique em play para iniciar a reprodução.", "info");
             }
           });
       };
