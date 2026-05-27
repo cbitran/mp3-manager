@@ -135,12 +135,14 @@ export default function TrialExpiredModal() {
             </button>
           )}
 
-          <button
-            onClick={extendForBeta}
-            className="text-[11px] text-[#23201E] hover:text-[#373331] transition-colors"
-          >
-            Continuar em modo beta
-          </button>
+          {import.meta.env.DEV && (
+            <button
+              onClick={extendForBeta}
+              className="text-[11px] text-[#23201E] hover:text-[#373331] transition-colors"
+            >
+              Continuar em modo beta
+            </button>
+          )}
         </div>
       </div>
     </div>
