@@ -1388,12 +1388,12 @@ export default function TrackTable({
     {contextMenu && (
       <div
         ref={contextRef}
-        className="fixed z-[200] bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-2xl py-1 min-w-[180px]"
-        style={{ left: contextMenu.x, top: contextMenu.y }}
+        className="fixed z-[200] rounded-lg shadow-2xl py-1 min-w-[180px]"
+        style={{ left: contextMenu.x, top: contextMenu.y, background: "#1c1715", border: "1px solid rgba(255,255,255,0.08)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             const isVideo = VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase());
             if (isVideo) {
@@ -1411,7 +1411,7 @@ export default function TrackTable({
         {/* Enriquecer metadados */}
         {onEnrich && (
           <button
-            className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+            className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
             onClick={() => {
               const trackId = contextMenu.track.id;
               // Se há múltiplas faixas selecionadas e essa é uma delas, enriquece a seleção.
@@ -1432,7 +1432,7 @@ export default function TrackTable({
         {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
         {!VIDEO_EXTS.has((contextMenu.track.format ?? "").toLowerCase()) && (
           <button
-            className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2 disabled:opacity-40"
+            className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2 disabled:opacity-40" style={{ color: "#E8E4E1" }}
             disabled={analyzingBpmId === contextMenu.track.id}
             onClick={async () => {
               const track = contextMenu.track;
@@ -1468,7 +1468,7 @@ export default function TrackTable({
         {/* Edição inline */}
         <div className="h-px bg-white/[0.06] my-1" />
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             requestInlineEdit(contextMenu.track.id, "title");
             setContextMenu(null);
@@ -1480,7 +1480,7 @@ export default function TrackTable({
           {t("table.editTitle")}
         </button>
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             requestInlineEdit(contextMenu.track.id, "artist");
             setContextMenu(null);
@@ -1493,7 +1493,7 @@ export default function TrackTable({
         </button>
         {/* Renomear pelo metadado */}
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={async () => {
             const isBatch = selectedIds.size > 1 && selectedIds.has(contextMenu.track.id);
             const paths = isBatch
@@ -1530,7 +1530,7 @@ export default function TrackTable({
         </button>
         {/* Trocar capa em lote */}
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={async () => {
             const isBatch = selectedIds.size > 1 && selectedIds.has(contextMenu.track.id);
             const paths = isBatch
@@ -1576,7 +1576,7 @@ export default function TrackTable({
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             invoke("reveal_in_finder", { path: contextMenu.track.path }).catch(() => {});
             setContextMenu(null);
@@ -1586,7 +1586,7 @@ export default function TrackTable({
           {IS_WIN_TABLE ? t("table.revealExplorer") : t("table.revealFinder")}
         </button>
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             navigator.clipboard.writeText(contextMenu.track.path).catch(() => {});
             setContextMenu(null);
@@ -1596,7 +1596,7 @@ export default function TrackTable({
           {t("table.copyPath")}
         </button>
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             const shareTracks = selectedIds.size > 1
               ? tracks.filter((t) => selectedIds.has(t.id))
@@ -1635,7 +1635,7 @@ export default function TrackTable({
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
-          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
           onClick={() => {
             const exportTracks = selectedIds.size > 1
               ? tracks.filter((t) => selectedIds.has(t.id))
@@ -1654,7 +1654,7 @@ export default function TrackTable({
         {/* Adicionar a playlist existente */}
         {playlists.length > 0 && (
           <div className="relative group/submenu">
-            <button className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center justify-between gap-2">
+            <button className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center justify-between gap-2" style={{ color: "#E8E4E1" }}>
               <span className="flex items-center gap-2">
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60">
                   <rect x="1" y="1" width="9" height="2" rx="0.5"/>
@@ -1666,11 +1666,11 @@ export default function TrackTable({
               <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="opacity-40"><path d="M1 0l4 3-4 3V0z"/></svg>
             </button>
             <div className="absolute left-full top-0 ml-1 hidden group-hover/submenu:block z-50 min-w-[160px]">
-              <div className="py-1 bg-[#1c1715] border border-white/[0.08] rounded-lg shadow-xl">
+              <div className="py-1 rounded-lg shadow-xl" style={{ background: "#1c1715", border: "1px solid rgba(255,255,255,0.08)" }}>
                 {playlists.map((pl) => (
                   <button
                     key={pl.id}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.06] truncate"
+                    className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.06] truncate" style={{ color: "#E8E4E1" }}
                     onClick={() => {
                       const paths = selectedIds.size > 1
                         ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)

@@ -1569,17 +1569,17 @@ export default function App() {
                     : t("toolbar.enrich")}
               </button>
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
-                <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
-                  <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                <div className="py-1 rounded-md shadow-xl" style={{ background: "#1c1917", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
                     {t("toolbar.enrichMenu.all")}
                   </button>
-                  <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                  <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
                     {t("toolbar.enrichMenu.itunes")}
                   </button>
-                  <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
+                  <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
                     {t("toolbar.enrichMenu.spotify")}
                   </button>
-                  <div className="mx-2 my-1 h-px bg-white/[0.05]" />
+                  <div className="mx-2 my-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
                   <button
                     disabled={enriching}
                     onClick={() => {
@@ -1588,11 +1588,12 @@ export default function App() {
                       useAppStore.setState({ selectedIds: new Set(noCoverTracks.map((t) => t.id)) });
                       setTimeout(() => batchEnrich("all"), 50);
                     }}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C97B40] hover:bg-white/[0.05] transition-colors disabled:opacity-40"
+                    className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40"
+                    style={{ color: "#D4956A" }}
                   >
                     Buscar capas faltantes
                     {allTracks.filter((t) => !t.has_cover).length > 0 && (
-                      <span className="ml-1 text-[9px] text-[#605A55]">({allTracks.filter((t) => !t.has_cover).length})</span>
+                      <span className="ml-1 text-[9px]" style={{ color: "#756D67" }}>({allTracks.filter((t) => !t.has_cover).length})</span>
                     )}
                   </button>
                 </div>
@@ -1628,8 +1629,8 @@ export default function App() {
                 title={canExport ? undefined : t("toolbar.selectToExport")}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 ${
                   canExport
-                    ? "text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04]"
-                    : "text-[#373331] cursor-not-allowed"
+                    ? "text-[#756D67] hover:text-[#8F8883] hover:bg-white/[0.04]"
+                    : "text-[#4C4743] cursor-not-allowed"
                 }`}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
