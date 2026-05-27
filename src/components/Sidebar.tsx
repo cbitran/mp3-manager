@@ -2,6 +2,8 @@ import { useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { toast } from "./Toast";
 
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
@@ -23,6 +25,7 @@ interface DeleteDialogState {
 export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
+  const updateTrack = useAppStore((s) => s.updateTrack);
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
   const playlists      = useAppStore((s) => s.playlists);
@@ -363,6 +366,51 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               {t("sidebar.exportPlaylist")}
             </button>
           )}
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={async () => {
+              const paths = playlistCtx.pl.trackPaths;
+              setPlaylistCtx(null);
+              if (paths.length === 0) { toast("Playlist vazia.", "info"); return; }
+              interface RenameResult { old_path: string; new_path: string; }
+              const results = await invoke<RenameResult[]>("rename_from_tags", { paths });
+              if (results.length === 0) { toast("Nenhum arquivo renomeado — metadados insuficientes ou nome já correto.", "info"); return; }
+              results.forEach(({ old_path, new_path }) => {
+                const tr = tracks.find((t) => t.path === old_path);
+                if (tr) updateTrack({ ...tr, path: new_path, filename: new_path.split(/[\\/]/).pop() ?? new_path });
+              });
+              toast(results.length === 1 ? `Arquivo renomeado para "${results[0].new_path.split(/[\\/]/).pop()}"` : `${results.length} arquivos renomeados pelo metadado`, "success");
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+              <path d="M1 5h8M5 1l4 4-4 4"/>
+            </svg>
+            Renomear arquivos pelo metadado
+          </button>
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={async () => {
+              const paths = playlistCtx.pl.trackPaths;
+              setPlaylistCtx(null);
+              if (paths.length === 0) { toast("Playlist vazia.", "info"); return; }
+              const imagePath = await openFileDialog({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+              if (!imagePath || typeof imagePath !== "string") return;
+              const ok = await invoke<number>("save_cover_batch_from_file", { paths, imagePath }).catch(() => 0);
+              if (ok === 0) { toast("Nenhuma capa aplicada — verifique os arquivos.", "error"); return; }
+              paths.forEach((p) => {
+                const tr = tracks.find((t) => t.path === p);
+                if (tr) updateTrack({ ...tr, has_cover: true, cover_version: (tr.cover_version ?? 0) + 1, issues: tr.issues.filter((i) => i !== "sem capa") });
+              });
+              toast(ok === 1 ? "Capa aplicada com sucesso." : `Capa aplicada em ${ok} faixas.`, "success");
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+              <rect x="1" y="1" width="8" height="8" rx="1"/>
+              <circle cx="3.5" cy="3.5" r="1"/>
+              <path d="M1 7l2.5-2.5 2 2 1.5-1.5 2 2"/>
+            </svg>
+            Trocar capa da playlist
+          </button>
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
@@ -442,6 +490,53 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               {t("sidebar.enrichTracks")}
             </button>
           )}
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={async () => {
+              const prefix = contextMenu.path.endsWith("/") || contextMenu.path.endsWith("\\") ? contextMenu.path : contextMenu.path + "/";
+              const paths = tracks.filter((t) => t.path.startsWith(prefix)).map((t) => t.path);
+              closeContextMenu();
+              if (paths.length === 0) { toast("Nenhuma faixa carregada nesta pasta.", "info"); return; }
+              interface RenameResult { old_path: string; new_path: string; }
+              const results = await invoke<RenameResult[]>("rename_from_tags", { paths });
+              if (results.length === 0) { toast("Nenhum arquivo renomeado — metadados insuficientes ou nome já correto.", "info"); return; }
+              results.forEach(({ old_path, new_path }) => {
+                const tr = tracks.find((t) => t.path === old_path);
+                if (tr) updateTrack({ ...tr, path: new_path, filename: new_path.split(/[\\/]/).pop() ?? new_path });
+              });
+              toast(results.length === 1 ? `Arquivo renomeado para "${results[0].new_path.split(/[\\/]/).pop()}"` : `${results.length} arquivos renomeados pelo metadado`, "success");
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+              <path d="M1 5h8M5 1l4 4-4 4"/>
+            </svg>
+            Renomear arquivos pelo metadado
+          </button>
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+            onClick={async () => {
+              const prefix = contextMenu.path.endsWith("/") || contextMenu.path.endsWith("\\") ? contextMenu.path : contextMenu.path + "/";
+              const paths = tracks.filter((t) => t.path.startsWith(prefix)).map((t) => t.path);
+              closeContextMenu();
+              if (paths.length === 0) { toast("Nenhuma faixa carregada nesta pasta.", "info"); return; }
+              const imagePath = await openFileDialog({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+              if (!imagePath || typeof imagePath !== "string") return;
+              const ok = await invoke<number>("save_cover_batch_from_file", { paths, imagePath }).catch(() => 0);
+              if (ok === 0) { toast("Nenhuma capa aplicada — verifique os arquivos.", "error"); return; }
+              paths.forEach((p) => {
+                const tr = tracks.find((t) => t.path === p);
+                if (tr) updateTrack({ ...tr, has_cover: true, cover_version: (tr.cover_version ?? 0) + 1, issues: tr.issues.filter((i) => i !== "sem capa") });
+              });
+              toast(ok === 1 ? "Capa aplicada com sucesso." : `Capa aplicada em ${ok} faixas.`, "success");
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+              <rect x="1" y="1" width="8" height="8" rx="1"/>
+              <circle cx="3.5" cy="3.5" r="1"/>
+              <path d="M1 7l2.5-2.5 2 2 1.5-1.5 2 2"/>
+            </svg>
+            Trocar capa da pasta
+          </button>
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
