@@ -2328,7 +2328,7 @@ export default function App() {
               style={{ width: `${Math.round((enrichProgress.done / enrichProgress.total) * 100)}%`, background: "#C97B40" }}
             />
           ) : (
-            <div className="absolute inset-y-0 left-0 w-1/3 animate-pulse" style={{ background: "#D95340", animation: "progress-indeterminate 1.4s ease-in-out infinite" }} />
+            <div className="absolute inset-y-0 left-0" style={{ background: "#D95340", animation: "progress-indeterminate 1.4s ease-in-out infinite" }} />
           )}
         </div>
       )}
