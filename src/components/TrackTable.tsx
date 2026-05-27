@@ -415,6 +415,7 @@ export default function TrackTable({
   enrichDoneIds,
   onOpenFolder,
   onEnrich,
+  resetColToken,
 }: {
   tracks: Track[];
   compact?: boolean;
@@ -424,6 +425,7 @@ export default function TrackTable({
   enrichDoneIds?: Set<string>;
   onOpenFolder?: () => void;
   onEnrich?: (trackId?: string) => void;
+  resetColToken?: number;
 }) {
   const {
     selectedIds,
@@ -485,6 +487,15 @@ export default function TrackTable({
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+
+  useEffect(() => {
+    if (!resetColToken) return;
+    localStorage.removeItem("tagwave_col_sizes");
+    localStorage.removeItem("tagwave_col_order");
+    setColumnSizing({});
+    setColumnOrder([]);
+  }, [resetColToken]);
+
   const lastClickRef = useRef<{ id: string; time: number }>({ id: "", time: 0 });
   const dragColIdRef = useRef<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
@@ -1583,6 +1594,31 @@ export default function TrackTable({
         >
           <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><rect x="3" y="1" width="7" height="8" rx="1"/><rect x="1" y="3" width="7" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>
           {t("table.copyPath")}
+        </button>
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] text-[#C2BEBC] hover:bg-white/[0.06] flex items-center gap-2"
+          onClick={() => {
+            const shareTracks = selectedIds.size > 1
+              ? tracks.filter((t) => selectedIds.has(t.id))
+              : [contextMenu.track];
+            const lines = shareTracks.map((t) => {
+              const parts: string[] = [];
+              if (t.title) parts.push(t.title);
+              if (t.artist) parts.push(t.artist);
+              if (t.bpm) parts.push(`${parseFloat(t.bpm).toFixed(0)} BPM`);
+              if (t.key) parts.push(t.key);
+              return parts.length > 0 ? parts.join(" — ") : t.filename;
+            });
+            navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+            toast(`${shareTracks.length} faixa${shareTracks.length > 1 ? "s" : ""} copiada${shareTracks.length > 1 ? "s" : ""} para a área de transferência`, "success");
+            setContextMenu(null);
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+            <circle cx="8.5" cy="2" r="1.2"/><circle cx="2" cy="5.5" r="1.2"/><circle cx="8.5" cy="9" r="1.2"/>
+            <path d="M3.2 4.8l4.1-2M3.2 6.2l4.1 2"/>
+          </svg>
+          {selectedIds.size > 1 ? `Compartilhar (${selectedIds.size})` : "Compartilhar"}
         </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button

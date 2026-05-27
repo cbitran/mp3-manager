@@ -228,6 +228,7 @@ export default function App() {
 
   const [showColPicker, setShowColPicker] = useState(false);
   const colPickerRef = useRef<HTMLDivElement>(null);
+  const [colResetToken, setColResetToken] = useState(0);
 
   useEffect(() => {
     if (!showColPicker) return;
@@ -1178,6 +1179,37 @@ export default function App() {
     await scanFolder(folder);
   }
 
+  async function loadAllFolders() {
+    const folders = useAppStore.getState().recentFolders;
+    if (folders.length === 0) { toast("Nenhuma pasta na biblioteca", "info"); return; }
+    setScanning(true);
+    setScanTotal(null);
+    setScanDone(0);
+    setFilenameIssues([]);
+    setFilenameMetaIssues([]);
+    setParenIssues([]);
+    setDuplicateGroups([]);
+    setGenreFilter(null);
+    setNewTrackIds(new Set());
+    useAppStore.setState({ lastFolder: null });
+
+    try {
+      const combined: Track[] = [];
+      const seen = new Set<string>();
+      for (const folder of folders) {
+        try {
+          const result = await invoke<Track[]>("scan_folder", { folder });
+          for (const t of result) {
+            if (!seen.has(t.path)) { seen.add(t.path); combined.push(t); }
+          }
+        } catch { /* pasta inacessível — ignora */ }
+      }
+      setTracks(combined);
+    } finally {
+      setScanning(false);
+    }
+  }
+
   async function handleAddNewTracks(newTracks: Track[], enrich: boolean) {
     const ids = new Set(newTracks.map((t) => t.id));
     setTracks([...newTracks, ...allTracks]);
@@ -1535,7 +1567,7 @@ export default function App() {
                     ? t("toolbar.enrichCount", { count: selectedIds.size })
                     : t("toolbar.enrich")}
               </button>
-              <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[160px]">
+              <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
                 <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
                   <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
                     {t("toolbar.enrichMenu.all")}
@@ -1545,6 +1577,22 @@ export default function App() {
                   </button>
                   <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors disabled:opacity-40">
                     {t("toolbar.enrichMenu.spotify")}
+                  </button>
+                  <div className="mx-2 my-1 h-px bg-white/[0.05]" />
+                  <button
+                    disabled={enriching}
+                    onClick={() => {
+                      const noCoverTracks = allTracks.filter((t) => !t.has_cover);
+                      if (noCoverTracks.length === 0) { toast("Todas as faixas já têm capa", "info"); return; }
+                      useAppStore.setState({ selectedIds: new Set(noCoverTracks.map((t) => t.id)) });
+                      setTimeout(() => batchEnrich("all"), 50);
+                    }}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C97B40] hover:bg-white/[0.05] transition-colors disabled:opacity-40"
+                  >
+                    Buscar capas faltantes
+                    {allTracks.filter((t) => !t.has_cover).length > 0 && (
+                      <span className="ml-1 text-[9px] text-[#605A55]">({allTracks.filter((t) => !t.has_cover).length})</span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1958,7 +2006,7 @@ export default function App() {
                       </label>
                     ))}
                   </div>
-                  <div className="border-t border-white/[0.05] pt-1.5 px-3 mt-0.5">
+                  <div className="border-t border-white/[0.05] pt-1.5 px-3 mt-0.5 flex items-center gap-3">
                     <button
                       onClick={() => {
                         const reset: Record<string, boolean> = {};
@@ -1968,6 +2016,12 @@ export default function App() {
                       className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
                     >
                       {t("settings.columns.showAll")}
+                    </button>
+                    <button
+                      onClick={() => setColResetToken((n) => n + 1)}
+                      className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
+                    >
+                      Restaurar larguras
                     </button>
                   </div>
                 </div>
@@ -2007,6 +2061,7 @@ export default function App() {
                   setTimeout(() => batchEnrich("all", folderPath), 50);
                 }}
                 onExportPlaylist={(pl) => setExportPlaylistTarget(pl)}
+                onLoadAllFolders={loadAllFolders}
               />
             {/* Drag handle */}
             <div
@@ -2191,6 +2246,7 @@ export default function App() {
                 enrichDoneIds={new Set([...enrichDoneIds, ...bpmDoneIds])}
                 onOpenFolder={pickFolder}
                 onEnrich={(trackId) => batchEnrich("all", undefined, trackId)}
+                resetColToken={colResetToken}
               />
             </div>
             {showRightPanel && allTracks.length > 0 && (() => {
@@ -2257,6 +2313,25 @@ export default function App() {
           </>}
         </div>
       </div>
+
+      {/* Barra de progresso global — scan e enrichment */}
+      {(isScanning || enriching) && (
+        <div className="shrink-0 relative overflow-hidden" style={{ height: 2, background: "rgba(255,255,255,0.04)" }}>
+          {isScanning && scanTotal && scanTotal > 0 ? (
+            <div
+              className="absolute inset-y-0 left-0 transition-all duration-200"
+              style={{ width: `${Math.round((scanDone / scanTotal) * 100)}%`, background: "#D95340" }}
+            />
+          ) : enriching && enrichProgress ? (
+            <div
+              className="absolute inset-y-0 left-0 transition-all duration-200"
+              style={{ width: `${Math.round((enrichProgress.done / enrichProgress.total) * 100)}%`, background: "#C97B40" }}
+            />
+          ) : (
+            <div className="absolute inset-y-0 left-0 w-1/3 animate-pulse" style={{ background: "#D95340", animation: "progress-indeterminate 1.4s ease-in-out infinite" }} />
+          )}
+        </div>
+      )}
 
       {(selectedIds.size > 0 || !!playerTrackId || tourPlayerVisible) && (
         <div data-tour="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>

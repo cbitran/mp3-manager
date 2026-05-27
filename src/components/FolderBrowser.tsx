@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface DirEntry {
@@ -24,6 +24,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastClickRef = useRef<{ path: string; time: number }>({ path: "", time: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +146,15 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
           <div className="flex flex-col">
             {folders.map((f) => (
               <button key={f.path}
-                onClick={() => navigate(f.path)}
+                onClick={() => {
+                  const now = Date.now();
+                  if (lastClickRef.current.path === f.path && now - lastClickRef.current.time < 400) {
+                    onLoadFolder(f.path);
+                  } else {
+                    lastClickRef.current = { path: f.path, time: now };
+                    navigate(f.path);
+                  }
+                }}
                 className="flex items-center gap-2 px-2 h-8 rounded-md w-full text-left transition-colors"
                 style={{ color: "#C2BEBC", background: "transparent" }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}

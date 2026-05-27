@@ -15,6 +15,7 @@ interface SidebarProps {
   onAnalyzeBpmFolder?: (folderPath: string) => void;
   onEnrichFolder?: (folderPath: string) => void;
   onExportPlaylist?: (pl: Playlist) => void;
+  onLoadAllFolders?: () => void;
 }
 
 interface DeleteDialogState {
@@ -22,7 +23,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -44,6 +45,19 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
   const [devicesExpanded, setDevicesExpanded] = useState(true);
   const dragCounterRef = useRef(0);
+  const hoveredFolderRef = useRef<{ path: string; name: string } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (!hoveredFolderRef.current) return;
+      if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+      e.preventDefault();
+      setDeleteDialog(hoveredFolderRef.current);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Contagem de faixas por pasta, calculada a partir das faixas atualmente carregadas
   const folderTrackCount = (folderPath: string) => {
@@ -51,10 +65,22 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     return tracks.filter((t) => t.path.startsWith(prefix)).length;
   };
 
+  const prevVolumesRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const refresh = () =>
       invoke<{ path: string; name: string }[]>("list_volumes")
-        .then(setVolumes)
+        .then((vols) => {
+          const newPaths = new Set(vols.map((v) => v.path));
+          // Detecta volumes novos que não estavam antes
+          for (const v of vols) {
+            if (prevVolumesRef.current.size > 0 && !prevVolumesRef.current.has(v.path)) {
+              toast(`Dispositivo "${v.name}" conectado — clique para adicionar à biblioteca`, "info");
+            }
+          }
+          prevVolumesRef.current = newPaths;
+          setVolumes(vols);
+        })
         .catch(() => {});
     refresh();
     const id = setInterval(refresh, 4000);
@@ -205,50 +231,86 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           })}
         </div>
 
+        {/* Botão "Todos" — visão unificada de toda a biblioteca */}
+        {onLoadAllFolders && recentFolders.length > 1 && (
+          <button
+            onClick={onLoadAllFolders}
+            className="mx-2 mt-2 mb-1 flex items-center gap-1.5 px-2 py-1.5 rounded-md w-full text-left transition-colors hover:bg-white/[0.05]"
+            style={{ color: "#8F8883" }}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
+              <rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="7" y="1" width="4" height="4" rx="0.8"/>
+              <rect x="1" y="7" width="4" height="4" rx="0.8"/><rect x="7" y="7" width="4" height="4" rx="0.8"/>
+            </svg>
+            <span className="text-[11px]">Toda a biblioteca</span>
+            <span className="ml-auto text-[9px] font-mono text-[#605A55]">{tracks.length > 0 && !lastFolder ? tracks.length : ""}</span>
+          </button>
+        )}
+
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
           {sidebarTab === "recent" && (
             recentFolders.length > 0
-              ? recentFolders.map((f) => (
-                  <FolderRow
-                    key={f}
-                    path={f}
-                    isSelected={lastFolder === f}
-                    isFavorite={isFavorite(f)}
-                    isExpanded={expandedFolders.has(f)}
-                    subfolders={subfolderMap[f] ?? null}
-                    trackCount={folderTrackCount(f)}
-                    onOpen={() => onFolderSelect(f)}
-                    onToggleExpand={() => toggleExpand(f)}
-                    onToggleFavorite={() => toggleFavorite(f)}
-                    onContextMenu={(e) => handleContextMenu(e, f)}
-                    onFolderSelect={onFolderSelect}
-                    lastFolder={lastFolder}
-                    tracks={tracks}
-                  />
-                ))
+              ? recentFolders.map((f) => {
+                  const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
+                  return (
+                    <div key={f}
+                      onMouseEnter={() => { hoveredFolderRef.current = { path: f, name }; }}
+                      onMouseLeave={() => { hoveredFolderRef.current = null; }}
+                    >
+                      <FolderRow
+                        path={f}
+                        isSelected={lastFolder === f}
+                        isFavorite={isFavorite(f)}
+                        isExpanded={expandedFolders.has(f)}
+                        subfolders={subfolderMap[f] ?? null}
+                        trackCount={folderTrackCount(f)}
+                        onOpen={() => onFolderSelect(f)}
+                        onToggleExpand={() => toggleExpand(f)}
+                        onToggleExpandPath={toggleExpand}
+                        onToggleFavorite={() => toggleFavorite(f)}
+                        onContextMenu={(e) => handleContextMenu(e, f)}
+                        onFolderSelect={onFolderSelect}
+                        lastFolder={lastFolder}
+                        tracks={tracks}
+                        expandedFolders={expandedFolders}
+                        subfolderMap={subfolderMap}
+                      />
+                    </div>
+                  );
+                })
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
           )}
           {sidebarTab === "favorites" && (
             favoriteFolders.length > 0
-              ? favoriteFolders.map((f) => (
-                  <FolderRow
-                    key={f}
-                    path={f}
-                    isSelected={lastFolder === f}
-                    isFavorite={isFavorite(f)}
-                    isExpanded={expandedFolders.has(f)}
-                    subfolders={subfolderMap[f] ?? null}
-                    trackCount={folderTrackCount(f)}
-                    onOpen={() => onFolderSelect(f)}
-                    onToggleExpand={() => toggleExpand(f)}
-                    onToggleFavorite={() => toggleFavorite(f)}
-                    onContextMenu={(e) => handleContextMenu(e, f)}
-                    onFolderSelect={onFolderSelect}
-                    lastFolder={lastFolder}
-                    tracks={tracks}
-                  />
-                ))
+              ? favoriteFolders.map((f) => {
+                  const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
+                  return (
+                    <div key={f}
+                      onMouseEnter={() => { hoveredFolderRef.current = { path: f, name }; }}
+                      onMouseLeave={() => { hoveredFolderRef.current = null; }}
+                    >
+                      <FolderRow
+                        path={f}
+                        isSelected={lastFolder === f}
+                        isFavorite={isFavorite(f)}
+                        isExpanded={expandedFolders.has(f)}
+                        subfolders={subfolderMap[f] ?? null}
+                        trackCount={folderTrackCount(f)}
+                        onOpen={() => onFolderSelect(f)}
+                        onToggleExpand={() => toggleExpand(f)}
+                        onToggleExpandPath={toggleExpand}
+                        onToggleFavorite={() => toggleFavorite(f)}
+                        onContextMenu={(e) => handleContextMenu(e, f)}
+                        onFolderSelect={onFolderSelect}
+                        lastFolder={lastFolder}
+                        tracks={tracks}
+                        expandedFolders={expandedFolders}
+                        subfolderMap={subfolderMap}
+                      />
+                    </div>
+                  );
+                })
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">{t("sidebar.noFavorites")}</p>
           )}
           {sidebarTab === "playlists" && (
@@ -607,24 +669,73 @@ interface FolderRowProps {
   tracks?: import("../store").Track[];
   onOpen: () => void;
   onToggleExpand: () => void;
+  onToggleExpandPath: (path: string) => void;
   onToggleFavorite?: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onFolderSelect: (path: string) => void;
   lastFolder: string | null;
+  expandedFolders: Set<string>;
+  subfolderMap: Record<string, string[]>;
+}
+
+function SubFolderTree({ path, depth, expandedFolders, subfolderMap, onFolderSelect, onToggleExpandPath, lastFolder, tracks }: {
+  path: string; depth: number;
+  expandedFolders: Set<string>; subfolderMap: Record<string, string[]>;
+  onFolderSelect: (p: string) => void; onToggleExpandPath: (p: string) => void;
+  lastFolder: string | null; tracks?: import("../store").Track[];
+}) {
+  const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  const isSelected = lastFolder === path;
+  const isExpanded = expandedFolders.has(path);
+  const subs = subfolderMap[path];
+  const hasSubs = subs === undefined || subs.length > 0;
+  const prefix = path.endsWith("/") || path.endsWith("\\") ? path : path + "/";
+  const cnt = tracks ? tracks.filter((t) => t.path.startsWith(prefix)).length : 0;
+  return (
+    <div>
+      <div className="flex items-center group" style={{ paddingLeft: depth * 10 }}>
+        <button onClick={hasSubs ? () => onToggleExpandPath(path) : undefined}
+          style={{ visibility: hasSubs ? "visible" : "hidden" }}
+          className="w-4 h-6 flex items-center justify-center shrink-0 text-[#4C4743] hover:text-[#8F8883] transition-colors">
+          <svg width="6" height="6" viewBox="0 0 8 8" fill="currentColor"
+            style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+            <path d="M2 1l4 3-4 3V1z"/>
+          </svg>
+        </button>
+        <button onClick={() => onFolderSelect(path)}
+          className={`flex-1 flex items-center gap-1.5 px-1 py-1 rounded-md text-[11px] transition-colors text-left min-w-0
+            ${isSelected ? "bg-[#D95340]/15 text-[#F5F5F4]" : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"}`}
+          title={path}>
+          <svg width="10" height="10" viewBox="0 0 11 11" fill="currentColor"
+            className={`shrink-0 transition-colors ${isSelected ? "text-[#D95340] opacity-90" : "opacity-40"}`}>
+            <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/>
+          </svg>
+          <span className="truncate flex-1">{name}</span>
+          {cnt > 0 && <span className={`text-[9px] font-mono tabular-nums shrink-0 ${isSelected ? "text-[#D95340]/70" : "text-[#4C4743]"}`}>{cnt}</span>}
+        </button>
+      </div>
+      {isExpanded && subs && subs.length > 0 && (
+        <div>
+          {subs.map((sub) => (
+            <SubFolderTree key={sub} path={sub} depth={depth + 1}
+              expandedFolders={expandedFolders} subfolderMap={subfolderMap}
+              onFolderSelect={onFolderSelect} onToggleExpandPath={onToggleExpandPath}
+              lastFolder={lastFolder} tracks={tracks} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FolderRow({
   path, isSelected, isFavorite, isExpanded, subfolders, trackCount, tracks,
-  onOpen, onToggleExpand, onToggleFavorite, onContextMenu, onFolderSelect, lastFolder
+  onOpen, onToggleExpand, onToggleExpandPath, onToggleFavorite, onContextMenu, onFolderSelect, lastFolder,
+  expandedFolders, subfolderMap,
 }: FolderRowProps) {
   const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const hasSubs = subfolders === null || subfolders.length > 0;
 
-  const subTrackCount = (subPath: string) => {
-    if (!tracks) return 0;
-    const prefix = subPath.endsWith("/") || subPath.endsWith("\\") ? subPath : subPath + "/";
-    return tracks.filter((t) => t.path.startsWith(prefix)).length;
-  };
 
   return (
     <div>
@@ -681,38 +792,15 @@ function FolderRow({
         )}
       </div>
 
-      {/* Subfolders */}
+      {/* Subfolders — recursivos */}
       {isExpanded && subfolders && subfolders.length > 0 && (
         <div className="pl-5">
-          {subfolders.map((sub) => {
-            const subSelected = lastFolder === sub;
-            const cnt = subTrackCount(sub);
-            return (
-              <button
-                key={sub}
-                onClick={() => onFolderSelect(sub)}
-                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors text-left
-                  ${subSelected
-                    ? "bg-[#D95340]/15 text-[#F5F5F4]"
-                    : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
-                  }`}
-                title={sub}
-              >
-                <svg
-                  width="10" height="10" viewBox="0 0 11 11" fill="currentColor"
-                  className={`shrink-0 transition-colors ${subSelected ? "text-[#D95340] opacity-90" : "opacity-40"}`}
-                >
-                  <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/>
-                </svg>
-                <span className="truncate flex-1">{sub.split(/[\\/]/).filter(Boolean).pop()}</span>
-                {cnt > 0 && (
-                  <span className={`text-[9px] font-mono tabular-nums shrink-0 ${subSelected ? "text-[#D95340]/70" : "text-[#4C4743]"}`}>
-                    {cnt}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {subfolders.map((sub) => (
+            <SubFolderTree key={sub} path={sub} depth={0}
+              expandedFolders={expandedFolders} subfolderMap={subfolderMap}
+              onFolderSelect={onFolderSelect} onToggleExpandPath={onToggleExpandPath}
+              lastFolder={lastFolder} tracks={tracks} />
+          ))}
         </div>
       )}
     </div>
