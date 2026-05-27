@@ -2103,6 +2103,7 @@ export default function App() {
           {/* Folder Browser — substitui a tabela quando navegando */}
           {browsePath && (
             <FolderBrowser
+              key={browsePath}
               rootPath={browsePath}
               onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
               onClose={() => setBrowsePath(null)}

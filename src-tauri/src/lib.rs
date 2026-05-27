@@ -1747,7 +1747,7 @@ fn normalize_tags(paths: Vec<String>) -> Vec<NormalizeResult> {
 // ── Rekordbox XML Export ──────────────────────────────────────────────────────
 
 #[tauri::command]
-fn export_rekordbox(tracks: Vec<Track>, output_path: String) -> Result<usize, String> {
+fn export_rekordbox(tracks: Vec<Track>, output_path: String, playlist_name: String) -> Result<usize, String> {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<DJ_PLAYLISTS Version=\"1.0.0\">\n");
     xml.push_str(&format!("  <PRODUCT Name=\"TagWave\" Version=\"{}\" Company=\"Bitran\"/>\n", env!("CARGO_PKG_VERSION")));
@@ -1755,7 +1755,7 @@ fn export_rekordbox(tracks: Vec<Track>, output_path: String) -> Result<usize, St
     xml.push_str(&tracks.len().to_string());
     xml.push_str("\">\n");
 
-    for track in &tracks {
+    for (i, track) in tracks.iter().enumerate() {
         let title   = xml_escape(track.title.as_deref().unwrap_or(&track.filename));
         let artist  = xml_escape(track.artist.as_deref().unwrap_or(""));
         let album   = xml_escape(track.album.as_deref().unwrap_or(""));
@@ -1786,18 +1786,17 @@ fn export_rekordbox(tracks: Vec<Track>, output_path: String) -> Result<usize, St
             "    <TRACK TrackID=\"{}\" Name=\"{}\" Artist=\"{}\" Album=\"{}\" Genre=\"{}\" \
              TotalTime=\"{}\" AverageBpm=\"{}\" Tonality=\"{}\" Year=\"{}\" Size=\"{}\" \
              Location=\"{}\"/>\n",
-            &track.id[..8], title, artist, album, genre,
+            i + 1, title, artist, album, genre,
             dur_s, bpm, key, year, size, loc
         ));
     }
 
     xml.push_str("  </COLLECTION>\n");
     xml.push_str("  <PLAYLISTS>\n    <NODE Type=\"0\" Name=\"ROOT\" Count=\"1\">\n");
-    xml.push_str("      <NODE Name=\"TagWave Export\" Type=\"1\" KeyType=\"0\" Entries=\"");
-    xml.push_str(&tracks.len().to_string());
-    xml.push_str("\">\n");
-    for track in &tracks {
-        xml.push_str(&format!("        <TRACK Key=\"{}\"/>\n", &track.id[..8]));
+    xml.push_str(&format!("      <NODE Name=\"{}\" Type=\"1\" KeyType=\"0\" Entries=\"{}\">\n",
+        xml_escape(&playlist_name), tracks.len()));
+    for i in 0..tracks.len() {
+        xml.push_str(&format!("        <TRACK Key=\"{}\"/>\n", i + 1));
     }
     xml.push_str("      </NODE>\n    </NODE>\n  </PLAYLISTS>\n</DJ_PLAYLISTS>\n");
 
@@ -2428,7 +2427,7 @@ fn export_playlist_to_dj(
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("{} - Rekordbox.xml", safe_name));
             let output = path.to_string_lossy().to_string();
-            export_rekordbox(tracks, output.clone())?;
+            export_rekordbox(tracks, output.clone(), playlist_name.clone())?;
             Ok(output)
         }
         "engine_dj" => {
@@ -2436,7 +2435,7 @@ fn export_playlist_to_dj(
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = dir.join(format!("{} - Engine DJ.xml", safe_name));
             let output = path.to_string_lossy().to_string();
-            export_rekordbox(tracks, output.clone())?;
+            export_rekordbox(tracks, output.clone(), playlist_name.clone())?;
             Ok(output)
         }
         "traktor" => {

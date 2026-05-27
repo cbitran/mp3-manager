@@ -62,10 +62,14 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
   const oneShotTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubRef         = useRef(false);
   const scrubTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Persiste o Track object mesmo quando a pasta muda e o track sai da lista
+  const cachedActiveTrackRef = useRef<import("../store").Track | null>(null);
 
   const selectedArr = [...selectedIds];
   const activeId    = playerTrackId ?? selectedArr[0] ?? null;
-  const activeTrack = tracks.find((t) => t.id === activeId) ?? null;
+  const foundTrack  = tracks.find((t) => t.id === activeId) ?? null;
+  if (foundTrack) cachedActiveTrackRef.current = foundTrack;
+  const activeTrack = foundTrack ?? (activeId ? cachedActiveTrackRef.current : null);
 
   const wfH       = WF_EXPANDED;
   const windowDur = duration;
@@ -101,9 +105,8 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
   function startLiveAnim() {
     const analyser = analyserRef.current;
     if (!analyser) return;
-    const fftBins = analyser.frequencyBinCount;
+    const fftBins = analyser.frequencyBinCount; // 256
     const freqData = new Uint8Array(fftBins);
-    const step = fftBins / PLAYER_BARS;
     function tick() {
       analyser!.getByteFrequencyData(freqData);
       const canvas = liveCanvasRef.current;
@@ -112,26 +115,25 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
         if (c) {
           c.clearRect(0, 0, canvas.width, canvas.height);
           const W = canvas.width; const H = canvas.height;
-          const bw = W / PLAYER_BARS;
+          // Use fftBins directly — one bar per FFT bin, evenly spaced
+          const bw = W / fftBins;
           const bars = waveBarsRef.current;
           const { playerProgress: pp, playerDuration: pd } = useAppStore.getState();
           const pf = pd > 0 ? pp / pd : 0;
-          for (let i = 0; i < PLAYER_BARS; i++) {
-            const isPlayed = i / PLAYER_BARS < pf;
-            const s = Math.floor(i * step), e2 = Math.floor((i + 1) * step);
-            let sum = 0;
-            for (let j = s; j < e2; j++) sum += freqData[j];
-            const beatAmp = sum / Math.max(1, e2 - s) / 255;
+          for (let i = 0; i < fftBins; i++) {
+            const beatAmp = freqData[i] / 255;
             if (beatAmp < 0.01) continue;
-            const waveBase = bars.length > i ? bars[i].amp : 0.5;
+            const waveBarIdx = Math.floor((i / fftBins) * bars.length);
+            const isPlayed = (i / fftBins) < pf;
+            const waveBase = bars.length > waveBarIdx ? bars[waveBarIdx].amp : 0.5;
             const finalAmp = waveBase * (0.4 + beatAmp * 0.6);
-            const bh = Math.max(1.5, finalAmp * H * 0.85);
-            const x = i * bw + bw * 0.15;
-            const alpha = isPlayed ? 0.08 + finalAmp * 0.12 : 0.22 + finalAmp * 0.55;
+            const bh = Math.max(2, finalAmp * H * 0.92);
+            const x = i * bw + bw * 0.1;
+            const alpha = isPlayed ? 0.14 + finalAmp * 0.22 : 0.30 + finalAmp * 0.65;
             c.fillStyle = `rgba(217,83,64,${alpha})`;
             c.beginPath();
-            if (c.roundRect) c.roundRect(x, (H - bh) / 2, bw * 0.7, bh, 0.5);
-            else c.rect(x, (H - bh) / 2, bw * 0.7, bh);
+            if (c.roundRect) c.roundRect(x, H - bh, bw * 0.8, bh, 1);
+            else c.rect(x, H - bh, bw * 0.8, bh);
             c.fill();
           }
         }
@@ -558,15 +560,15 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
               {(activeTrack?.bpm || activeTrack?.key) && (
                 <div className="flex items-end gap-2.5 mt-1">
                   {activeTrack?.bpm && (
-                    <div className="flex flex-col items-center leading-none">
-                      <span className="text-[22px] font-mono text-[#C97B40] font-bold tabular-nums leading-none">{parseFloat(activeTrack.bpm).toFixed(0)}</span>
-                      <span className="text-[8px] text-[#756D67] uppercase tracking-widest mt-0.5">bpm</span>
+                    <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
+                      <span className="font-mono font-bold tabular-nums" style={{ fontSize: 22, color: "#C97B40", lineHeight: 1 }}>{parseFloat(activeTrack.bpm).toFixed(0)}</span>
+                      <span className="uppercase tracking-widest" style={{ fontSize: 8, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>bpm</span>
                     </div>
                   )}
                   {activeTrack?.key && (
-                    <div className="flex flex-col items-center leading-none">
-                      <span className="text-[16px] font-mono font-bold text-[#8F8883] leading-none">{activeTrack.key}</span>
-                      <span className="text-[8px] text-[#756D67] uppercase tracking-widest mt-0.5">key</span>
+                    <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
+                      <span className="font-mono font-bold" style={{ fontSize: 16, color: "#8F8883", lineHeight: 1 }}>{activeTrack.key}</span>
+                      <span className="uppercase tracking-widest" style={{ fontSize: 8, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>key</span>
                     </div>
                   )}
                 </div>
@@ -763,15 +765,15 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
             <div className="w-px self-stretch my-2 bg-[#23201E] shrink-0" />
             <div className="flex items-center gap-3 px-3 shrink-0">
               {activeTrack?.bpm && (
-                <div className="flex flex-col items-center leading-none">
-                  <span className="text-[20px] font-mono text-[#C97B40] font-bold tabular-nums leading-none">{parseFloat(activeTrack.bpm).toFixed(0)}</span>
-                  <span className="text-[7px] text-[#4C4743] uppercase tracking-widest mt-0.5">bpm</span>
+                <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
+                  <span className="font-mono font-bold tabular-nums" style={{ fontSize: 20, color: "#C97B40", lineHeight: 1 }}>{parseFloat(activeTrack.bpm).toFixed(0)}</span>
+                  <span className="uppercase tracking-widest" style={{ fontSize: 7, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>bpm</span>
                 </div>
               )}
               {activeTrack?.key && (
-                <div className="flex flex-col items-center leading-none">
-                  <span className="text-[15px] font-mono font-bold text-[#8F8883] leading-none">{activeTrack.key}</span>
-                  <span className="text-[7px] text-[#4C4743] uppercase tracking-widest mt-0.5">key</span>
+                <div className="flex flex-col items-center" style={{ lineHeight: 1 }}>
+                  <span className="font-mono font-bold" style={{ fontSize: 15, color: "#8F8883", lineHeight: 1 }}>{activeTrack.key}</span>
+                  <span className="uppercase tracking-widest" style={{ fontSize: 7, color: "#8F8883", marginTop: 3, lineHeight: 1 }}>key</span>
                 </div>
               )}
             </div>
