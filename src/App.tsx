@@ -2363,33 +2363,29 @@ export default function App() {
 
       {/* Overlay bloqueante durante scan — impede interação e crash em pastas grandes */}
       {isScanning && (
-        <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center select-none"
-          style={{ background: "rgba(10,8,7,0.82)", backdropFilter: "blur(4px)" }}>
-          <div className="flex flex-col items-center gap-5 px-10 py-8 rounded-2xl border border-white/[0.07]"
-            style={{ background: "rgba(24,18,15,0.95)", minWidth: 320 }}>
-            {/* Spinner */}
-            <svg className="animate-spin" width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <circle cx="14" cy="14" r="11" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5"/>
-              <path d="M14 3a11 11 0 0 1 11 11" stroke="#D95340" strokeWidth="2.5" strokeLinecap="round"/>
-            </svg>
-            {/* Mensagem */}
-            <div className="flex flex-col items-center gap-1.5">
-              <p className="text-[14px] font-semibold text-[#F5F5F4]">Carregando arquivos…</p>
-              {scanTotal !== null && scanTotal > 0 && (
-                <p className="text-[11px] text-[#8F8883] font-mono tabular-nums">
-                  {scanDone} de {scanTotal} arquivos
-                </p>
-              )}
+        <div className="fixed inset-0 z-[500] flex items-center justify-center select-none bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#1c1715] border border-white/[0.08] rounded-xl shadow-2xl p-6 flex flex-col items-center gap-4" style={{ minWidth: 300 }}>
+            <div className="w-11 h-11 rounded-xl bg-[#D95340]/10 border border-[#D95340]/20 flex items-center justify-center">
+              <svg className="animate-spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="rgba(217,83,64,0.2)" strokeWidth="2"/>
+                <path d="M10 2a8 8 0 0 1 8 8" stroke="#D95340" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
             </div>
-            {/* Barra de progresso */}
-            {scanTotal !== null && scanTotal > 0 && (
-              <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: "rgba(255,255,255,0.07)" }}>
-                <div
-                  className="h-full rounded-full transition-all duration-200"
-                  style={{ width: `${Math.round((scanDone / scanTotal) * 100)}%`, background: "#D95340" }}
-                />
-              </div>
-            )}
+            <div className="flex flex-col items-center gap-1 text-center">
+              <p className="text-[13px] font-semibold text-[#F5F5F4]">Carregando arquivos…</p>
+              <p className="text-[11px] text-[#8F8883]">
+                {scanTotal !== null && scanTotal > 0 ? `${scanDone} de ${scanTotal} arquivos` : "Lendo pasta…"}
+              </p>
+            </div>
+            <div className="w-full rounded-full overflow-hidden" style={{ height: 3, background: "rgba(255,255,255,0.06)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-150"
+                style={{
+                  width: scanTotal && scanTotal > 0 ? `${Math.round((scanDone / scanTotal) * 100)}%` : "0%",
+                  background: "linear-gradient(90deg, #B34435, #D95340)"
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
