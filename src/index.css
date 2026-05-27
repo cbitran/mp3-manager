@@ -327,6 +327,7 @@ html[data-theme="dark"] .hover\:bg-white\/5:hover         { background-color: rg
 
 /* ─── Tema Claro (Light) ─────────────────────────────────── */
 html[data-theme="light"] {
+  color-scheme: light; /* widgets nativos (scrollbar, inputs) em WebView2 */
   /* Backgrounds */
   --bg-base:     #F2EFEB;
   --bg-surface:  #FFFFFF;
@@ -375,21 +376,38 @@ html[data-theme="light"] .border-white\/10         { border-color: rgba(0,0,0,0.
 
 /* Cores de texto */
 html[data-theme="light"] .text-\[\#F5F5F4\]  { color: #1A1816 !important; }
+html[data-theme="light"] .text-\[\#DCDAD8\]  { color: #1A1816 !important; }
+html[data-theme="light"] .text-\[\#E8E4E1\]  { color: #2D2926 !important; }
 html[data-theme="light"] .text-\[\#C2BEBC\]  { color: #2D2926 !important; }
 html[data-theme="light"] .text-\[\#A8A3A0\]  { color: #4A4440 !important; }
 html[data-theme="light"] .text-\[\#8F8883\]  { color: #5A5550 !important; }
-html[data-theme="light"] .text-\[\#756D67\]  { color: #6A6460 !important; }
-html[data-theme="light"] .text-\[\#605A55\]  { color: #807A75 !important; }
-html[data-theme="light"] .text-\[\#4C4743\]  { color: #A0A09E !important; }
-html[data-theme="light"] .text-\[\#373331\]  { color: #C0BAB5 !important; }
+html[data-theme="light"] .text-\[\#756D67\]  { color: #5A5450 !important; }
+html[data-theme="light"] .text-\[\#605A55\]  { color: #6A6460 !important; }
+html[data-theme="light"] .text-\[\#4C4743\]  { color: #6A6460 !important; }  /* antes #A0A09E — muito fraco em branco */
+html[data-theme="light"] .text-\[\#373331\]  { color: #6A6460 !important; }  /* antes #C0BAB5 — ilegível em branco */
+html[data-theme="light"] .text-\[\#a09890\]  { color: #5A5550 !important; }
+html[data-theme="light"] .text-\[\#C99BA6\]  { color: #7A3040 !important; }
+html[data-theme="light"] .text-\[\#EAB308\]  { color: #A16207 !important; }
+html[data-theme="light"] .text-white         { color: #1A1816 !important; }
 
 /* Hover com opacidade branca → escura */
-html[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover  { background-color: rgba(0,0,0,0.04) !important; }
-html[data-theme="light"] .hover\:bg-white\/\[0\.05\]:hover  { background-color: rgba(0,0,0,0.05) !important; }
-html[data-theme="light"] .hover\:bg-white\/\[0\.06\]:hover  { background-color: rgba(0,0,0,0.06) !important; }
-html[data-theme="light"] .hover\:bg-white\/5:hover           { background-color: rgba(0,0,0,0.04) !important; }
-html[data-theme="light"] .hover\:bg-white\/8:hover           { background-color: rgba(0,0,0,0.06) !important; }
-html[data-theme="light"] .hover\:bg-white\/\[0\.12\]:hover  { background-color: rgba(0,0,0,0.08) !important; }
+html[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover    { background-color: rgba(0,0,0,0.04) !important; }
+html[data-theme="light"] .hover\:bg-white\/\[0\.05\]:hover    { background-color: rgba(0,0,0,0.05) !important; }
+html[data-theme="light"] .hover\:bg-white\/\[0\.06\]:hover    { background-color: rgba(0,0,0,0.06) !important; }
+html[data-theme="light"] .hover\:bg-white\/\[0\.015\]:hover   { background-color: rgba(0,0,0,0.03) !important; }
+html[data-theme="light"] .hover\:bg-white\/5:hover            { background-color: rgba(0,0,0,0.04) !important; }
+html[data-theme="light"] .hover\:bg-white\/8:hover            { background-color: rgba(0,0,0,0.06) !important; }
+html[data-theme="light"] .hover\:bg-white\/\[0\.12\]:hover   { background-color: rgba(0,0,0,0.08) !important; }
+html[data-theme="light"] .hover\:text-\[\#C2BEBC\]:hover     { color: #2D2926 !important; }
+html[data-theme="light"] .hover\:text-\[\#F5F5F4\]:hover     { color: #1A1816 !important; }
+
+/* Yellow badge em tema claro */
+html[data-theme="light"] .bg-yellow-500\/\[0\.08\]    { background-color: rgba(161,98,7,0.12) !important; }
+html[data-theme="light"] .border-yellow-500\/20       { border-color: rgba(161,98,7,0.35) !important; }
+
+/* Scrollbar em tema claro */
+html[data-theme="light"] ::-webkit-scrollbar-thumb         { background: rgba(0,0,0,0.18) !important; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover   { background: rgba(0,0,0,0.32) !important; }
 
 /* Checkbox em tema claro */
 html[data-theme="light"] input[type="checkbox"] {

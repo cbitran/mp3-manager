@@ -1581,7 +1581,7 @@ export default function App() {
                     : t("toolbar.enrich")}
               </button>
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
-                <div className="py-1 rounded-md shadow-xl" style={{ background: "#1c1917", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div className="py-1 rounded-md shadow-xl bg-[#1c1917] border border-white/[0.07]">
                   <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
                     {t("toolbar.enrichMenu.all")}
                   </button>
@@ -1651,7 +1651,7 @@ export default function App() {
               {/* Dropdown apenas quando exportação está disponível */}
               {canExport && !exporting && (
                 <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
-                  <div className="py-1 rounded-md shadow-xl" style={{ background: "#1c1917", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div className="py-1 rounded-md shadow-xl bg-[#1c1917] border border-white/[0.07]">
                     {installedDj.map((sw) => (
                       <button
                         key={sw.id}

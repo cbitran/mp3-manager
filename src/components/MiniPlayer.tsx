@@ -78,6 +78,9 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
     displayTracksRef.current = displayTracks ?? tracks;
   });
 
+  // Detecta tema claro — reavaliado em cada render (theme change → re-render do parent → re-render aqui)
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+
   const wfH       = WF_EXPANDED;
   const windowDur = duration;
   const winStart  = 0;
@@ -127,6 +130,7 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
           const bars = waveBarsRef.current;
           const { playerProgress: pp, playerDuration: pd } = useAppStore.getState();
           const pf = pd > 0 ? pp / pd : 0;
+          const lightCanvas = document.documentElement.getAttribute('data-theme') === 'light';
           for (let i = 0; i < fftBins; i++) {
             const beatAmp = freqData[i] / 255;
             if (beatAmp < 0.01) continue;
@@ -136,7 +140,9 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
             const finalAmp = waveBase * (0.4 + beatAmp * 0.6);
             const bh = Math.max(2, finalAmp * H * 0.92);
             const x = i * bw + bw * 0.1;
-            const alpha = isPlayed ? 0.14 + finalAmp * 0.22 : 0.30 + finalAmp * 0.65;
+            const alpha = lightCanvas
+              ? (isPlayed ? 0.45 + finalAmp * 0.40 : 0.60 + finalAmp * 0.35)
+              : (isPlayed ? 0.14 + finalAmp * 0.22 : 0.30 + finalAmp * 0.65);
             c.fillStyle = `rgba(217,83,64,${alpha})`;
             c.beginPath();
             if (c.roundRect) c.roundRect(x, H - bh, bw * 0.8, bh, 1);
@@ -676,14 +682,14 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
                     const x = ((ms / 1000 - winStart) / windowDur) * VB_W;
                     nodes.push(
                       <line key={`l${idx}`} x1={x} y1={0} x2={x} y2={wfH}
-                        stroke={isPhrase ? "rgba(201,123,64,0.50)" : "rgba(255,255,255,0.14)"}
+                        stroke={isPhrase ? "rgba(201,123,64,0.60)" : isLight ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.14)"}
                         strokeWidth={isPhrase ? 1.2 : 0.7}
                         vectorEffect="non-scaling-stroke" />
                     );
                     if (measureNum % 4 === 0 || isPhrase) {
                       nodes.push(
                         <text key={`t${idx}`} x={x + 2} y={wfH - 3}
-                          fill={isPhrase ? "rgba(201,123,64,0.65)" : "rgba(255,255,255,0.20)"}
+                          fill={isPhrase ? "rgba(201,123,64,0.80)" : isLight ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.20)"}
                           fontSize={7} fontFamily="monospace" style={{ pointerEvents: "none" }}>
                           {measureNum + 1}
                         </text>
@@ -725,13 +731,13 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
                 const hovered = hoverPct !== null && !played && barFrac < hoverPct;
                 return (
                   <rect key={i} x={i * BAR_STR} y={y} width={BAR_W} height={barH} rx={0.3}
-                    fill={played ? "#D95340" : "#A8A3A0"}
-                    opacity={played ? 1 : hovered ? 0.75 + bar.amp * 0.15 : 0.55 + bar.amp * 0.25}
+                    fill={played ? "#D95340" : isLight ? "#5A5550" : "#A8A3A0"}
+                    opacity={played ? 1 : hovered ? 0.80 + bar.amp * 0.15 : isLight ? 0.65 + bar.amp * 0.30 : 0.55 + bar.amp * 0.25}
                   />
                 );
               })}
               {/* Playhead */}
-              <line x1={winPct * VB_W} y1={0} x2={winPct * VB_W} y2={wfH} stroke="white" strokeWidth={1.5} opacity={0.65} />
+              <line x1={winPct * VB_W} y1={0} x2={winPct * VB_W} y2={wfH} stroke={isLight ? "#1A1816" : "white"} strokeWidth={1.5} opacity={0.65} />
             </svg>
 
             {/* Live canvas */}
@@ -749,7 +755,7 @@ export default function MiniPlayer({ displayTracks }: { displayTracks?: Track[] 
                   style={{ left: `${absPct * 100}%`, transform: "translateX(-50%)", width: 14, zIndex: 6, cursor: "pointer", pointerEvents: "auto" }}
                   onClick={(e) => { e.stopPropagation(); seekToMs(cue.position_ms); }}>
                   <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 0, height: 0, borderLeft: `${TW}px solid transparent`, borderRight: `${TW}px solid transparent`, borderTop: `${TH}px solid ${cue.color}`, opacity: 0.92 }} />
-                  <div style={{ position: "absolute", top: 1, left: "50%", transform: "translateX(-50%)", fontSize: wfExpanded ? 6 : 5, color: "white", fontFamily: "monospace", fontWeight: "bold", lineHeight: 1, pointerEvents: "none", userSelect: "none" }}>{i + 1}</div>
+                  <div style={{ position: "absolute", top: 1, left: "50%", transform: "translateX(-50%)", fontSize: wfExpanded ? 6 : 5, color: isLight ? "#1A1816" : "white", fontFamily: "monospace", fontWeight: "bold", lineHeight: 1, pointerEvents: "none", userSelect: "none" }}>{i + 1}</div>
                   <div style={{ position: "absolute", top: TH, left: "50%", transform: "translateX(-50%)", width: wfExpanded ? 1 : 0.8, bottom: 0, background: cue.color, opacity: 0.45 }} />
                 </div>
               );
