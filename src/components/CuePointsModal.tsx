@@ -15,6 +15,8 @@ interface Props {
 type BeatAnchor = { beat_index: number; position_ms: number };
 
 const BARS  = WAVEFORM_BARS;   // 300, from shared cache
+const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
+               navigator.userAgent.toLowerCase().includes("windows");
 
 const DEFAULT_COLORS = [
   "#CC2222","#CC6600","#2266DD","#DDAA00",
@@ -195,7 +197,7 @@ export default function CuePointsModal({ track, onClose, onSaved, inline = false
 
   // Deve ser chamado de dentro do mousedown (gesto do usuário) para garantir "running"
   function ensureAudioCtx() {
-    if (scrubCtxRef.current) return;
+    if (scrubCtxRef.current || IS_WIN) return;
     const ctx  = new AudioContext();
     const gain = ctx.createGain();
     gain.gain.value = 0.85;
