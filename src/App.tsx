@@ -1637,35 +1637,40 @@ export default function App() {
                 </svg>
                 {exportLabel}
               </button>
-              {/* pt-1: padding transparente que cobre o gap e mantém o hover contínuo */}
-              <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
-                <div className="py-1 bg-[#1c1917] border border-white/[0.07] rounded-md shadow-xl">
-                  {installedDj.map((sw) => (
+              {/* Dropdown apenas quando exportação está disponível */}
+              {canExport && !exporting && (
+                <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
+                  <div className="py-1 rounded-md shadow-xl" style={{ background: "#1c1917", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    {installedDj.map((sw) => (
+                      <button
+                        key={sw.id}
+                        onClick={() => exportToDj(sw.id)}
+                        className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
+                        style={{ color: "#E8E4E1" }}
+                      >
+                        {sw.name}
+                      </button>
+                    ))}
+                    {installedDj.length > 0 && (
+                      <div className="my-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                    )}
                     <button
-                      key={sw.id}
-                      onClick={() => exportToDj(sw.id)}
-                      className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
+                      onClick={exportM3U}
+                      className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
+                      style={{ color: "#E8E4E1" }}
                     >
-                      {sw.name}
+                      {t("toolbar.exportMenu.m3u")}
                     </button>
-                  ))}
-                  {installedDj.length > 0 && (
-                    <div className="my-1 h-px bg-white/[0.06]" />
-                  )}
-                  <button
-                    onClick={exportM3U}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    {t("toolbar.exportMenu.m3u")}
-                  </button>
-                  <button
-                    onClick={exportCsv}
-                    className="w-full px-3 py-1.5 text-left text-[11px] text-[#C2BEBC] hover:bg-white/[0.05] transition-colors"
-                  >
-                    {t("toolbar.exportMenu.csv")}
-                  </button>
+                    <button
+                      onClick={exportCsv}
+                      className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
+                      style={{ color: "#E8E4E1" }}
+                    >
+                      {t("toolbar.exportMenu.csv")}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             );
           })()}
