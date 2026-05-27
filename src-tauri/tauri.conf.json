@@ -42,6 +42,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "infoPlist": {
+        "NSDesktopFolderUsageDescription": "TagWave precisa acessar sua pasta Mesa para escanear e gerenciar arquivos de áudio.",
+        "NSDocumentsFolderUsageDescription": "TagWave precisa acessar sua pasta Documentos para escanear e gerenciar arquivos de áudio.",
+        "NSDownloadsFolderUsageDescription": "TagWave precisa acessar sua pasta Downloads para escanear e gerenciar arquivos de áudio.",
+        "NSMusicFolderUsageDescription": "TagWave precisa acessar sua pasta Música para escanear e gerenciar arquivos de áudio.",
+        "NSRemovableVolumesUsageDescription": "TagWave precisa acessar volumes externos para escanear e gerenciar arquivos de áudio."
+      }
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",
