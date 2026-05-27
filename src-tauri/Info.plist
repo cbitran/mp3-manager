@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>TagWave precisa acessar sua pasta Mesa para escanear e gerenciar arquivos de áudio.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>TagWave precisa acessar sua pasta Documentos para escanear e gerenciar arquivos de áudio.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>TagWave precisa acessar sua pasta Downloads para escanear e gerenciar arquivos de áudio.</string>
+  <key>NSMusicFolderUsageDescription</key>
+  <string>TagWave precisa acessar sua pasta Música para escanear e gerenciar arquivos de áudio.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>TagWave precisa acessar volumes externos para escanear e gerenciar arquivos de áudio.</string>
+</dict>
+</plist>
