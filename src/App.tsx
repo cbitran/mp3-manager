@@ -2361,6 +2361,39 @@ export default function App() {
       <ToastContainer />
       <AIAssistant />
 
+      {/* Overlay bloqueante durante scan — impede interação e crash em pastas grandes */}
+      {isScanning && (
+        <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center select-none"
+          style={{ background: "rgba(10,8,7,0.82)", backdropFilter: "blur(4px)" }}>
+          <div className="flex flex-col items-center gap-5 px-10 py-8 rounded-2xl border border-white/[0.07]"
+            style={{ background: "rgba(24,18,15,0.95)", minWidth: 320 }}>
+            {/* Spinner */}
+            <svg className="animate-spin" width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="14" r="11" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5"/>
+              <path d="M14 3a11 11 0 0 1 11 11" stroke="#D95340" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+            {/* Mensagem */}
+            <div className="flex flex-col items-center gap-1.5">
+              <p className="text-[14px] font-semibold text-[#F5F5F4]">Carregando arquivos…</p>
+              {scanTotal !== null && scanTotal > 0 && (
+                <p className="text-[11px] text-[#8F8883] font-mono tabular-nums">
+                  {scanDone} de {scanTotal} arquivos
+                </p>
+              )}
+            </div>
+            {/* Barra de progresso */}
+            {scanTotal !== null && scanTotal > 0 && (
+              <div className="w-full rounded-full overflow-hidden" style={{ height: 4, background: "rgba(255,255,255,0.07)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-200"
+                  style={{ width: `${Math.round((scanDone / scanTotal) * 100)}%`, background: "#D95340" }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showUpdateModal && appVersion && (
         <UpdateModal currentVersion={appVersion} onClose={() => setShowUpdateModal(false)} />
       )}
