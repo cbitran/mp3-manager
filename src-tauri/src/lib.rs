@@ -840,16 +840,6 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn trash_file(path: String) -> Result<(), String> {
-    trash::delete(&path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn trash_folder(path: String) -> Result<(), String> {
-    trash::delete(&path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn dir_exists(path: String) -> bool {
     Path::new(&path).is_dir()
 }
@@ -3204,8 +3194,6 @@ pub fn run() {
             save_cover_from_file,
             read_cover_base64,
             read_file_base64,
-            trash_file,
-            trash_folder,
             list_subfolders,
             dir_exists,
             generate_waveform,

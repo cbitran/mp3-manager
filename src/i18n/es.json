@@ -157,8 +157,7 @@
     "removeFolderTitle": "Eliminar '{{name}}'",
     "scanInProgress": "Escaneo en curso — será interrumpido.",
     "tracksWillBeRemoved": "Las pistas cargadas serán eliminadas de la lista.",
-    "chooseFolderAction": "Elige qué hacer con esta carpeta.",
-    "moveToTrash": "Mover a la Papelera",
+    "chooseFolderAction": "Las pistas serán eliminadas de la lista. Los archivos en disco no serán borrados.",
     "removeFromList": "Quitar de la Lista",
     "openPlaylist": "Abrir lista de reproducción",
     "exportPlaylist": "Exportar lista de reproducción",
@@ -236,8 +235,8 @@
     "exportChipLabel": "Exportar '{{name}}'",
     "deleteTitle": "Eliminar \"{{name}}\"?",
     "deleteTitleCount": "¿Eliminar {{count}} pistas?",
-    "deleteMsg": "El archivo se moverá a la Papelera o se eliminará solo de esta lista.",
-    "deleteMsgCount": "Los {{count}} archivos se moverán a la Papelera o se eliminarán solo de esta lista."
+    "deleteMsg": "El archivo se eliminará solo de esta lista. El archivo en disco no será borrado.",
+    "deleteMsgCount": "Los {{count}} archivos se eliminarán solo de esta lista. Los archivos en disco no serán borrados."
   },
 
   "toolbar": {

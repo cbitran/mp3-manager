@@ -158,8 +158,7 @@
     "removeFolderTitle": "Remove '{{name}}'",
     "scanInProgress": "Scan in progress — it will be interrupted.",
     "tracksWillBeRemoved": "The loaded tracks will be removed from the list.",
-    "chooseFolderAction": "Choose what to do with this folder.",
-    "moveToTrash": "Move to Trash",
+    "chooseFolderAction": "Tracks will be removed from the list. Files on disk will not be deleted.",
     "removeFromList": "Remove from List",
     "openPlaylist": "Open playlist",
     "exportPlaylist": "Export playlist",
@@ -237,8 +236,8 @@
     "exportChipLabel": "Export '{{name}}'",
     "deleteTitle": "Delete \"{{name}}\"?",
     "deleteTitleCount": "Delete {{count}} tracks?",
-    "deleteMsg": "The file will be moved to Trash or removed from this list only.",
-    "deleteMsgCount": "The {{count}} files will be moved to Trash or removed from this list only."
+    "deleteMsg": "The file will be removed from this list only. The file on disk will not be deleted.",
+    "deleteMsgCount": "The {{count}} files will be removed from this list only. Files on disk will not be deleted."
   },
 
   "toolbar": {

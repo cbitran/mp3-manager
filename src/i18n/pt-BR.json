@@ -158,8 +158,7 @@
     "removeFolderTitle": "Remover '{{name}}'",
     "scanInProgress": "Scan em andamento — será interrompido.",
     "tracksWillBeRemoved": "As faixas carregadas serão removidas da lista.",
-    "chooseFolderAction": "Escolha o que deseja fazer com esta pasta.",
-    "moveToTrash": "Mover para a Lixeira",
+    "chooseFolderAction": "As faixas serão removidas da lista. Os arquivos no disco não serão apagados.",
     "removeFromList": "Remover da Lista",
     "openPlaylist": "Abrir playlist",
     "exportPlaylist": "Exportar playlist",
@@ -237,8 +236,8 @@
     "exportChipLabel": "Exportar '{{name}}'",
     "deleteTitle": "Excluir \"{{name}}\"?",
     "deleteTitleCount": "Excluir {{count}} faixas?",
-    "deleteMsg": "O arquivo será movido para a Lixeira ou removido apenas desta lista.",
-    "deleteMsgCount": "Os {{count}} arquivos serão movidos para a Lixeira ou removidos apenas desta lista."
+    "deleteMsg": "O arquivo será removido apenas desta lista. O arquivo no disco não será apagado.",
+    "deleteMsgCount": "Os {{count}} arquivos serão removidos apenas desta lista. Os arquivos no disco não serão apagados."
   },
 
   "toolbar": {
