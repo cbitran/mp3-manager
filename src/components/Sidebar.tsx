@@ -47,6 +47,8 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites" | "playlists">("recent");
   const [librarySort, setLibrarySort] = useState<"recent" | "alpha">("recent");
+  const [playlistSort, setPlaylistSort] = useState<"recent" | "alpha">("recent");
+  const [syncing, setSyncing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
@@ -152,6 +154,38 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
       }
     }
     setExpandedFolders(next);
+  };
+
+  const handleSyncPlaylists = async () => {
+    if (syncing || playlists.length === 0) return;
+    setSyncing(true);
+    try {
+      // Coleta todos os paths únicos de todas as playlists
+      const allPaths = [...new Set(playlists.flatMap((p) => p.trackPaths))];
+      const missing: string[] = allPaths.length > 0
+        ? await invoke<string[]>("check_paths_exist", { paths: allPaths }).catch(() => [])
+        : [];
+
+      const missingSet = new Set(missing);
+      const playlistsWithMissing = playlists.filter((p) =>
+        p.trackPaths.some((tp) => missingSet.has(tp))
+      );
+      const playlistsWithPending = playlists.filter((p) => p.pendingRulesApply);
+
+      if (missing.length === 0 && playlistsWithPending.length === 0) {
+        toast(`${playlists.length} playlist${playlists.length > 1 ? "s" : ""} verificada${playlists.length > 1 ? "s" : ""} — tudo certo`, "success");
+        return;
+      }
+
+      const parts: string[] = [];
+      if (missing.length > 0)
+        parts.push(`${missing.length} arquivo${missing.length > 1 ? "s" : ""} não encontrado${missing.length > 1 ? "s" : ""} em ${playlistsWithMissing.length} playlist${playlistsWithMissing.length > 1 ? "s" : ""}`);
+      if (playlistsWithPending.length > 0)
+        parts.push(`${playlistsWithPending.length} playlist${playlistsWithPending.length > 1 ? "s com regras" : " com regra"} pendente${playlistsWithPending.length > 1 ? "s" : ""}`);
+      toast(parts.join(" · "), "info");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleRemoveFromList = (path: string) => {
@@ -280,7 +314,41 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               </button>
             </div>
           )}
-          {sidebarTab === "playlists" && onNewPlaylist && (
+          {sidebarTab === "playlists" && playlists.length > 1 && (
+            <div className="ml-auto mb-1.5 flex items-center gap-0.5">
+              <button
+                onClick={() => setPlaylistSort("recent")}
+                title="Mais recentes primeiro"
+                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${playlistSort === "recent" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              >
+                Recente
+              </button>
+              <button
+                onClick={() => setPlaylistSort("alpha")}
+                title="Ordem alfabética"
+                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${playlistSort === "alpha" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              >
+                A–Z
+              </button>
+              <button
+                onClick={handleSyncPlaylists}
+                disabled={syncing}
+                title="Verificar playlists"
+                className="ml-0.5 p-1 rounded-md hover:bg-white/[0.08] text-[#605A55] hover:text-[#C2BEBC] transition-colors disabled:opacity-40"
+              >
+                <svg
+                  width="11" height="11" viewBox="0 0 11 11" fill="none"
+                  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+                  className={syncing ? "animate-spin" : ""}
+                >
+                  <path d="M9.5 2A4.7 4.7 0 005.5 1 4.5 4.5 0 001 5.5"/>
+                  <path d="M1.5 9A4.7 4.7 0 005.5 10 4.5 4.5 0 0010 5.5"/>
+                  <path d="M9.5 2v2.5H7M1.5 9v-2.5H4"/>
+                </svg>
+              </button>
+            </div>
+          )}
+          {sidebarTab === "playlists" && playlists.length <= 1 && onNewPlaylist && (
             <button
               onClick={onNewPlaylist}
               title="Nova playlist"
@@ -401,7 +469,11 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           {sidebarTab === "playlists" && (
             <div data-help="playlists-section">
               {playlists.length > 0
-                ? playlists.map((pl) => (
+                ? [...playlists]
+                    .sort(playlistSort === "alpha"
+                      ? (a, b) => a.name.localeCompare(b.name)
+                      : (a, b) => b.updatedAt - a.updatedAt)
+                    .map((pl) => (
                     <PlaylistRow
                       key={pl.id}
                       pl={pl}
