@@ -15,6 +15,7 @@ interface Props {
   tracks: Track[];
   onClose: () => void;
   exportOnly?: { playlistId: string; playlistName: string };
+  onCreated?: (id: string) => void;
 }
 
 type FieldKey = "cover" | "album" | "genre" | "comment";
@@ -40,7 +41,7 @@ const DJ_ICONS: Record<string, string> = {
 
 // ── Create mode ──────────────────────────────────────────────────────────────
 
-function CreateMode({ tracks, onClose }: { tracks: Track[]; onClose: () => void }) {
+function CreateMode({ tracks, onClose, onCreated }: { tracks: Track[]; onClose: () => void; onCreated?: (id: string) => void }) {
   const { t } = useTranslation();
   const createPlaylist = useAppStore((s) => s.createPlaylist);
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
@@ -78,9 +79,10 @@ function CreateMode({ tracks, onClose }: { tracks: Track[]; onClose: () => void 
     const id = createPlaylist(name.trim(), paths);
     if (props.enabled && props.activeFields.length > 0) {
       updatePlaylist(id, { globalProperties: props });
-      await applyPlaylistRules(props, paths);
+      if (paths.length > 0) await applyPlaylistRules(props, paths);
     }
     setActivePlaylistId(id);
+    onCreated?.(id);
     onClose();
   };
 
@@ -438,7 +440,7 @@ function FieldRow({ active, onToggle, label, children }: { active: boolean; onTo
 
 // ── Root export ───────────────────────────────────────────────────────────────
 
-export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Props) {
+export default function CreatePlaylistModal({ tracks, onClose, exportOnly, onCreated }: Props) {
   return (
     <div
       className="fixed inset-0 z-[500] flex items-center justify-center"
@@ -448,7 +450,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
       <div className="rounded-xl shadow-2xl w-[420px] overflow-hidden bg-[#1c1715] border border-white/[0.08]">
         {exportOnly
           ? <ExportMode tracks={tracks} onClose={onClose} exportOnly={exportOnly} />
-          : <CreateMode tracks={tracks} onClose={onClose} />
+          : <CreateMode tracks={tracks} onClose={onClose} onCreated={onCreated} />
         }
       </div>
     </div>

@@ -447,6 +447,7 @@ export default function App() {
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
   const [pendingFileChoice, setPendingFileChoice] = useState<{ paths: string[]; name: string } | null>(null);
+  const [pendingNewPlaylistPaths, setPendingNewPlaylistPaths] = useState<string[] | null>(null);
   const [pendingRulesConfirm, setPendingRulesConfirm] = useState<{ paths: string[]; playlist: import("./store").Playlist } | null>(null);
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
   const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
@@ -2793,7 +2794,11 @@ export default function App() {
       {createPlaylistTracks && (
         <CreatePlaylistModal
           tracks={createPlaylistTracks}
-          onClose={() => setCreatePlaylistTracks(null)}
+          onClose={() => { setCreatePlaylistTracks(null); setPendingNewPlaylistPaths(null); }}
+          onCreated={pendingNewPlaylistPaths ? (id) => {
+            addToPlaylistAndMerge(id, pendingNewPlaylistPaths, true);
+            setPendingNewPlaylistPaths(null);
+          } : undefined}
         />
       )}
 
@@ -3046,8 +3051,34 @@ export default function App() {
               ))}
             </div>
 
+            {/* Nova playlist */}
+            <div className="px-3 pt-1 pb-1">
+              <button
+                onClick={() => {
+                  const paths = pendingFileChoice.paths;
+                  setPendingFileChoice(null);
+                  setPendingNewPlaylistPaths(paths);
+                  setCreatePlaylistTracks([]);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                style={{ background: "transparent" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(217,83,64,0.10)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-[#C2BEBC]">Nova playlist</p>
+                  <p className="text-[11px] text-[#4C4743]">Criar e adicionar as faixas</p>
+                </div>
+              </button>
+            </div>
+
             {/* Cancelar */}
-            <div className="px-3 pt-2 pb-4">
+            <div className="px-3 pt-1 pb-4">
               <button
                 onClick={() => setPendingFileChoice(null)}
                 className="w-full py-2.5 rounded-xl text-[13px] font-medium text-[#756D67] hover:text-[#C2BEBC] transition-colors"
