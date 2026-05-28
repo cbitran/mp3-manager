@@ -2937,7 +2937,7 @@ export default function App() {
 
       {/* Loading overlay — abertura e fechamento */}
       {appLoading && (
-        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center gap-5 pointer-events-none" style={{ background: "rgba(14,13,12,0.72)", backdropFilter: "blur(4px)" }}>
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center gap-5 pointer-events-none" style={{ background: "rgba(14,13,12,0.45)", backdropFilter: "blur(2px)" }}>
           <div className="relative" style={{ width: 80, height: 80 }}>
             {/* Spinner: anel fino com cauda girando ao redor do disco */}
             <svg
@@ -2966,9 +2966,29 @@ export default function App() {
               <circle cx="50" cy="50" r="27" fill="#0E0D0C"/>
             </svg>
           </div>
-          <span className="text-[11px] font-mono tracking-widest uppercase" style={{ color: '#605A55' }}>
+          <span className="text-[11px] font-mono tracking-widest uppercase" style={{ color: '#C2BEBC' }}>
             {loadingLabel(appLoading)}
           </span>
+          {/* Barra de progresso — visível durante scan com contagem */}
+          {appLoading === "scanning" && scanTotal && scanTotal > 0 && (
+            <div className="flex flex-col items-center gap-1.5" style={{ width: 220 }}>
+              <div className="flex items-center justify-between w-full px-0.5">
+                <span className="text-[10px] font-mono tabular-nums" style={{ color: '#8F8883' }}>
+                  {scanDone} / {scanTotal}
+                </span>
+                <span className="text-[10px] font-mono tabular-nums" style={{ color: '#605A55' }}>
+                  {Math.round((scanDone / scanTotal) * 100)}%
+                </span>
+              </div>
+              {/* Track bar */}
+              <div className="w-full rounded-full overflow-hidden" style={{ height: 3, background: "rgba(255,255,255,0.10)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-150"
+                  style={{ width: `${Math.round((scanDone / scanTotal) * 100)}%`, background: "#D95340" }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
