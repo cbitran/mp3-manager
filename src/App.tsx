@@ -447,6 +447,7 @@ export default function App() {
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
   const [pendingFileChoice, setPendingFileChoice] = useState<{ paths: string[]; name: string } | null>(null);
+  const [pendingRulesConfirm, setPendingRulesConfirm] = useState<{ paths: string[]; playlist: import("./store").Playlist } | null>(null);
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
   const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
   const [enrichingIds, setEnrichingIds]         = useState<Set<string>>(new Set());
@@ -1432,6 +1433,29 @@ export default function App() {
     } finally {
       setScanning(false);
       if (showOverlay) setAppLoading(null);
+    }
+  }
+
+  async function addToPlaylistAndMerge(playlistId: string, paths: string[], applyRules: boolean) {
+    useAppStore.getState().addTracksToPlaylist(playlistId, paths);
+    useAppStore.getState().setActivePlaylistId(playlistId);
+    await mergeFilesToStore(paths);
+    if (applyRules) {
+      const pl = useAppStore.getState().playlists.find((p) => p.id === playlistId);
+      const gp = pl?.globalProperties;
+      if (gp?.enabled && gp.activeFields.length > 0) {
+        const { applyPlaylistRules } = await import("./lib/playlistRules");
+        await applyPlaylistRules(gp, paths);
+        toast(`Regras aplicadas em ${paths.length} faixa${paths.length > 1 ? "s" : ""}`, "success");
+      }
+    } else {
+      const pl = useAppStore.getState().playlists.find((p) => p.id === playlistId);
+      toast(
+        paths.length === 1
+          ? `Faixa adicionada a "${pl?.name ?? ""}"`
+          : `${paths.length} faixas adicionadas a "${pl?.name ?? ""}"`,
+        "success"
+      );
     }
   }
 
@@ -2889,6 +2913,55 @@ export default function App() {
         );
       })()}
 
+      {/* Confirmação de aplicar regras ao adicionar faixas a playlist */}
+      {pendingRulesConfirm && (() => {
+        const { paths, playlist: pl } = pendingRulesConfirm;
+        const fields = pl.globalProperties?.activeFields ?? [];
+        const fieldLabels: Record<string, string> = { cover: "Capa", album: "Álbum", genre: "Gênero", comment: "Comentário" };
+        return (
+          <div
+            className="fixed inset-0 z-[420] flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)" }}
+            onClick={() => { addToPlaylistAndMerge(pl.id, paths, false); setPendingRulesConfirm(null); }}
+          >
+            <div
+              className="w-[380px] rounded-2xl shadow-2xl bg-[#1c1715] border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 pt-5 pb-4 border-b border-white/[0.06]">
+                <div className="flex items-center gap-2.5 mb-1">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="7" cy="7" r="1.8"/><path d="M7 1v1.4M7 11.6V13M1 7h1.4M11.6 7H13M2.7 2.7l1 1M10.3 10.3l1 1M11.3 2.7l-1 1M3.7 10.3l-1 1"/>
+                  </svg>
+                  <h2 className="text-sm font-semibold text-[#E8E4E1]">Regras da playlist</h2>
+                </div>
+                <p className="text-[12px] text-[#8F8883] leading-relaxed">
+                  A playlist <span className="text-[#C2BEBC] font-medium">"{pl.name}"</span> tem {fields.length} regra{fields.length > 1 ? "s" : ""} ativa{fields.length > 1 ? "s" : ""}:{" "}
+                  <span className="text-[#C2BEBC]">{fields.map((f) => fieldLabels[f] ?? f).join(", ")}</span>.
+                </p>
+                <p className="text-[12px] text-[#8F8883] mt-1.5">
+                  Aplicar às {paths.length} nova{paths.length > 1 ? "s" : ""} faixa{paths.length > 1 ? "s" : ""}?
+                </p>
+              </div>
+              <div className="flex items-center gap-2 px-5 py-4">
+                <button
+                  onClick={() => { addToPlaylistAndMerge(pl.id, paths, false); setPendingRulesConfirm(null); }}
+                  className="flex-1 py-2 rounded-lg text-[12px] font-medium text-[#756D67] hover:text-[#C2BEBC] transition-colors border border-white/[0.08] hover:border-white/[0.14]"
+                >
+                  Não aplicar
+                </button>
+                <button
+                  onClick={() => { addToPlaylistAndMerge(pl.id, paths, true); setPendingRulesConfirm(null); }}
+                  className="flex-1 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#D95340] hover:bg-[#E07364] transition-colors"
+                >
+                  Aplicar regras
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal destino: Biblioteca ou Playlist */}
       {pendingFileChoice && (
         <div
@@ -2946,10 +3019,13 @@ export default function App() {
                   key={pl.id}
                   onClick={() => {
                     const paths = pendingFileChoice.paths;
+                    const hasRules = pl.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0;
                     setPendingFileChoice(null);
-                    useAppStore.getState().addTracksToPlaylist(pl.id, paths);
-                    useAppStore.getState().setActivePlaylistId(pl.id);
-                    mergeFilesToStore(paths);
+                    if (hasRules) {
+                      setPendingRulesConfirm({ paths, playlist: pl });
+                    } else {
+                      addToPlaylistAndMerge(pl.id, paths, false);
+                    }
                   }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
                   style={{ background: "transparent" }}
