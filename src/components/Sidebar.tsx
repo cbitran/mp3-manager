@@ -160,17 +160,6 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     setDeleteDialog(null);
   };
 
-  const handleMoveToTrash = async (path: string) => {
-    try {
-      await invoke("trash_folder", { path });
-    } catch (e) {
-      console.error("Erro ao mover para lixeira:", e);
-    }
-    clearFolderTracks(path);
-    removeRecentFolder(path);
-    if (isFavorite(path)) toggleFavorite(path);
-    setDeleteDialog(null);
-  };
 
   const handleContextMenu = (e: React.MouseEvent, path: string) => {
     e.preventDefault();
@@ -793,16 +782,10 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                 {t("common.cancel")}
               </button>
               <button
-                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
                 onClick={() => handleRemoveFromList(deleteDialog.path)}
               >
                 {t("sidebar.removeFromList")}
-              </button>
-              <button
-                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
-                onClick={() => handleMoveToTrash(deleteDialog.path)}
-              >
-                {t("sidebar.moveToTrash")}
               </button>
             </div>
           </div>

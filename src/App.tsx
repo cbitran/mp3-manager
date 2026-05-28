@@ -360,17 +360,21 @@ export default function App() {
   const { columnVisibility, setColumnVisibility } = useAppStore();
 
   const HIDEABLE_COLS = [
+    { id: "num",          label: t("settings.columns.colNum") },
+    { id: "favorite",     label: t("settings.columns.colFav") },
+    { id: "onda",         label: t("settings.columns.colWave") },
     { id: "capa",         label: t("settings.columns.colCover") },
     { id: "album",        label: t("settings.columns.colAlbum") },
     { id: "genre",        label: t("settings.columns.colGenre") },
     { id: "artist",       label: t("settings.columns.colArtist") },
     { id: "year_col",     label: t("settings.columns.colYear") },
     { id: "status",       label: t("settings.columns.colStatus") },
-    { id: "file_size",    label: t("settings.columns.colSize") },
     { id: "key",          label: t("settings.columns.colKey") },
     { id: "bpm",          label: t("settings.columns.colBpm") },
     { id: "rating",       label: t("settings.columns.colRating") },
+    { id: "cue_points",   label: t("settings.columns.colCue") },
     { id: "duration_secs",label: t("settings.columns.colDuration") },
+    { id: "file_size",    label: t("settings.columns.colSize") },
     { id: "bitrate",      label: t("settings.columns.colBitrate") },
     { id: "tipo",         label: t("settings.columns.colType") },
     { id: "adicionada",   label: t("settings.columns.colAdded") },
@@ -2837,20 +2841,42 @@ export default function App() {
         const pl = playlists.find((p) => p.id === missingPlaylistPaths.playlistId);
         if (!pl) return null;
         const count = missingPlaylistPaths.paths.length;
+        const missingTrackInfos = missingPlaylistPaths.paths.map((p) => {
+          const tr = allTracks.find((t) => t.path === p);
+          const filename = p.split(/[\\/]/).pop() ?? p;
+          const label = tr?.title
+            ? (tr.artist ? `${tr.artist} — ${tr.title}` : tr.title)
+            : filename.replace(/\.[^.]+$/, "");
+          return label;
+        });
         return (
           <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60">
-            <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[380px] shadow-2xl">
+            <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[400px] shadow-2xl">
               <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
                 </svg>
                 <h2 className="text-sm font-semibold text-[#E8E4E1]">Arquivos não encontrados</h2>
               </div>
-              <div className="px-5 py-4">
-                <p className="text-[12px] text-[#C2BEBC] mb-1">
-                  <span className="font-semibold text-[#E8E4E1]">{count} música{count > 1 ? "s" : ""}</span> da playlist <span className="font-semibold text-[#E8E4E1]">"{pl.name}"</span> não {count > 1 ? "estão" : "está"} mais no disco.
+              <div className="px-5 pt-4 pb-3">
+                <p className="text-[12px] text-[#C2BEBC] mb-3">
+                  {count > 1
+                    ? <><span className="font-semibold text-[#E8E4E1]">{count} músicas</span> da playlist <span className="font-semibold text-[#E8E4E1]">"{pl.name}"</span> não estão mais no disco:</>
+                    : <>A música abaixo da playlist <span className="font-semibold text-[#E8E4E1]">"{pl.name}"</span> não está mais no disco:</>
+                  }
                 </p>
-                <p className="text-[11px] text-[#605A55]">Deseja remover {count > 1 ? "essas músicas" : "essa música"} da playlist?</p>
+                <div className="rounded-lg overflow-hidden border border-white/[0.06] max-h-[160px] overflow-y-auto no-scrollbar">
+                  {missingTrackInfos.map((label, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.04] last:border-b-0"
+                      style={{ background: "rgba(217,83,64,0.04)" }}>
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" className="shrink-0">
+                        <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
+                      </svg>
+                      <span className="text-[11px] text-[#C2BEBC] truncate">{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-[#605A55] mt-3">Deseja remover {count > 1 ? "essas músicas" : "essa música"} da playlist?</p>
               </div>
               <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
                 <button

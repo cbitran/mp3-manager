@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Track } from "../store";
 
@@ -21,13 +20,6 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
     tracks.length === 1
       ? t("table.deleteMsg")
       : t("table.deleteMsgCount", { count: tracks.length });
-
-  async function handleTrash() {
-    for (const t of tracks) {
-      await invoke("trash_file", { path: t.path }).catch(() => {});
-    }
-    removeFromState();
-  }
 
   function removeFromState() {
     const ids = new Set(tracks.map((t) => t.id));
@@ -76,15 +68,9 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
           </button>
           <button
             onClick={removeFromState}
-            className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
-          >
-            {t("sidebar.removeFromList")}
-          </button>
-          <button
-            onClick={handleTrash}
             className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
           >
-            {t("sidebar.moveToTrash")}
+            {t("sidebar.removeFromList")}
           </button>
         </div>
       </div>

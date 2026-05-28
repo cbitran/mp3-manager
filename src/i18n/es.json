@@ -81,6 +81,8 @@
       "visibility": "Visibilidad de columnas",
       "showAll": "Mostrar todas",
       "resetDefault": "Restaurar predeterminado",
+      "colNum": "#",
+      "colFav": "★ Favoritos",
       "colAlbum": "Álbum",
       "colGenre": "Género",
       "colArtist": "Artista independiente",

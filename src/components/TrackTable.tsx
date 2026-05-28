@@ -539,6 +539,8 @@ export default function TrackTable({
   }, [colCtxMenu]);
 
   const DEFAULT_VISIBILITY: VisibilityState = {
+    num: true,
+    favorite: true,
     tipo: false,
     adicionada: false,
     comment: false,
@@ -610,7 +612,6 @@ export default function TrackTable({
       // ★ Favorito
       col.display({
         id: "favorite",
-        enableHiding: false,
         header: () => (
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" className="text-[#8F8883] mx-auto">
             <polygon points="6,1.2 7.5,4.5 11,4.9 8.5,7.3 9.2,10.8 6,9 2.8,10.8 3.5,7.3 1,4.9 4.5,4.5"/>
@@ -1227,11 +1228,13 @@ export default function TrackTable({
         <thead className="sticky top-0 z-10 bg-[#0E0D0C]">
           <tr>
             {/* Row number header */}
-            <th className="w-10 px-3 py-2.5 text-center border-b border-white/[0.05]"
-              style={{ boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)' }}
-              onContextMenu={(e) => { e.preventDefault(); setColCtxMenu({ x: e.clientX, y: e.clientY }); }}>
-              <span className="text-[10px] font-bold text-[#8F8883] uppercase tracking-wider">#</span>
-            </th>
+            {mergedVisibility.num !== false && (
+              <th className="w-10 px-3 py-2.5 text-center border-b border-white/[0.05]"
+                style={{ boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)' }}
+                onContextMenu={(e) => { e.preventDefault(); setColCtxMenu({ x: e.clientX, y: e.clientY }); }}>
+                <span className="text-[10px] font-bold text-[#8F8883] uppercase tracking-wider">#</span>
+              </th>
+            )}
             {table.getHeaderGroups()[0]?.headers.map((header) => (
               <th
                 key={header.id}
@@ -1399,26 +1402,28 @@ export default function TrackTable({
                 }`}
               >
                 {/* Row number / playing indicator */}
-                <td className={`px-3 ${rowH} w-10 text-right`}>
-                  {isPlaying ? (
-                    <span className="inline-flex items-center justify-end gap-px">
-                      {[1, 1.5, 0.8].map((h, k) => (
-                        <span
-                          key={k}
-                          className="w-[2px] bg-[#D95340] rounded-full inline-block"
-                          style={{
-                            height: `${h * 8}px`,
-                            animation: `eq-bar 0.8s ease-in-out ${k * 0.15}s infinite alternate`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                  ) : (
-                    <span className={`text-[11px] font-mono tabular-nums ${selected ? "text-[#D95340]" : "text-[#8F8883]"}`}>
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                  )}
-                </td>
+                {mergedVisibility.num !== false && (
+                  <td className={`px-3 ${rowH} w-10 text-right`}>
+                    {isPlaying ? (
+                      <span className="inline-flex items-center justify-end gap-px">
+                        {[1, 1.5, 0.8].map((h, k) => (
+                          <span
+                            key={k}
+                            className="w-[2px] bg-[#D95340] rounded-full inline-block"
+                            style={{
+                              height: `${h * 8}px`,
+                              animation: `eq-bar 0.8s ease-in-out ${k * 0.15}s infinite alternate`,
+                            }}
+                          />
+                        ))}
+                      </span>
+                    ) : (
+                      <span className={`text-[11px] font-mono tabular-nums ${selected ? "text-[#D95340]" : "text-[#8F8883]"}`}>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                    )}
+                  </td>
+                )}
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
@@ -1811,34 +1816,21 @@ export default function TrackTable({
           <p className="text-xs text-[#8F8883] mb-5">
             {t("table.removeDialogMsg", { count: removeDialog.targets.length })}
           </p>
-          <div className="flex flex-col gap-2">
+          <div className="flex justify-end gap-2 mt-2">
             <button
-              className="w-full py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
-              onClick={async () => {
-                const ids = removeDialog.targets.map((tr) => tr.id);
-                for (const tr of removeDialog.targets) {
-                  await invoke("trash_file", { path: tr.path }).catch(() => {});
-                }
-                removeTracks(ids);
-                setRemoveDialog(null);
-              }}
+              className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+              onClick={() => setRemoveDialog(null)}
             >
-              {t("sidebar.moveToTrash")}
+              {t("common.cancel")}
             </button>
             <button
-              className="w-full py-2 rounded-lg bg-white/8 hover:bg-white/12 text-[#D95340] text-sm font-medium transition-colors"
+              className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
               onClick={() => {
                 removeTracks(removeDialog.targets.map((tr) => tr.id));
                 setRemoveDialog(null);
               }}
             >
               {t("sidebar.removeFromList")}
-            </button>
-            <button
-              className="w-full py-2 rounded-lg bg-transparent hover:bg-white/5 text-[#756D67] text-sm transition-colors"
-              onClick={() => setRemoveDialog(null)}
-            >
-              {t("common.cancel")}
             </button>
           </div>
         </div>
@@ -1885,11 +1877,14 @@ export default function TrackTable({
           Colunas visíveis
         </p>
         {([
-          { id: "title_artist",  label: t("settings.columns.colTitle")    },
+          { id: "num",           label: t("settings.columns.colNum")      },
+          { id: "favorite",      label: t("settings.columns.colFav")      },
+          { id: "onda",          label: t("settings.columns.colWave")     },
+          { id: "capa",          label: t("settings.columns.colCover")    },
           { id: "album",         label: t("settings.columns.colAlbum")    },
           { id: "genre",         label: t("settings.columns.colGenre")    },
+          { id: "artist",        label: t("settings.columns.colArtist")   },
           { id: "year_col",      label: t("settings.columns.colYear")     },
-          { id: "waveform",      label: t("settings.columns.colWave")     },
           { id: "status",        label: t("settings.columns.colStatus")   },
           { id: "key",           label: t("settings.columns.colKey")      },
           { id: "bpm",           label: t("settings.columns.colBpm")      },
@@ -1898,6 +1893,8 @@ export default function TrackTable({
           { id: "duration_secs", label: t("settings.columns.colDuration") },
           { id: "file_size",     label: t("settings.columns.colSize")     },
           { id: "bitrate",       label: t("settings.columns.colBitrate")  },
+          { id: "tipo",          label: t("settings.columns.colType")     },
+          { id: "adicionada",    label: t("settings.columns.colAdded")    },
           { id: "comment",       label: t("settings.columns.colComment")  },
         ] as const).map(({ id, label }) => {
           const visible = mergedVisibility[id] !== false;

@@ -81,6 +81,8 @@
       "visibility": "Column visibility",
       "showAll": "Show all",
       "resetDefault": "Reset to default",
+      "colNum": "#",
+      "colFav": "★ Favorites",
       "colTitle": "Title",
       "colAlbum": "Album",
       "colGenre": "Genre",

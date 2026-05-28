@@ -398,8 +398,44 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
         </div>
       )}
 
-      {/* Disco de vinil */}
-      {!isBatch && (
+      {/* Capa compacta — quando não está tocando */}
+      {!isBatch && !isVinylPlaying && (
+        <div className="mx-3 mt-3">
+          <button
+            onClick={async () => {
+              const file = await open({ filters: [{ name: "Imagens", extensions: ["jpg", "jpeg", "png"] }], multiple: false });
+              if (!file || typeof file !== "string") return;
+              try {
+                await invoke("save_cover_from_file", { path: first.path, imagePath: file });
+                updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
+              } catch { /* silent */ }
+            }}
+            className="w-full flex items-center gap-2.5 p-2 rounded-lg group transition-colors"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+          >
+            <div className="w-12 h-12 rounded-md overflow-hidden shrink-0 relative"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              {coverDataUrl ? (
+                <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#4C4743">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                  </svg>
+                </div>
+              )}
+            </div>
+            <span className="text-[11px] text-[#605A55] group-hover:text-[#8F8883] transition-colors">
+              {coverDataUrl ? t("inspector.changeCover") : t("inspector.addCover")}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Disco de vinil — só quando tocando */}
+      {!isBatch && isVinylPlaying && (
         <div>
           <div
             className="mx-8 mt-3 relative group"

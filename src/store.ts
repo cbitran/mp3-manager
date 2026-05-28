@@ -61,8 +61,15 @@ export interface Playlist {
 export interface DragState {
   isDragging: boolean;
   draggedTrackIds: string[];
+  draggedFilePaths: string[];
   hoveredPlaylistId: string | null;
   hoveringNewPlaylist: boolean;
+}
+
+export interface GlobalPropertyPreset {
+  id: string;
+  name: string;
+  properties: PlaylistGlobalProperties;
 }
 
 export interface UndoEntry {
@@ -214,6 +221,11 @@ interface AppState {
   dragState: DragState;
   setDragState: (partial: Partial<DragState>) => void;
   clearDragState: () => void;
+
+  // Presets de propriedades globais
+  globalPropertyPresets: GlobalPropertyPreset[];
+  saveGlobalPropertyPreset: (name: string, properties: PlaylistGlobalProperties) => void;
+  deleteGlobalPropertyPreset: (id: string) => void;
 
   // Undo stack (não persiste — apenas memória)
   undoStack: UndoEntry[];
@@ -389,9 +401,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setActivePlaylistId: (activePlaylistId) => set({ activePlaylistId }),
 
-  dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null, hoveringNewPlaylist: false },
+  dragState: { isDragging: false, draggedTrackIds: [], draggedFilePaths: [], hoveredPlaylistId: null, hoveringNewPlaylist: false },
   setDragState: (partial) => set((s) => ({ dragState: { ...s.dragState, ...partial } })),
-  clearDragState: () => set({ dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null, hoveringNewPlaylist: false } }),
+  clearDragState: () => set({ dragState: { isDragging: false, draggedTrackIds: [], draggedFilePaths: [], hoveredPlaylistId: null, hoveringNewPlaylist: false } }),
+  globalPropertyPresets: JSON.parse(localStorage.getItem("tagwave_gp_presets") ?? "[]") as GlobalPropertyPreset[],
+  saveGlobalPropertyPreset: (name, properties) => {
+    const preset: GlobalPropertyPreset = { id: `gp_${Date.now()}`, name, properties };
+    const next = [...get().globalPropertyPresets, preset];
+    localStorage.setItem("tagwave_gp_presets", JSON.stringify(next));
+    set({ globalPropertyPresets: next });
+  },
+  deleteGlobalPropertyPreset: (id) => {
+    const next = get().globalPropertyPresets.filter((p) => p.id !== id);
+    localStorage.setItem("tagwave_gp_presets", JSON.stringify(next));
+    set({ globalPropertyPresets: next });
+  },
 
   undoStack: [],
   pushUndoEntry: (entry) => set((s) => ({ undoStack: [entry, ...s.undoStack].slice(0, 10) })),
