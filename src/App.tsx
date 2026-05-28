@@ -42,12 +42,12 @@ import type { PendingNewTrack } from "./store";
 import { checkLicenseStatus } from "./services/LicenseService";
 import { applyPlaylistRules } from "./lib/playlistRules";
 
-function loadingLabel(mode: "startup" | "closing"): string {
+function loadingLabel(mode: "startup" | "closing" | "scanning"): string {
   const saved = localStorage.getItem("tagwave_language") ?? navigator.language;
   const lang = saved.toLowerCase();
-  if (lang.startsWith("pt")) return mode === "startup" ? "carregando…" : "salvando…";
-  if (lang.startsWith("es")) return mode === "startup" ? "cargando…"   : "guardando…";
-  return mode === "startup" ? "loading…" : "saving…";
+  if (lang.startsWith("pt")) return mode === "closing" ? "salvando…" : "carregando…";
+  if (lang.startsWith("es")) return mode === "closing" ? "guardando…" : "cargando…";
+  return mode === "closing" ? "saving…" : "loading…";
 }
 
 export default function App() {
@@ -1338,6 +1338,8 @@ export default function App() {
     await invoke("cancel_current_scan").catch(() => {});
 
     const myScanId = ++scanIdRef.current;
+    const showOverlay = !appLoading;
+    if (showOverlay) setAppLoading("scanning");
 
     if (bgAnalysisTimerRef.current) { clearTimeout(bgAnalysisTimerRef.current); bgAnalysisTimerRef.current = null; }
     scanUnlistenRef.current?.(); scanUnlistenRef.current = null;
@@ -1385,7 +1387,10 @@ export default function App() {
     } finally {
       unlistenSkipped();
       if (scanUnlistenRef.current === unlistenSkipped) scanUnlistenRef.current = null;
-      if (scanIdRef.current === myScanId) setScanning(false);
+      if (scanIdRef.current === myScanId) {
+        setScanning(false);
+        if (showOverlay) setAppLoading(null);
+      }
     }
   }
 
@@ -1393,6 +1398,8 @@ export default function App() {
     setPendingFileDrop(null);
     setFileSessionName(name);
     setLastFolder(null);
+    const showOverlay = !appLoading;
+    if (showOverlay) setAppLoading("scanning");
     setScanning(true);
     setFilenameIssues([]); setFilenameMetaIssues([]); setParenIssues([]);
     setDuplicateGroups([]); setGenreFilter(null); setNewTrackIds(new Set());
@@ -1402,6 +1409,7 @@ export default function App() {
       recordScan(result.length);
     } finally {
       setScanning(false);
+      if (showOverlay) setAppLoading(null);
     }
   }
 
@@ -1464,7 +1472,7 @@ export default function App() {
     setNewTracksModal(null);
   }
 
-  const [appLoading, setAppLoading] = useState<"startup" | "closing" | null>("startup");
+  const [appLoading, setAppLoading] = useState<"startup" | "closing" | "scanning" | null>("startup");
   const [appVersion, setAppVersion] = useState("");
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showTrialInfo, setShowTrialInfo] = useState(false);

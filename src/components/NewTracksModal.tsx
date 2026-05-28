@@ -13,7 +13,8 @@ export default function NewTracksModal({ tracks, onAddAndEnrich, onAddOnly, onDe
 
   // Agrupa por pasta para exibição
   const byFolder = tracks.reduce<Record<string, Track[]>>((acc, t) => {
-    const folder = t.path.split("/").slice(0, -1).join("/");
+    const parts = t.path.split(/[\\/]/);
+    const folder = parts.slice(0, -1).join("/");
     (acc[folder] ??= []).push(t);
     return acc;
   }, {});
@@ -180,6 +181,6 @@ function MetaStat({ value, label, ok }: { value: number; label: string; ok: bool
 }
 
 function shortName(folderPath: string): string {
-  const parts = folderPath.split("/");
+  const parts = folderPath.split(/[\\/]/);
   return parts.slice(-2).join("/");
 }

@@ -642,7 +642,7 @@ fn scan_folder(folder: String, app: tauri::AppHandle) -> Vec<Track> {
 
     let tracks: Vec<Track> = results.into_iter().filter_map(|r| Some(r?.0)).collect();
 
-    eprintln!("[PERF] scan_folder '{}': {} faixas em {:.2}s ({} cache, {} lidos)",
+    dlog!("[PERF] scan_folder '{}': {} faixas em {:.2}s ({} cache, {} lidos)",
         folder.split(|c| c == '/' || c == '\\').last().unwrap_or(&folder),
         tracks.len(), _scan_start.elapsed().as_secs_f64(),
         cache_hit_count, tracks.len().saturating_sub(cache_hit_count)

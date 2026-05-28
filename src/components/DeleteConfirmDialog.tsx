@@ -35,7 +35,6 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
     setTracks(remaining);
     clearSelection();
 
-    // Se uma pasta ficou sem nenhuma faixa, remove-a dos recentes
     for (const folder of recentFolders) {
       const hasTrack = remaining.some((t) => t.path.startsWith(folder));
       if (!hasTrack) {
@@ -49,39 +48,43 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-[#23201E] border border-white/[0.07] rounded-xl shadow-2xl w-96 overflow-hidden">
+      <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[360px] shadow-2xl">
 
         {/* Header */}
-        <div className="px-5 pt-5 pb-4 border-b border-white/[0.05]">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#D95340] shrink-0" />
-            <h2 className="text-[13px] font-semibold text-[#F5F5F4]">{title}</h2>
-          </div>
-          <p className="text-xs text-[#605A55] leading-relaxed pl-3.5">{subtitle}</p>
+        <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
+          </svg>
+          <h2 className="text-sm font-semibold text-[#E8E4E1]">{title}</h2>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-col gap-2 p-4">
+        {/* Body */}
+        <div className="px-5 py-4">
+          <p className="text-[12px] text-[#8F8883] leading-relaxed">{subtitle}</p>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
           <button
-            onClick={handleTrash}
-            className="w-full py-2.5 rounded-lg bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white text-[13px] font-semibold transition-colors uppercase tracking-wide"
+            onClick={onClose}
+            className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
           >
-            {t("sidebar.moveToTrash")}
+            {t("common.cancel")}
           </button>
           <button
             onClick={removeFromState}
-            className="w-full py-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] text-[#C2BEBC] text-[13px] font-medium transition-colors border border-white/[0.07]"
+            className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
           >
             {t("sidebar.removeFromList")}
           </button>
           <button
-            onClick={onClose}
-            className="w-full py-2 text-[#373331] hover:text-[#605A55] text-[12px] transition-colors"
+            onClick={handleTrash}
+            className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
           >
-            {t("common.cancel")}
+            {t("sidebar.moveToTrash")}
           </button>
         </div>
       </div>

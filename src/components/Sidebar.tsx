@@ -49,6 +49,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
+  const [confirmDeletePlaylist, setConfirmDeletePlaylist] = useState<{ id: string; name: string } | null>(null);
   const [settingsPlaylist, setSettingsPlaylist] = useState<Playlist | null>(null);
   const dragState = useAppStore((s) => s.dragState);
   const setDragState = useAppStore((s) => s.setDragState);
@@ -77,8 +78,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           const pl = st.playlists.find((p) => p.id === st.activePlaylistId);
           if (pl) {
             e.preventDefault();
-            st.deletePlaylist(st.activePlaylistId);
-            toast(`Playlist "${pl.name}" excluída`, "info");
+            setConfirmDeletePlaylist({ id: pl.id, name: pl.name });
           }
         }
       }
@@ -613,7 +613,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"
-            onClick={() => { deletePlaylist(playlistCtx.pl.id); setPlaylistCtx(null); }}
+            onClick={() => { setConfirmDeletePlaylist({ id: playlistCtx.pl.id, name: playlistCtx.pl.name }); setPlaylistCtx(null); }}
           >
             <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-70"><path d="M4 1h3a1 1 0 011 1v.5H2.5V2A1 1 0 014 1zM1 3h9l-.8 6.5A1 1 0 018.2 10H2.8a1 1 0 01-.997-.9L1 3z"/></svg>
             {t("sidebar.deletePlaylist")}
@@ -760,40 +760,84 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
         />
       )}
 
-      {/* Delete Dialog */}
+      {/* Delete Dialog — remover pasta */}
       {deleteDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
-            <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
-              {t("sidebar.removeFolderTitle", { name: deleteDialog.name })}
-            </h3>
-            {isScanning && deleteDialog.path === lastFolder && (
-              <p className="text-[11px] text-[#D95340] mb-2 flex items-center gap-1.5">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 1a4 4 0 100 8A4 4 0 005 1zm0 2.25a.5.5 0 01.5.5v2a.5.5 0 01-1 0v-2a.5.5 0 01.5-.5zm0 4.25a.625.625 0 110-1.25.625.625 0 010 1.25z"/></svg>
-                {t("sidebar.scanInProgress")}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setDeleteDialog(null); }}>
+          <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[360px] shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
+              </svg>
+              <h3 className="text-sm font-semibold text-[#E8E4E1]">
+                {t("sidebar.removeFolderTitle", { name: deleteDialog.name })}
+              </h3>
+            </div>
+            <div className="px-5 py-4">
+              {isScanning && deleteDialog.path === lastFolder && (
+                <p className="text-[11px] text-[#D95340] mb-2 flex items-center gap-1.5">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 1a4 4 0 100 8A4 4 0 005 1zm0 2.25a.5.5 0 01.5.5v2a.5.5 0 01-1 0v-2a.5.5 0 01.5-.5zm0 4.25a.625.625 0 110-1.25.625.625 0 010 1.25z"/></svg>
+                  {t("sidebar.scanInProgress")}
+                </p>
+              )}
+              <p className="text-[12px] text-[#8F8883] leading-relaxed">
+                {deleteDialog.path === lastFolder ? t("sidebar.tracksWillBeRemoved") : t("sidebar.chooseFolderAction")}
               </p>
-            )}
-            <p className="text-xs text-[#8F8883] mb-5">
-              {deleteDialog.path === lastFolder ? t("sidebar.tracksWillBeRemoved") : t("sidebar.chooseFolderAction")}
-            </p>
-            <div className="flex flex-col gap-2">
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
               <button
-                className="w-full py-2 rounded-lg bg-[#D95340]/20 hover:bg-[#D95340]/30 text-[#D95340] text-sm font-medium transition-colors border border-[#D95340]/30"
+                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                onClick={() => setDeleteDialog(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
                 onClick={() => handleRemoveFromList(deleteDialog.path)}
               >
                 {t("sidebar.removeFromList")}
               </button>
               <button
-                className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/8 text-[#756D67] hover:text-[#8F8883] text-xs transition-colors"
+                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
                 onClick={() => handleMoveToTrash(deleteDialog.path)}
               >
                 {t("sidebar.moveToTrash")}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmação de exclusão de playlist */}
+      {confirmDeletePlaylist && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeletePlaylist(null); }}>
+          <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[340px] shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
+              </svg>
+              <h3 className="text-sm font-semibold text-[#E8E4E1]">{t("sidebar.deletePlaylist")}</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[12px] text-[#8F8883] leading-relaxed">
+                A playlist <span className="text-[#C2BEBC] font-medium">"{confirmDeletePlaylist.name}"</span> será excluída permanentemente. As faixas não serão apagadas do disco.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
               <button
-                className="w-full py-1.5 rounded-lg bg-transparent hover:bg-white/5 text-[#4C4743] text-xs transition-colors"
-                onClick={() => setDeleteDialog(null)}
+                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                onClick={() => setConfirmDeletePlaylist(null)}
               >
                 {t("common.cancel")}
+              </button>
+              <button
+                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
+                onClick={() => {
+                  deletePlaylist(confirmDeletePlaylist.id);
+                  toast(`Playlist "${confirmDeletePlaylist.name}" excluída`, "info");
+                  setConfirmDeletePlaylist(null);
+                }}
+              >
+                {t("sidebar.deletePlaylist")}
               </button>
             </div>
           </div>
