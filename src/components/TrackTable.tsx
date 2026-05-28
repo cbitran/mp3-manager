@@ -1171,7 +1171,7 @@ export default function TrackTable({
         {hasFolder ? (
           <>
             <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa encontrada</p>
-            <p className="text-[11px] text-[#3a3533] leading-relaxed max-w-[260px]">
+            <p className="text-[11px] text-[#8F8883] leading-relaxed max-w-[260px]">
               Tente ajustar o filtro ou selecione outra pasta na barra lateral.
             </p>
             {onOpenFolder && (
@@ -1189,7 +1189,7 @@ export default function TrackTable({
         ) : (
           <>
             <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa carregada</p>
-            <p className="text-[12px] text-[#4C4743] leading-relaxed max-w-[280px]">
+            <p className="text-[12px] text-[#8F8883] leading-relaxed max-w-[280px]">
               Selecione uma pasta na barra lateral esquerda ou adicione uma nova pasta com suas músicas.
             </p>
             {onOpenFolder && (
