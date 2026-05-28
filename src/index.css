@@ -584,6 +584,33 @@ html[data-color="deuteranopia"] input[type="checkbox"]:checked   { background-co
 html[data-color="deuteranopia"] input[type="range"]              { accent-color: #2563EB !important; }
 html[data-color="deuteranopia"] ::selection                      { background: #2563EB; }
 
+/* ── Text Contrast Boost (--tcb: 0%–100%) ────────────────────── */
+/* Dark default: gradua em direção ao branco                       */
+html:not([data-theme="light"]) .text-\[\#F5F5F4\]  { color: color-mix(in srgb, #F5F5F4,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#E8E4E1\]  { color: color-mix(in srgb, #E8E4E1,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#DCDAD8\]  { color: color-mix(in srgb, #DCDAD8,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#C2BEBC\]  { color: color-mix(in srgb, #C2BEBC,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#A8A3A0\]  { color: color-mix(in srgb, #A8A3A0,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#8F8883\]  { color: color-mix(in srgb, #8F8883,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#756D67\]  { color: color-mix(in srgb, #756D67,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#605A55\]  { color: color-mix(in srgb, #605A55,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#4C4743\]  { color: color-mix(in srgb, #4C4743,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#373331\]  { color: color-mix(in srgb, #373331,  white var(--tcb, 0%)) !important; }
+html:not([data-theme="light"]) .text-\[\#a09890\]  { color: color-mix(in srgb, #a09890,  white var(--tcb, 0%)) !important; }
+/* Light: gradua em direção ao preto                               */
+html[data-theme="light"] .text-\[\#F5F5F4\]  { color: color-mix(in srgb, rgba(0,0,0,0.87), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#E8E4E1\]  { color: color-mix(in srgb, rgba(0,0,0,0.82), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#DCDAD8\]  { color: color-mix(in srgb, rgba(0,0,0,0.87), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#C2BEBC\]  { color: color-mix(in srgb, rgba(0,0,0,0.80), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#A8A3A0\]  { color: color-mix(in srgb, rgba(0,0,0,0.68), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#8F8883\]  { color: color-mix(in srgb, rgba(0,0,0,0.58), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#756D67\]  { color: color-mix(in srgb, rgba(0,0,0,0.50), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#605A55\]  { color: color-mix(in srgb, rgba(0,0,0,0.44), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#4C4743\]  { color: color-mix(in srgb, rgba(0,0,0,0.36), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#373331\]  { color: color-mix(in srgb, rgba(0,0,0,0.30), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-\[\#a09890\]  { color: color-mix(in srgb, rgba(0,0,0,0.55), black var(--tcb, 0%)) !important; }
+html[data-theme="light"] .text-white         { color: color-mix(in srgb, rgba(0,0,0,0.87), black var(--tcb, 0%)) !important; }
+
 /* ── Disco MiniPlayer ─────────────────────────────────────────── */
 @keyframes mini-disc-spin {
   from { transform: rotate(0deg); }

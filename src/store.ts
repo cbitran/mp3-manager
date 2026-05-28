@@ -174,6 +174,8 @@ interface AppState {
   setColorMode: (mode: "default" | "deuteranopia" | "high-contrast") => void;
   helpMarkersEnabled: boolean;
   setHelpMarkersEnabled: (v: boolean) => void;
+  textContrastBoost: number; // 0–100, padrão 0
+  setTextContrastBoost: (v: number) => void;
   globalLoading: string | null;
   setGlobalLoading: (msg: string | null) => void;
   fileSessionName: string | null;
@@ -474,6 +476,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHelpMarkersEnabled: (v) => {
     localStorage.setItem("tagwave_help_markers", v ? "true" : "false");
     set({ helpMarkersEnabled: v });
+  },
+  textContrastBoost: Number(localStorage.getItem("tagwave_text_contrast") ?? "0"),
+  setTextContrastBoost: (v) => {
+    localStorage.setItem("tagwave_text_contrast", String(v));
+    set({ textContrastBoost: v });
   },
   globalLoading: null,
   setGlobalLoading: (msg) => set({ globalLoading: msg }),

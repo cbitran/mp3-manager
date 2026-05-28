@@ -74,6 +74,7 @@ export default function App() {
     fontScale,
     colorMode,
     helpMarkersEnabled,
+    textContrastBoost,
     globalLoading,
     setGlobalLoading,
     setFileSessionName,
@@ -143,6 +144,11 @@ export default function App() {
     if (colorMode === "default") document.documentElement.removeAttribute("data-color");
     else document.documentElement.setAttribute("data-color", colorMode);
   }, [colorMode]);
+
+  // Aplica boost de contraste de texto via CSS custom property
+  useEffect(() => {
+    document.documentElement.style.setProperty("--tcb", `${textContrastBoost}%`);
+  }, [textContrastBoost]);
 
   // Bloqueia o menu de contexto nativo do WebView (Reload / Inspect Element)
   useEffect(() => {

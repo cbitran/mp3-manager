@@ -28,6 +28,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     shortcutOverrides, setShortcutOverride, resetSingleShortcut, resetShortcutOverrides,
     enrichmentOptIn, setEnrichmentOptIn, privacyAcceptedVersion,
     helpMarkersEnabled, setHelpMarkersEnabled,
+    textContrastBoost, setTextContrastBoost,
   } = useAppStore();
 
   const COLUMN_ORDER: { id: string; label: string }[] = [
@@ -614,6 +615,43 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                       )}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Contraste de texto */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-[#8F8883]">
+                  Contraste de Texto
+                </p>
+                <p className="text-[11px] text-[#4C4743] mb-3">
+                  Gradua o brilho do texto — no tema escuro empurra em direção ao branco; no tema claro, em direção ao preto.
+                </p>
+                <div className="px-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-[#605A55]">Padrão</span>
+                    <span className="text-[11px] font-mono tabular-nums text-[#8F8883]">
+                      {textContrastBoost === 0 ? "padrão" : `+${textContrastBoost}%`}
+                    </span>
+                    <span className="text-[11px] text-[#C2BEBC]">Máximo</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={textContrastBoost}
+                    onChange={(e) => setTextContrastBoost(Number(e.target.value))}
+                    className="w-full"
+                    style={{ accentColor: "#D95340" }}
+                  />
+                  {textContrastBoost > 0 && (
+                    <button
+                      onClick={() => setTextContrastBoost(0)}
+                      className="mt-2 text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
+                    >
+                      Restaurar padrão
+                    </button>
+                  )}
                 </div>
               </div>
 
