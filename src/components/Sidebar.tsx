@@ -34,8 +34,9 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const updateTrack = useAppStore((s) => s.updateTrack);
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
-  const playlists      = useAppStore((s) => s.playlists);
+  const playlists        = useAppStore((s) => s.playlists);
   const activePlaylistId = useAppStore((s) => s.activePlaylistId);
+  const fileSessionName  = useAppStore((s) => s.fileSessionName);
   const setActivePlaylistId = useAppStore((s) => s.setActivePlaylistId);
   const deletePlaylist = useAppStore((s) => s.deletePlaylist);
 
@@ -296,7 +297,19 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
           {sidebarTab === "recent" && (
-            recentFolders.length > 0
+            <>
+            {/* Sessão de arquivos arrastados — entrada virtual sem pasta */}
+            {fileSessionName && !lastFolder && (
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md mb-0.5 bg-[#D95340]/10 border border-[#D95340]/20">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="#D95340" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-80">
+                  <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2H9a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 019 10H2a1.5 1.5 0 01-1.5-1.5v-6z"/>
+                  <path d="M4.5 5.5h2M5.5 4.5v2"/>
+                </svg>
+                <span className="flex-1 text-[11px] text-[#F5F5F4] truncate">{fileSessionName}</span>
+                <span className="text-[9px] font-mono text-[#D95340]/60">{tracks.length}</span>
+              </div>
+            )}
+            {recentFolders.length > 0
               ? recentFolders.map((f) => {
                   const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
                   return (
@@ -327,6 +340,8 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                   );
                 })
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
+            }
+            </>
           )}
           {sidebarTab === "favorites" && (
             favoriteFolders.length > 0

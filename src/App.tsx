@@ -76,6 +76,7 @@ export default function App() {
     helpMarkersEnabled,
     globalLoading,
     setGlobalLoading,
+    setFileSessionName,
   } = useAppStore();
 
   const { t } = useTranslation();
@@ -436,6 +437,8 @@ export default function App() {
   const [scanDone, setScanDone]         = useState<number>(0);
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
+  const [pendingFileDrop, setPendingFileDrop] = useState<{ paths: string[]; defaultName: string } | null>(null);
+  const [fileDropDraftName, setFileDropDraftName] = useState("");
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
   const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
   const [enrichingIds, setEnrichingIds]         = useState<Set<string>>(new Set());
@@ -527,18 +530,29 @@ export default function App() {
       } else if (event.payload.type === "drop") {
         setIsDragOver(false);
         const paths = event.payload.paths;
-        if (paths.length > 0) {
-          const droppedPath = paths[0];
-          const fileName = droppedPath.split(/[\\/]/).pop() ?? droppedPath;
-          const lastDot = fileName.lastIndexOf(".");
-          const ext = lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : "";
-          const ALLOWED = new Set(["mp3","flac","aiff","aif","wav","m4a","mp4","aac",
-            "ogg","opus","wma","mkv","avi","mov","wmv","webm","m4v","mpeg","mpg","mp2","wv"]);
-          if (ext && !ALLOWED.has(ext)) {
+        if (paths.length === 0) return;
+        const AUDIO_EXTS = new Set(["mp3","flac","aiff","aif","wav","m4a","mp4","aac",
+          "ogg","opus","wma","mkv","avi","mov","wmv","webm","m4v","mpeg","mpg","mp2","wv"]);
+        const firstExt = (paths[0].split(/[\\/]/).pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
+        const isAudioFiles = firstExt && AUDIO_EXTS.has(firstExt);
+        if (isAudioFiles) {
+          // Múltiplos arquivos de áudio: pede nome e carrega todos
+          const audioPaths = paths.filter((p) => {
+            const ext = (p.split(/[\\/]/).pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
+            return AUDIO_EXTS.has(ext);
+          });
+          if (audioPaths.length === 0) return;
+          const parentDir = audioPaths[0].split(/[\\/]/).slice(0, -1);
+          const defaultName = parentDir[parentDir.length - 1] ?? "Seleção";
+          setPendingFileDrop({ paths: audioPaths, defaultName });
+          setFileDropDraftName(defaultName);
+        } else {
+          // Pasta (ou arquivo não-áudio) — comportamento original
+          if (firstExt && !AUDIO_EXTS.has(firstExt)) {
             toast("Apenas arquivos de áudio/vídeo ou pastas são aceitos.", "info");
             return;
           }
-          scanFolder(droppedPath);
+          scanFolder(paths[0]);
         }
       }
     }).then((fn) => { unlisten = fn; });
@@ -1303,6 +1317,7 @@ export default function App() {
 
     if (bgAnalysisTimerRef.current) { clearTimeout(bgAnalysisTimerRef.current); bgAnalysisTimerRef.current = null; }
     scanUnlistenRef.current?.(); scanUnlistenRef.current = null;
+    setFileSessionName(null);
     setBrowsePath(null); setLastFolder(folder); addWatchedFolder(folder);
     setScanning(true); setScanTotal(null); setScanDone(0);
     setFilenameIssues([]); setFilenameMetaIssues([]); setParenIssues([]);
@@ -1347,6 +1362,22 @@ export default function App() {
       unlistenSkipped();
       if (scanUnlistenRef.current === unlistenSkipped) scanUnlistenRef.current = null;
       if (scanIdRef.current === myScanId) setScanning(false);
+    }
+  }
+
+  async function loadFileDrop(paths: string[], name: string) {
+    setPendingFileDrop(null);
+    setFileSessionName(name);
+    setLastFolder(null);
+    setScanning(true);
+    setFilenameIssues([]); setFilenameMetaIssues([]); setParenIssues([]);
+    setDuplicateGroups([]); setGenreFilter(null); setNewTrackIds(new Set());
+    try {
+      const result = await invoke<Track[]>("scan_specific_files", { paths });
+      setTracks(result);
+      recordScan(result.length);
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -2755,6 +2786,40 @@ export default function App() {
             batchEnrich("all");
           }}
         />
+      )}
+
+      {/* Modal de nome para seleção de arquivos arrastados */}
+      {pendingFileDrop && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60" onClick={() => setPendingFileDrop(null)}>
+          <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[340px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-white/[0.06]">
+              <h2 className="text-sm font-semibold text-[#E8E4E1]">Carregar seleção de arquivos</h2>
+              <p className="text-[11px] text-[#605A55] mt-0.5">{pendingFileDrop.paths.length} arquivo{pendingFileDrop.paths.length > 1 ? "s" : ""} selecionado{pendingFileDrop.paths.length > 1 ? "s" : ""}</p>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743] mb-2">Nome da seleção</p>
+              <input
+                autoFocus
+                type="text"
+                value={fileDropDraftName}
+                onChange={(e) => setFileDropDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && fileDropDraftName.trim()) loadFileDrop(pendingFileDrop.paths, fileDropDraftName.trim());
+                  if (e.key === "Escape") setPendingFileDrop(null);
+                }}
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-[#E8E4E1] placeholder-[#4C4743] focus:outline-none focus:border-[#D95340]/50"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
+              <button onClick={() => setPendingFileDrop(null)} className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]">Cancelar</button>
+              <button
+                onClick={() => { if (fileDropDraftName.trim()) loadFileDrop(pendingFileDrop.paths, fileDropDraftName.trim()); }}
+                disabled={!fileDropDraftName.trim()}
+                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors disabled:opacity-40"
+              >Carregar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Loading overlay — operações longas em background */}

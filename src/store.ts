@@ -174,6 +174,10 @@ interface AppState {
   setColorMode: (mode: "default" | "deuteranopia" | "high-contrast") => void;
   helpMarkersEnabled: boolean;
   setHelpMarkersEnabled: (v: boolean) => void;
+  globalLoading: string | null;
+  setGlobalLoading: (msg: string | null) => void;
+  fileSessionName: string | null;
+  setFileSessionName: (name: string | null) => void;
   djPrimary: string;
   djAutoImport: boolean;
   djShowAll: boolean;
@@ -471,6 +475,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem("tagwave_help_markers", v ? "true" : "false");
     set({ helpMarkersEnabled: v });
   },
+  globalLoading: null,
+  setGlobalLoading: (msg) => set({ globalLoading: msg }),
+  fileSessionName: null,
+  setFileSessionName: (name) => set({ fileSessionName: name }),
   djPrimary: localStorage.getItem("tagwave_dj_primary") ?? "none",
   djAutoImport: localStorage.getItem("tagwave_dj_autoimport") === "true",
   djShowAll: localStorage.getItem("tagwave_dj_showall") === "true",
