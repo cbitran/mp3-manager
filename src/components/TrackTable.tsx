@@ -446,6 +446,7 @@ export default function TrackTable({
     removeTracks,
     playlists,
     addTracksToPlaylist,
+    activePlaylistId,
   } = useAppStore(useShallow((s) => ({
     toggleSelect: s.toggleSelect,
     selectAll: s.selectAll,
@@ -460,6 +461,7 @@ export default function TrackTable({
     removeTracks: s.removeTracks,
     playlists: s.playlists,
     addTracksToPlaylist: s.addTracksToPlaylist,
+    activePlaylistId: s.activePlaylistId,
   })));
 
   // Subscriptions granulares para dados que mudam frequentemente
@@ -1732,6 +1734,33 @@ export default function TrackTable({
             </div>
           </div>
         )}
+        {/* Aplicar regras da playlist ativa */}
+        {(() => {
+          const activePl = activePlaylistId ? playlists.find((p) => p.id === activePlaylistId) : null;
+          const gp = activePl?.globalProperties;
+          if (!gp?.enabled || !gp.activeFields.length) return null;
+          const paths = selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
+            ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
+            : [contextMenu.track.path];
+          return (
+            <button
+              className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2"
+              style={{ color: "#E8E4E1" }}
+              onClick={async () => {
+                setContextMenu(null);
+                await applyPlaylistRules(gp, paths);
+                const count = paths.length;
+                toast(count > 1 ? `Regras aplicadas em ${count} faixas` : "Regras aplicadas", "success");
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                <circle cx="5.5" cy="5.5" r="1.4"/>
+                <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.4 2.4l.7.7M8.5 8.5l-.7-.7M8.5 2.4l-.7.7M2.4 8.5l.7-.7"/>
+              </svg>
+              {paths.length > 1 ? `Aplicar regras em ${paths.length} faixas` : "Aplicar regras da playlist"}
+            </button>
+          );
+        })()}
         <div className="h-px bg-white/[0.06] my-1" />
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] text-[#D95340]/80 hover:bg-white/[0.06] flex items-center gap-2"

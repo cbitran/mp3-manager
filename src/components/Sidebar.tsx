@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "./Toast";
 import PlaylistSettingsModal from "./PlaylistSettingsModal";
+import { applyPlaylistRules } from "../lib/playlistRules";
 
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
@@ -53,14 +54,33 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [devicesExpanded, setDevicesExpanded] = useState(true);
   const dragCounterRef = useRef(0);
   const hoveredFolderRef = useRef<{ path: string; name: string } | null>(null);
+  const sidebarTabRef = useRef(sidebarTab);
+  useEffect(() => { sidebarTabRef.current = sidebarTab; }, [sidebarTab]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (!hoveredFolderRef.current) return;
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
-      e.preventDefault();
-      setDeleteDialog(hoveredFolderRef.current);
+
+      // Folder hover → delete folder
+      if (hoveredFolderRef.current) {
+        e.preventDefault();
+        setDeleteDialog(hoveredFolderRef.current);
+        return;
+      }
+
+      // Playlists tab + playlist ativa + sem faixas selecionadas → delete playlist
+      if (sidebarTabRef.current === "playlists") {
+        const st = useAppStore.getState();
+        if (st.activePlaylistId && st.selectedIds.size === 0) {
+          const pl = st.playlists.find((p) => p.id === st.activePlaylistId);
+          if (pl) {
+            e.preventDefault();
+            st.deletePlaylist(st.activePlaylistId);
+            toast(`Playlist "${pl.name}" excluída`, "info");
+          }
+        }
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -371,6 +391,19 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                 )
               }
 
+              {/* Botão sutil para nova playlist — visível quando há playlists e não está em drag */}
+              {playlists.length > 0 && !dragState.isDragging && onNewPlaylist && (
+                <button
+                  onClick={onNewPlaylist}
+                  className="w-full mt-1 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[#4C4743] hover:text-[#8F8883] hover:bg-white/[0.04] transition-colors group"
+                >
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M4.5 1v7M1 4.5h7"/>
+                  </svg>
+                  <span className="text-[10px]">Nova playlist</span>
+                </button>
+              )}
+
               {/* Zona de drop para criar nova playlist — aparece sempre durante drag */}
               {dragState.isDragging && (
                 <div
@@ -544,6 +577,25 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
             </svg>
             Trocar capa da playlist
           </button>
+          {playlistCtx.pl.globalProperties?.enabled && (playlistCtx.pl.globalProperties?.activeFields?.length ?? 0) > 0 && playlistCtx.pl.trackPaths.length > 0 && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={async () => {
+                const pl = playlistCtx.pl;
+                const gp = pl.globalProperties!;
+                setPlaylistCtx(null);
+                await applyPlaylistRules(gp, pl.trackPaths);
+                const count = pl.trackPaths.length;
+                toast(`Regras aplicadas em ${count} faixa${count > 1 ? "s" : ""}`, "success");
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                <circle cx="5.5" cy="5.5" r="1.4"/>
+                <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.4 2.4l.7.7M8.5 8.5l-.7-.7M8.5 2.4l-.7.7M2.4 8.5l.7-.7"/>
+              </svg>
+              Aplicar regras em todas as faixas
+            </button>
+          )}
           <div className="h-px bg-white/10 my-1" />
           <button
             className="w-full px-3 py-1.5 text-left text-sm text-[#D95340]/80 hover:bg-white/8 flex items-center gap-2"

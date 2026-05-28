@@ -28,9 +28,12 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "deselect",     label: "Desfazer seleção",      category: "Biblioteca", defaultKey: "Escape",    description: "Limpa a seleção atual" },
 
   // Interface
-  { id: "search",       label: "Buscar",                category: "Interface", defaultKey: "mod+f",      description: "Abre a barra de busca" },
-  { id: "settings",     label: "Configurações",         category: "Interface", defaultKey: "mod+,",      description: "Abre as configurações" },
-  { id: "ai_assistant", label: "Assistente de IA",      category: "Interface", defaultKey: "mod+k",      description: "Abre o assistente virtual" },
+  { id: "search",          label: "Buscar",                category: "Interface", defaultKey: "mod+f",  description: "Abre a barra de busca" },
+  { id: "settings",        label: "Configurações",         category: "Interface", defaultKey: "mod+,",  description: "Abre as configurações" },
+  { id: "ai_assistant",    label: "Assistente de IA",      category: "Interface", defaultKey: "mod+k",  description: "Abre o assistente virtual" },
+
+  // Playlists
+  { id: "delete_playlist", label: "Excluir playlist",      category: "Playlists", defaultKey: "Delete", description: "Exclui a playlist ativa (aba Playlists aberta, sem faixas selecionadas)" },
 ];
 
 // ── Formatação para exibição ────────────────────────────────────────────────
