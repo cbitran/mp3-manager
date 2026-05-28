@@ -759,7 +759,7 @@ fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> 
     let cover_data = fs::read(&image_path).map_err(|e| e.to_string())?;
     let is_png = image_path.to_lowercase().ends_with(".png");
     let fmt = file_format(Path::new(&path));
-    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
         let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
         tag.remove("APIC");
@@ -774,7 +774,12 @@ fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> 
     } else {
         let lofty_mime = if is_png { LoftyMime::Png } else { LoftyMime::Jpeg };
         let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
-        let tag = tagged.primary_tag_mut().ok_or("sem tag")?;
+        let has_primary = tagged.primary_tag().is_some();
+        let tag = if has_primary {
+            tagged.primary_tag_mut().unwrap()
+        } else {
+            tagged.first_tag_mut().ok_or("sem tag")?
+        };
         tag.remove_picture_type(LoftyPicType::CoverFront);
         tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data));
         ensure_writable(&path);
@@ -2844,7 +2849,7 @@ fn save_cover_batch_from_file(paths: Vec<String>, image_path: String) -> Result<
     let mut ok: u32 = 0;
     for path in &paths {
         let fmt = file_format(Path::new(path));
-        let result = if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+        let result = if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
             let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
             let mut tag = id3::Tag::read_from_path(path).unwrap_or_else(|_| id3::Tag::new());
             tag.remove("APIC");
@@ -2860,7 +2865,13 @@ fn save_cover_batch_from_file(paths: Vec<String>, image_path: String) -> Result<
             let lofty_mime = if is_png { LoftyMime::Png } else { LoftyMime::Jpeg };
             match Probe::open(path).and_then(|p| p.read()) {
                 Ok(mut tagged) => {
-                    if let Some(tag) = tagged.primary_tag_mut() {
+                    let has_primary = tagged.primary_tag().is_some();
+                    let tag_opt = if has_primary {
+                        tagged.primary_tag_mut()
+                    } else {
+                        tagged.first_tag_mut()
+                    };
+                    if let Some(tag) = tag_opt {
                         tag.remove_picture_type(LoftyPicType::CoverFront);
                         tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data.clone()));
                         ensure_writable(path);
