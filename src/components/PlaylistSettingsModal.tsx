@@ -3,6 +3,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useAppStore, type Playlist, type PlaylistGlobalProperties } from "../store";
 import { toast } from "./Toast";
+import { PresetRow } from "./CreatePlaylistModal";
 
 type FieldKey = 'cover' | 'album' | 'genre' | 'comment';
 
@@ -13,12 +14,16 @@ interface Props {
 
 export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
+  const globalPropertyPresets = useAppStore((s) => s.globalPropertyPresets);
+  const saveGlobalPropertyPreset = useAppStore((s) => s.saveGlobalPropertyPreset);
 
   const [name, setName] = useState(playlist.name);
   const [props, setProps] = useState<PlaylistGlobalProperties>(() =>
     playlist.globalProperties ?? { enabled: false, activeFields: [] }
   );
   const [applying, setApplying] = useState(false);
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState("");
 
   const toggleField = (field: FieldKey) => {
     setProps((p) => ({
@@ -134,6 +139,24 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
 
             {props.enabled && (
               <div className="flex flex-col gap-3">
+                <PresetRow
+                  presets={globalPropertyPresets}
+                  hasFields={props.activeFields.length > 0}
+                  showSave={showSavePreset}
+                  presetNameInput={presetNameInput}
+                  onPresetNameChange={setPresetNameInput}
+                  onLoadPreset={(p) => setProps({ ...p.properties, enabled: true })}
+                  onStartSave={() => setShowSavePreset(true)}
+                  onCancelSave={() => { setShowSavePreset(false); setPresetNameInput(""); }}
+                  onConfirmSave={() => {
+                    if (presetNameInput.trim()) {
+                      saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                      toast("Preset salvo", "success");
+                    }
+                    setShowSavePreset(false);
+                    setPresetNameInput("");
+                  }}
+                />
                 <FieldRow
                   active={props.activeFields.includes("cover")}
                   onToggle={() => toggleField("cover")}

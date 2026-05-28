@@ -4,6 +4,7 @@ import { save, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Track, type PlaylistGlobalProperties } from "../store";
 import { applyPlaylistRules } from "../lib/playlistRules";
+import { toast } from "./Toast";
 
 interface DjSoftwareInfo {
   id: string;
@@ -46,9 +47,13 @@ function CreateMode({ tracks, onClose, onCreated }: { tracks: Track[]; onClose: 
   const createPlaylist = useAppStore((s) => s.createPlaylist);
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
   const setActivePlaylistId = useAppStore((s) => s.setActivePlaylistId);
+  const globalPropertyPresets = useAppStore((s) => s.globalPropertyPresets);
+  const saveGlobalPropertyPreset = useAppStore((s) => s.saveGlobalPropertyPreset);
 
   const [name, setName] = useState("Minha Playlist");
   const [props, setProps] = useState<PlaylistGlobalProperties>({ enabled: false, activeFields: [] });
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState("");
 
   const toggleField = (field: FieldKey) => {
     setProps((p) => ({
@@ -149,6 +154,25 @@ function CreateMode({ tracks, onClose, onCreated }: { tracks: Track[]; onClose: 
 
           {props.enabled && (
             <div className="flex flex-col gap-3">
+              {/* Presets */}
+              <PresetRow
+                presets={globalPropertyPresets}
+                hasFields={props.activeFields.length > 0}
+                showSave={showSavePreset}
+                presetNameInput={presetNameInput}
+                onPresetNameChange={setPresetNameInput}
+                onLoadPreset={(p) => setProps({ ...p.properties, enabled: true })}
+                onStartSave={() => setShowSavePreset(true)}
+                onCancelSave={() => { setShowSavePreset(false); setPresetNameInput(""); }}
+                onConfirmSave={() => {
+                  if (presetNameInput.trim()) {
+                    saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                    toast("Preset salvo", "success");
+                  }
+                  setShowSavePreset(false);
+                  setPresetNameInput("");
+                }}
+              />
               <FieldRow active={props.activeFields.includes("cover")} onToggle={() => toggleField("cover")} label="Capa">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className="flex-1 text-[11px] truncate" style={{ color: "#8F8883" }}>
@@ -434,6 +458,92 @@ function FieldRow({ active, onToggle, label, children }: { active: boolean; onTo
       <div className="flex-1 min-w-0" style={{ opacity: active ? 1 : 0.4, pointerEvents: active ? "auto" : "none" }}>
         {children}
       </div>
+    </div>
+  );
+}
+
+// ── Preset row ────────────────────────────────────────────────────────────────
+
+import { type GlobalPropertyPreset } from "../store";
+
+export function PresetRow({
+  presets, hasFields, showSave, presetNameInput,
+  onPresetNameChange, onLoadPreset, onStartSave, onCancelSave, onConfirmSave,
+}: {
+  presets: GlobalPropertyPreset[];
+  hasFields: boolean;
+  showSave: boolean;
+  presetNameInput: string;
+  onPresetNameChange: (v: string) => void;
+  onLoadPreset: (p: GlobalPropertyPreset) => void;
+  onStartSave: () => void;
+  onCancelSave: () => void;
+  onConfirmSave: () => void;
+}) {
+  if (presets.length === 0 && !hasFields) return null;
+  return (
+    <div className="flex flex-col gap-1.5 pb-1">
+      <div className="flex items-center gap-2">
+        {presets.length > 0 && (
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const p = presets.find((x) => x.id === e.target.value);
+              if (p) onLoadPreset(p);
+              e.target.value = "";
+            }}
+            className="flex-1 text-[11px] rounded px-2 py-1 focus:outline-none"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#8F8883" }}
+          >
+            <option value="" disabled>Carregar preset…</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        )}
+        {hasFields && !showSave && (
+          <button
+            onClick={onStartSave}
+            className="text-[10px] whitespace-nowrap transition-colors"
+            style={{ color: "#605A55" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#C2BEBC")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#605A55")}
+          >
+            + Salvar como preset
+          </button>
+        )}
+      </div>
+      {showSave && (
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={presetNameInput}
+            onChange={(e) => onPresetNameChange(e.target.value)}
+            placeholder="Nome do preset"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onConfirmSave();
+              if (e.key === "Escape") onCancelSave();
+            }}
+            className="flex-1 rounded px-2 py-1 text-[11px] focus:outline-none"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(217,83,64,0.4)", color: "#C2BEBC" }}
+          />
+          <button
+            onClick={onConfirmSave}
+            className="text-[10px] px-2 py-1 rounded transition-colors"
+            style={{ background: "rgba(217,83,64,0.2)", color: "#D95340" }}
+          >
+            Salvar
+          </button>
+          <button
+            onClick={onCancelSave}
+            className="text-[10px] transition-colors"
+            style={{ color: "#605A55" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
