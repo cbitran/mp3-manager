@@ -415,6 +415,7 @@ export default function App() {
   );
 
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
+  const [missingPlaylistPaths, setMissingPlaylistPaths] = useState<{ playlistId: string; paths: string[] } | null>(null);
   const [showSettings, setShowSettings]     = useState(false);
   const [compact, setCompact]               = useState(false);
   const [showRightPanel, setShowRightPanel] = useState(true);
@@ -587,6 +588,16 @@ export default function App() {
       playlist.trackPaths.some((tp) => tp.startsWith(rf + sep(tp)))
     );
     if (match) scanFolder(match);
+  }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Verifica arquivos faltando ao abrir uma playlist
+  useEffect(() => {
+    if (!activePlaylistId) return;
+    const playlist = useAppStore.getState().playlists.find((p) => p.id === activePlaylistId);
+    if (!playlist || playlist.trackPaths.length === 0) return;
+    invoke<string[]>("check_paths_exist", { paths: playlist.trackPaths }).then((missing) => {
+      if (missing.length > 0) setMissingPlaylistPaths({ playlistId: activePlaylistId, paths: missing });
+    }).catch(() => {});
   }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
@@ -2787,6 +2798,50 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Modal de arquivos faltando na playlist */}
+      {missingPlaylistPaths && (() => {
+        const pl = playlists.find((p) => p.id === missingPlaylistPaths.playlistId);
+        if (!pl) return null;
+        const count = missingPlaylistPaths.paths.length;
+        return (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60">
+            <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[380px] shadow-2xl">
+              <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
+                </svg>
+                <h2 className="text-sm font-semibold text-[#E8E4E1]">Arquivos não encontrados</h2>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[12px] text-[#C2BEBC] mb-1">
+                  <span className="font-semibold text-[#E8E4E1]">{count} música{count > 1 ? "s" : ""}</span> da playlist <span className="font-semibold text-[#E8E4E1]">"{pl.name}"</span> não {count > 1 ? "estão" : "está"} mais no disco.
+                </p>
+                <p className="text-[11px] text-[#605A55]">Deseja remover {count > 1 ? "essas músicas" : "essa música"} da playlist?</p>
+              </div>
+              <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
+                <button
+                  onClick={() => setMissingPlaylistPaths(null)}
+                  className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                >Manter assim</button>
+                <button
+                  onClick={() => {
+                    const missing = new Set(missingPlaylistPaths.paths);
+                    const { updatePlaylist, playlists: pls } = useAppStore.getState();
+                    const playlist = pls.find((p) => p.id === missingPlaylistPaths.playlistId);
+                    if (playlist) {
+                      updatePlaylist(playlist.id, { trackPaths: playlist.trackPaths.filter((p) => !missing.has(p)) });
+                    }
+                    setMissingPlaylistPaths(null);
+                    toast(`${count} música${count > 1 ? "s removidas" : " removida"} da playlist`, "info");
+                  }}
+                  className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
+                >Remover da playlist</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal de nome para seleção de arquivos arrastados */}
       {pendingFileDrop && (

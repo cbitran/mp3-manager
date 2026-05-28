@@ -850,6 +850,11 @@ fn dir_exists(path: String) -> bool {
 }
 
 #[tauri::command]
+fn check_paths_exist(paths: Vec<String>) -> Vec<String> {
+    paths.into_iter().filter(|p| !Path::new(p).exists()).collect()
+}
+
+#[tauri::command]
 fn list_subfolders(path: String) -> Result<Vec<String>, String> {
     let entries = fs::read_dir(&path).map_err(|e| e.to_string())?;
     let mut subs: Vec<String> = entries
@@ -3219,6 +3224,7 @@ pub fn run() {
             find_new_files,
             scan_specific_files,
             list_volumes,
+            check_paths_exist,
             list_dir_contents,
             activate_license_key,
             check_license_status,
