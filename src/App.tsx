@@ -538,28 +538,31 @@ export default function App() {
         setIsDragOver(false);
         const paths = event.payload.paths;
         if (paths.length === 0) return;
-        const AUDIO_EXTS = new Set(["mp3","flac","aiff","aif","wav","m4a","mp4","aac",
-          "ogg","opus","wma","mkv","avi","mov","wmv","webm","m4v","mpeg","mpg","mp2","wv"]);
-        const firstExt = (paths[0].split(/[\\/]/).pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
-        const isAudioFiles = firstExt && AUDIO_EXTS.has(firstExt);
-        if (isAudioFiles) {
-          // Múltiplos arquivos de áudio: pede nome e carrega todos
-          const audioPaths = paths.filter((p) => {
-            const ext = (p.split(/[\\/]/).pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
-            return AUDIO_EXTS.has(ext);
-          });
-          if (audioPaths.length === 0) return;
-          const parentDir = audioPaths[0].split(/[\\/]/).slice(0, -1);
+        const AUDIO_EXTS = new Set(["mp3","flac","aiff","aif","wav","m4a","aac",
+          "ogg","opus","wma","wv"]);
+        const VIDEO_EXTS = new Set(["mp4","mkv","avi","mov","wmv","webm","m4v","mpeg","mpg","mp2"]);
+        const getExt = (p: string) =>
+          (p.split(/[\\/]/).pop() ?? "").split(".").pop()?.toLowerCase() ?? "";
+
+        // Filtrar arquivos de áudio válidos (ignora .DS_Store, thumbs.db, etc.)
+        const audioPaths = paths.filter((p) => AUDIO_EXTS.has(getExt(p)));
+        const videoPaths = paths.filter((p) => VIDEO_EXTS.has(getExt(p)));
+
+        if (audioPaths.length > 0 || videoPaths.length > 0) {
+          // Tem áudio e/ou vídeo — usa o que encontrou, ignorando arquivos inválidos
+          const mediaPaths = audioPaths.length > 0 ? audioPaths : videoPaths;
+          const parentDir = mediaPaths[0].split(/[\\/]/).slice(0, -1);
           const defaultName = parentDir[parentDir.length - 1] ?? "Seleção";
-          setPendingFileDrop({ paths: audioPaths, defaultName });
+          setPendingFileDrop({ paths: mediaPaths, defaultName });
           setFileDropDraftName(defaultName);
         } else {
-          // Pasta (ou arquivo não-áudio) — comportamento original
-          if (firstExt && !AUDIO_EXTS.has(firstExt)) {
-            toast("Apenas arquivos de áudio/vídeo ou pastas são aceitos.", "info");
-            return;
+          // Nenhum arquivo de áudio/vídeo reconhecido — tratar como pasta
+          // (inclui o caso de pastas com ponto no nome, aliases, etc.)
+          if (paths.length === 1) {
+            scanFolder(paths[0]);
+          } else {
+            toast("Nenhum arquivo de áudio encontrado.", "info");
           }
-          scanFolder(paths[0]);
         }
       }
     }).then((fn) => { unlisten = fn; });
