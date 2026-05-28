@@ -1812,7 +1812,7 @@ export default function App() {
                 onClick={() => batchEnrich("all")}
                 disabled={enriching || isScanning}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold hover:bg-white/[0.04] transition-colors whitespace-nowrap shrink-0"
-                style={{ color: "#8F8883", opacity: (enriching || isScanning) ? 0.45 : 1 }}
+                style={{ color: "var(--c-t4)", opacity: (enriching || isScanning) ? 0.45 : 1 }}
                 title={t("toolbar.enrichTooltip")}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -1886,7 +1886,7 @@ export default function App() {
                 disabled={exporting || !canExport}
                 title={canExport ? undefined : t("toolbar.selectToExport")}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${canExport ? "hover:bg-white/[0.04]" : "cursor-not-allowed"}`}
-                style={{ color: "#8F8883", opacity: (exporting || !canExport) ? 0.45 : 1 }}
+                style={{ color: "var(--c-t4)", opacity: (exporting || !canExport) ? 0.45 : 1 }}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5.5 1v6M3 4l2.5-3 2.5 3"/>

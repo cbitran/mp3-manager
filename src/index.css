@@ -86,6 +86,39 @@
   --success:  var(--green-800);        /* #2B4C28 — save/ok */
 }
 
+/* ─── Variáveis de Texto (dinâmicas via --tcb) ───────────────────── */
+/* Tema escuro padrão: cinzas quentes, boost → branco                 */
+:root {
+  --tcb: 0%;
+  --c-t1: color-mix(in srgb, #F5F5F4, white var(--tcb)); /* branco quente  */
+  --c-t2: color-mix(in srgb, #C2BEBC, white var(--tcb)); /* primário       */
+  --c-t3: color-mix(in srgb, #A8A3A0, white var(--tcb)); /* secundário     */
+  --c-t4: color-mix(in srgb, #8F8883, white var(--tcb)); /* muted          */
+  --c-t5: color-mix(in srgb, #756D67, white var(--tcb)); /* faint          */
+  --c-t6: color-mix(in srgb, #605A55, white var(--tcb)); /* fantasma       */
+  --c-t7: color-mix(in srgb, #4C4743, white var(--tcb)); /* ghost          */
+}
+/* Tema claro: preto com opacidade, boost → preto puro                */
+html[data-theme="light"] {
+  --c-t1: color-mix(in srgb, #212121, black var(--tcb)); /* ≈ rgba(0,0,0,.87) */
+  --c-t2: color-mix(in srgb, #333333, black var(--tcb)); /* ≈ rgba(0,0,0,.80) */
+  --c-t3: color-mix(in srgb, #515151, black var(--tcb)); /* ≈ rgba(0,0,0,.68) */
+  --c-t4: color-mix(in srgb, #696969, black var(--tcb)); /* ≈ rgba(0,0,0,.58) */
+  --c-t5: color-mix(in srgb, #808080, black var(--tcb)); /* ≈ rgba(0,0,0,.50) */
+  --c-t6: color-mix(in srgb, #8F8F8F, black var(--tcb)); /* ≈ rgba(0,0,0,.44) */
+  --c-t7: color-mix(in srgb, #A3A3A3, black var(--tcb)); /* ≈ rgba(0,0,0,.36) */
+}
+/* Tema escuro neutro: mesmas bases quentes (já são desaturadas)      */
+html[data-theme="dark"] {
+  --c-t1: color-mix(in srgb, #FFFFFF, white var(--tcb));
+  --c-t2: color-mix(in srgb, rgba(235,235,245,0.75), white var(--tcb));
+  --c-t3: color-mix(in srgb, rgba(235,235,245,0.60), white var(--tcb));
+  --c-t4: color-mix(in srgb, rgba(235,235,245,0.55), white var(--tcb));
+  --c-t5: color-mix(in srgb, rgba(235,235,245,0.40), white var(--tcb));
+  --c-t6: color-mix(in srgb, rgba(235,235,245,0.30), white var(--tcb));
+  --c-t7: color-mix(in srgb, rgba(235,235,245,0.20), white var(--tcb));
+}
+
 /* ─── Reset ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 

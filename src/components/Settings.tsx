@@ -653,6 +653,14 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                     </button>
                   )}
                 </div>
+                {/* Prévia ao vivo */}
+                <div className="mt-3 px-3 py-2.5 rounded-lg border" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[13px] font-semibold truncate" style={{ color: "var(--c-t1)" }}>Título da faixa</span>
+                    <span className="text-[11px] truncate" style={{ color: "var(--c-t4)" }}>Nome do artista</span>
+                    <span className="text-[10px] mt-1 truncate" style={{ color: "var(--c-t6)" }}>Álbum · Gênero · 128 BPM</span>
+                  </div>
+                </div>
               </div>
 
               {/* Toolchips */}

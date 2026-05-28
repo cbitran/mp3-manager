@@ -285,7 +285,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
           <button
             onClick={onLoadAllFolders}
             className="mx-2 mt-2 mb-1 flex items-center gap-1.5 px-2 py-1.5 rounded-md w-full text-left transition-colors hover:bg-white/[0.05]"
-            style={{ color: "#8F8883" }}
+            style={{ color: "var(--c-t4)" }}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
               <rect x="1" y="1" width="4" height="4" rx="0.8"/><rect x="7" y="1" width="4" height="4" rx="0.8"/>

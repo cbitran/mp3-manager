@@ -689,7 +689,7 @@ export default function TrackTable({
               }
             >
               <span className="text-[9px] font-bold uppercase tracking-widest transition-colors duration-200"
-                style={{ color: sorted ? "#C2BEBC" : "#8F8883" }}>
+                style={{ color: sorted ? "var(--c-t2)" : "var(--c-t4)" }}>
                 {i18n.t("settings.columns.colCover")}
               </span>
               {sorted && (
@@ -895,11 +895,11 @@ export default function TrackTable({
                     </span>
                   ))}
                   {count > 4 && (
-                    <span className="text-[9px] font-mono" style={{ color: "#605A55" }}>+{count - 4}</span>
+                    <span className="text-[9px] font-mono" style={{ color: "var(--c-t6)" }}>+{count - 4}</span>
                   )}
                 </div>
               ) : (
-                <span className="text-[11px]" style={{ color: "#373331" }}>—</span>
+                <span className="text-[11px]" style={{ color: "var(--c-t7)" }}>—</span>
               )}
             </div>
           );
@@ -1001,7 +1001,7 @@ export default function TrackTable({
                 </span>
               ))}
               {trackPlaylists.length > 2 && (
-                <span className="text-[8px] font-mono" style={{ color: "#4C4743" }}>+{trackPlaylists.length - 2}</span>
+                <span className="text-[8px] font-mono" style={{ color: "var(--c-t7)" }}>+{trackPlaylists.length - 2}</span>
               )}
             </div>
           );
