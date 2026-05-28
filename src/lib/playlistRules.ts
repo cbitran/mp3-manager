@@ -13,15 +13,20 @@ export async function applyPlaylistRules(
 
   const st = useAppStore.getState();
 
+  const hasTagFields = props.activeFields.some((f) => f !== "cover");
+
   for (const path of paths) {
-    await invoke("save_tags", {
-      path,
-      title: null, artist: null, year: null, trackNumber: null,
-      totalTracks: null, bpm: null, key: null, rating: null,
-      album:   props.activeFields.includes("album")   ? props.album   ?? null : null,
-      genre:   props.activeFields.includes("genre")   ? props.genre   ?? null : null,
-      comment: props.activeFields.includes("comment") ? props.comment ?? null : null,
-    }).catch(() => {});
+    // Só chama save_tags se há campos de metadados para atualizar (não só capa)
+    if (hasTagFields) {
+      await invoke("save_tags", {
+        path,
+        title: null, artist: null, year: null, trackNumber: null,
+        totalTracks: null, bpm: null, key: null, rating: null,
+        album:   props.activeFields.includes("album")   ? props.album   ?? null : null,
+        genre:   props.activeFields.includes("genre")   ? props.genre   ?? null : null,
+        comment: props.activeFields.includes("comment") ? props.comment ?? null : null,
+      }).catch(() => {});
+    }
 
     if (props.activeFields.includes("cover") && props.cover) {
       await invoke("save_cover_from_file", { path, imagePath: props.cover }).catch(() => {});

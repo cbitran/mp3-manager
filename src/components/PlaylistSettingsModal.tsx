@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore, type Playlist, type PlaylistGlobalProperties } from "../store";
 import { toast } from "./Toast";
@@ -13,8 +12,6 @@ interface Props {
 
 export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
-  const tracks = useAppStore((s) => s.tracks);
-  const updateTrack = useAppStore((s) => s.updateTrack);
 
   const [name, setName] = useState(playlist.name);
   const [props, setProps] = useState<PlaylistGlobalProperties>(() =>
@@ -67,42 +64,12 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
   const handleApplyToAll = async () => {
     if (playlist.trackPaths.length === 0 || !props.enabled || props.activeFields.length === 0) return;
     setApplying(true);
-    let count = 0;
-    for (const path of playlist.trackPaths) {
-      try {
-        await invoke("save_tags", {
-          path,
-          title: null, artist: null, year: null, trackNumber: null,
-          totalTracks: null, bpm: null, key: null, rating: null,
-          album: props.activeFields.includes("album") ? props.album ?? null : null,
-          genre: props.activeFields.includes("genre") ? props.genre ?? null : null,
-          comment: props.activeFields.includes("comment") ? props.comment ?? null : null,
-        });
-        if (props.activeFields.includes("cover") && props.cover) {
-          await invoke("save_cover_from_file", { path, imagePath: props.cover });
-        }
-        const tr = tracks.find((t) => t.path === path);
-        if (tr) {
-          updateTrack({
-            ...tr,
-            album: props.activeFields.includes("album") ? props.album ?? tr.album : tr.album,
-            genre: props.activeFields.includes("genre") ? props.genre ?? tr.genre : tr.genre,
-            comment: props.activeFields.includes("comment") ? props.comment ?? tr.comment : tr.comment,
-            has_cover: props.activeFields.includes("cover") && !!props.cover ? true : tr.has_cover,
-            cover_version:
-              props.activeFields.includes("cover") && !!props.cover
-                ? (tr.cover_version ?? 0) + 1
-                : tr.cover_version,
-          });
-        }
-        count++;
-      } catch {
-        // falha individual não interrompe o batch
-      }
-    }
+    const { applyPlaylistRules } = await import("../lib/playlistRules");
+    await applyPlaylistRules(props, playlist.trackPaths);
     setApplying(false);
     updatePlaylist(playlist.id, { globalProperties: props, pendingRulesApply: false });
     onClose();
+    const count = playlist.trackPaths.length;
     toast(
       count > 0
         ? `Propriedades aplicadas em ${count} faixa${count > 1 ? "s" : ""}`
