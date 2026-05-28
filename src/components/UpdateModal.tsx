@@ -50,11 +50,14 @@ export default function UpdateModal({ currentVersion, onClose }: Props) {
 
   useEffect(() => {
     if (!currentVersion) return;
-    fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+    // /releases/latest ignora prereleases — usar /releases?per_page=1 que inclui tudo
+    fetch(`https://api.github.com/repos/${REPO}/releases?per_page=1`, {
       headers: { Accept: "application/vnd.github+json" },
     })
       .then((r) => r.json())
-      .then((data) => {
+      .then((list) => {
+        const data = Array.isArray(list) ? list[0] : null;
+        if (!data) return;
         const tag = (data.tag_name as string) ?? "";
         const version = tag.replace(/^v/, "");
         if (!isNewer(version, currentVersion)) return;
