@@ -378,29 +378,28 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                     />
                   ))
                 : !dragState.isDragging && (
-                  <div className="px-2 py-4 flex flex-col items-center gap-2 text-center">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <div className="px-2 py-3 flex flex-col items-center gap-1 text-center">
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="2" y="3" width="16" height="14" rx="2"/>
                       <path d="M7 8h6M7 12h4"/>
                       <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
                       <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
                     </svg>
                     <p className="text-[10px] text-[#4C4743]">{t("sidebar.noPlaylists")}</p>
-                    <p className="text-[9px] text-[#373331]">{t("sidebar.noPlaylistsHint")}</p>
                   </div>
                 )
               }
 
-              {/* Botão sutil para nova playlist — visível quando há playlists e não está em drag */}
-              {playlists.length > 0 && !dragState.isDragging && onNewPlaylist && (
+              {/* Botão Nova playlist — sempre no espaço abaixo da lista, durante uso normal */}
+              {!dragState.isDragging && onNewPlaylist && (
                 <button
                   onClick={onNewPlaylist}
-                  className="w-full mt-1 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[#4C4743] hover:text-[#8F8883] hover:bg-white/[0.04] transition-colors group"
+                  className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-white/[0.07] text-[#605A55] hover:text-[#8F8883] hover:border-white/[0.14] hover:bg-white/[0.03] transition-all"
                 >
-                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M4.5 1v7M1 4.5h7"/>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M5 1v8M1 5h8"/>
                   </svg>
-                  <span className="text-[10px]">Nova playlist</span>
+                  <span className="text-[11px]">Nova playlist</span>
                 </button>
               )}
 
