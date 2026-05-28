@@ -590,14 +590,22 @@ export default function App() {
     const playlist = pls.find((p) => p.id === activePlaylistId);
     if (!playlist || playlist.trackPaths.length === 0) return;
     const loadedPaths = new Set(currentTracks.map((t) => t.path));
-    const loadedCount = playlist.trackPaths.filter((p) => loadedPaths.has(p)).length;
-    if (loadedCount === playlist.trackPaths.length) return; // todas já carregadas
-    // Procura a pasta recente que contém as faixas da playlist
+    const missingPaths = playlist.trackPaths.filter((p) => !loadedPaths.has(p));
+    if (missingPaths.length === 0) return; // todas já carregadas
+
+    // Agrupa faixas faltando por pasta-raiz conhecida e escaneia cada uma
     const sep = (p: string) => p.includes("\\") ? "\\" : "/";
-    const match = recentFolders.find((rf) =>
-      playlist.trackPaths.some((tp) => tp.startsWith(rf + sep(tp)))
+    const foldersToScan = new Set<string>();
+    for (const tp of missingPaths) {
+      const rf = recentFolders.find((f) => tp.startsWith(f + sep(tp)));
+      if (rf) foldersToScan.add(rf);
+    }
+    // Faixas sem pasta conhecida: scan direto dos arquivos individuais
+    const orphanPaths = missingPaths.filter((tp) =>
+      !recentFolders.some((f) => tp.startsWith(f + sep(tp)))
     );
-    if (match) scanFolder(match);
+    for (const folder of foldersToScan) scanFolder(folder);
+    if (orphanPaths.length > 0) mergeFilesToStore(orphanPaths);
   }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Verifica arquivos faltando — ao abrir playlist ou ao app receber foco
@@ -1403,6 +1411,24 @@ export default function App() {
       const result = await invoke<Track[]>("scan_specific_files", { paths });
       setTracks(result);
       recordScan(result.length);
+    } finally {
+      setScanning(false);
+      if (showOverlay) setAppLoading(null);
+    }
+  }
+
+  // Adiciona arquivos ao store sem substituir as faixas existentes (para playlists mistas)
+  async function mergeFilesToStore(paths: string[]) {
+    const showOverlay = !appLoading;
+    if (showOverlay) setAppLoading("scanning");
+    setScanning(true);
+    try {
+      const result = await invoke<Track[]>("scan_specific_files", { paths });
+      const current = useAppStore.getState().tracks;
+      const existingPaths = new Set(current.map((t) => t.path));
+      const fresh = result.filter((t) => !existingPaths.has(t.path));
+      if (fresh.length > 0) setTracks([...current, ...fresh]);
+      recordScan(fresh.length);
     } finally {
       setScanning(false);
       if (showOverlay) setAppLoading(null);
@@ -2919,10 +2945,11 @@ export default function App() {
                 <button
                   key={pl.id}
                   onClick={() => {
-                    useAppStore.getState().addTracksToPlaylist(pl.id, pendingFileChoice.paths);
-                    useAppStore.getState().setActivePlaylistId(pl.id);
-                    loadFileDrop(pendingFileChoice.paths, pl.name);
+                    const paths = pendingFileChoice.paths;
                     setPendingFileChoice(null);
+                    useAppStore.getState().addTracksToPlaylist(pl.id, paths);
+                    useAppStore.getState().setActivePlaylistId(pl.id);
+                    mergeFilesToStore(paths);
                   }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
                   style={{ background: "transparent" }}
