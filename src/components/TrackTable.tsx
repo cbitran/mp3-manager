@@ -529,6 +529,14 @@ export default function TrackTable({
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const [draggingColId, setDraggingColId] = useState<string | null>(null);
   const [dragGhost, setDragGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [colCtxMenu, setColCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!colCtxMenu) return;
+    const close = () => setColCtxMenu(null);
+    document.addEventListener("mousedown", close, { once: true });
+    return () => document.removeEventListener("mousedown", close);
+  }, [colCtxMenu]);
 
   const DEFAULT_VISIBILITY: VisibilityState = {
     tipo: false,
@@ -1220,7 +1228,8 @@ export default function TrackTable({
           <tr>
             {/* Row number header */}
             <th className="w-10 px-3 py-2.5 text-center border-b border-white/[0.05]"
-              style={{ boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)' }}>
+              style={{ boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.07)' }}
+              onContextMenu={(e) => { e.preventDefault(); setColCtxMenu({ x: e.clientX, y: e.clientY }); }}>
               <span className="text-[10px] font-bold text-[#8F8883] uppercase tracking-wider">#</span>
             </th>
             {table.getHeaderGroups()[0]?.headers.map((header) => (
@@ -1243,6 +1252,7 @@ export default function TrackTable({
                     : 'border-l border-l-transparent'
                 }`}
                 onClick={header.column.getToggleSortingHandler()}
+                onContextMenu={(e) => { e.preventDefault(); setColCtxMenu({ x: e.clientX, y: e.clientY }); }}
                 onMouseDown={(e) => {
                   if (e.button !== 0) return;
                   if ((e.target as HTMLElement).closest('[data-resize]')) return;
@@ -1856,6 +1866,69 @@ export default function TrackTable({
         >
           {dragGhost.label}
         </div>
+      </div>
+    )}
+
+    {/* Column picker context menu */}
+    {colCtxMenu && (
+      <div
+        className="fixed z-[500] rounded-lg shadow-2xl py-1.5 min-w-[160px]"
+        style={{
+          left: Math.min(colCtxMenu.x, window.innerWidth - 180),
+          top: Math.min(colCtxMenu.y, window.innerHeight - 320),
+          background: "#1c1715",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <p className="px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-[#4C4743] mb-0.5">
+          Colunas visíveis
+        </p>
+        {([
+          { id: "title_artist",  label: t("settings.columns.colTitle")    },
+          { id: "album",         label: t("settings.columns.colAlbum")    },
+          { id: "genre",         label: t("settings.columns.colGenre")    },
+          { id: "year_col",      label: t("settings.columns.colYear")     },
+          { id: "waveform",      label: t("settings.columns.colWave")     },
+          { id: "status",        label: t("settings.columns.colStatus")   },
+          { id: "key",           label: t("settings.columns.colKey")      },
+          { id: "bpm",           label: t("settings.columns.colBpm")      },
+          { id: "rating",        label: t("settings.columns.colRating")   },
+          { id: "cue_points",    label: t("settings.columns.colCue")      },
+          { id: "duration_secs", label: t("settings.columns.colDuration") },
+          { id: "file_size",     label: t("settings.columns.colSize")     },
+          { id: "bitrate",       label: t("settings.columns.colBitrate")  },
+          { id: "comment",       label: t("settings.columns.colComment")  },
+        ] as const).map(({ id, label }) => {
+          const visible = mergedVisibility[id] !== false;
+          return (
+            <button
+              key={id}
+              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+              onClick={() => {
+                const next = { ...mergedVisibility, [id]: !visible };
+                setColumnVisibility(next);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-white/[0.06]"
+              style={{ color: visible ? "#C2BEBC" : "#605A55" }}
+            >
+              <span
+                className="w-3.5 h-3.5 rounded shrink-0 flex items-center justify-center"
+                style={{
+                  background: visible ? "#D95340" : "transparent",
+                  border: visible ? "1px solid #D95340" : "1px solid rgba(255,255,255,0.15)",
+                }}
+              >
+                {visible && (
+                  <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 3l2 2 4-4"/>
+                  </svg>
+                )}
+              </span>
+              {label}
+            </button>
+          );
+        })}
       </div>
     )}
     </>
