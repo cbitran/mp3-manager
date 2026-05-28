@@ -27,6 +27,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
   const [error, setError] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const lastClickRef = useRef<{ path: string; time: number }>({ path: "", time: 0 });
+  const lastSelectedIndexRef = useRef<number>(-1);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +45,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
     setHistory((h) => [...h, currentPath]);
     setCurrentPath(norm(path));
     setSelectedFiles(new Set());
+    lastSelectedIndexRef.current = -1;
   }
 
   function goBack() {
@@ -52,6 +54,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
     setHistory((h) => h.slice(0, -1));
     setCurrentPath(prev);
     setSelectedFiles(new Set());
+    lastSelectedIndexRef.current = -1;
   }
 
   function goToCrumb(path: string) {
@@ -59,6 +62,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
     setHistory((h) => [...h, currentPath]);
     setCurrentPath(path);
     setSelectedFiles(new Set());
+    lastSelectedIndexRef.current = -1;
   }
 
   function toggleFile(path: string) {
@@ -69,11 +73,30 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
     });
   }
 
+  function handleFileClick(path: string, index: number, e: React.MouseEvent) {
+    if (!onLoadFiles) return;
+    if (e.shiftKey && lastSelectedIndexRef.current >= 0) {
+      // Seleciona range entre último clicado e atual
+      const start = Math.min(lastSelectedIndexRef.current, index);
+      const end   = Math.max(lastSelectedIndexRef.current, index);
+      setSelectedFiles((prev) => {
+        const next = new Set(prev);
+        files.slice(start, end + 1).forEach((f) => next.add(f.path));
+        return next;
+      });
+    } else {
+      toggleFile(path);
+      lastSelectedIndexRef.current = index;
+    }
+  }
+
   function toggleAll() {
     if (selectedFiles.size === files.length) {
       setSelectedFiles(new Set());
+      lastSelectedIndexRef.current = -1;
     } else {
       setSelectedFiles(new Set(files.map((f) => f.path)));
+      lastSelectedIndexRef.current = files.length - 1;
     }
   }
 
@@ -92,6 +115,20 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
   const folders = entries?.filter((e) => e.is_dir) ?? [];
   const files   = entries?.filter((e) => !e.is_dir) ?? [];
   const folderName = currentPath.split("/").filter(Boolean).pop() ?? currentPath;
+
+  // Ctrl/Cmd+A para selecionar tudo
+  useEffect(() => {
+    if (!onLoadFiles) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a" && files.length > 0) {
+        e.preventDefault();
+        setSelectedFiles(new Set(files.map((f) => f.path)));
+        lastSelectedIndexRef.current = files.length - 1;
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [files, onLoadFiles]);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden select-none" style={{ background: "#0E0D0C" }}>
@@ -214,10 +251,10 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
               </div>
             )}
 
-            {files.slice(0, 200).map((f) => (
+            {files.slice(0, 200).map((f, idx) => (
               <div
                 key={f.path}
-                onClick={() => onLoadFiles && toggleFile(f.path)}
+                onClick={(e) => handleFileClick(f.path, idx, e)}
                 className="flex items-center gap-2 px-2 h-7 rounded-md transition-colors"
                 style={{
                   color: selectedFiles.has(f.path) ? "#C2BEBC" : "#706A65",
