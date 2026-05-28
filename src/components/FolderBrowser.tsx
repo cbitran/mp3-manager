@@ -204,6 +204,11 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
           <div className="flex flex-col">
             {folders.map((f) => (
               <button key={f.path}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/folder-path", f.path);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
                 onClick={() => {
                   const now = Date.now();
                   if (lastClickRef.current.path === f.path && now - lastClickRef.current.time < 400) {

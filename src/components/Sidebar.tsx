@@ -51,6 +51,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [playlistSort, setPlaylistSort] = useState<"recent" | "alpha">("recent");
   const [syncing, setSyncing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isDragFolderInternal, setIsDragFolderInternal] = useState(false);
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
@@ -213,6 +214,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     e.preventDefault();
     dragCounterRef.current++;
     setIsDragOver(true);
+    setIsDragFolderInternal(e.dataTransfer.types.includes("text/folder-path"));
   }
 
   function handleDragLeave() {
@@ -220,6 +222,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     if (dragCounterRef.current <= 0) {
       dragCounterRef.current = 0;
       setIsDragOver(false);
+      setIsDragFolderInternal(false);
     }
   }
 
@@ -227,12 +230,27 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     e.preventDefault();
     dragCounterRef.current = 0;
     setIsDragOver(false);
+    setIsDragFolderInternal(false);
+
+    // Drag interno de pasta vinda do FolderBrowser (Dispositivos)
+    const folderPath = e.dataTransfer.getData("text/folder-path");
+    if (folderPath) {
+      setSidebarTab("recent");
+      if (recentFolders.includes(folderPath)) {
+        const name = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? folderPath;
+        setDupDialog({ path: folderPath, name });
+      } else {
+        onFolderSelect(folderPath);
+      }
+      return;
+    }
+
+    // Drag externo de pasta/arquivo vindo do Finder/Explorer
     const files = e.dataTransfer.files;
     if (files.length === 0) return;
     // @ts-expect-error — Tauri expõe .path em File
     const droppedPath: string = files[0].path;
     if (!droppedPath) return;
-    // Verifica se a pasta já existe na lista
     if (recentFolders.includes(droppedPath)) {
       const name = droppedPath.split(/[\\/]/).filter(Boolean).pop() ?? droppedPath;
       setDupDialog({ path: droppedPath, name });
@@ -257,7 +275,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
             <path d="M3 7a2 2 0 012-2h3l2 3h9a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
           </svg>
           <span className="text-[11px] font-semibold text-[#D95340]/80 text-center px-3">
-            {t("toolbar.dropToAddFolder")}
+            {isDragFolderInternal ? "Soltar para adicionar à biblioteca" : t("toolbar.dropToAddFolder")}
           </span>
         </div>
       )}
