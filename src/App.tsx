@@ -590,15 +590,28 @@ export default function App() {
     if (match) scanFolder(match);
   }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Verifica arquivos faltando ao abrir uma playlist
-  useEffect(() => {
-    if (!activePlaylistId) return;
-    const playlist = useAppStore.getState().playlists.find((p) => p.id === activePlaylistId);
+  // Verifica arquivos faltando — ao abrir playlist ou ao app receber foco
+  function checkPlaylistMissingFiles(playlistId: string | null) {
+    if (!playlistId) return;
+    const playlist = useAppStore.getState().playlists.find((p) => p.id === playlistId);
     if (!playlist || playlist.trackPaths.length === 0) return;
     invoke<string[]>("check_paths_exist", { paths: playlist.trackPaths }).then((missing) => {
-      if (missing.length > 0) setMissingPlaylistPaths({ playlistId: activePlaylistId, paths: missing });
+      if (missing.length > 0) setMissingPlaylistPaths({ playlistId, paths: missing });
     }).catch(() => {});
+  }
+
+  useEffect(() => {
+    checkPlaylistMissingFiles(activePlaylistId);
   }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onFocus = () => {
+      const id = useAppStore.getState().activePlaylistId;
+      checkPlaylistMissingFiles(id);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
 
