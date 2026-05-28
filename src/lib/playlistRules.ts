@@ -12,9 +12,11 @@ export async function applyPlaylistRules(
   if (!props.enabled || props.activeFields.length === 0 || paths.length === 0) return;
 
   const st = useAppStore.getState();
+  st.setGlobalLoading("aplicando regras…");
 
   const hasTagFields = props.activeFields.some((f) => f !== "cover");
 
+  try {
   for (const path of paths) {
     // Só chama save_tags se há campos de metadados para atualizar (não só capa)
     if (hasTagFields) {
@@ -45,5 +47,8 @@ export async function applyPlaylistRules(
           ? (tr.cover_version ?? 0) + 1
           : tr.cover_version,
     });
+  }
+  } finally {
+    useAppStore.getState().setGlobalLoading(null);
   }
 }

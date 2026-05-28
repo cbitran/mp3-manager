@@ -463,6 +463,8 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
 
       {/* Playlist context menu */}
       {playlistCtx && (
+        <>
+        <div className="fixed inset-0 z-[49]" onClick={() => setPlaylistCtx(null)} />
         <div
           className="fixed z-50 bg-[#1c1715] border border-white/10 rounded-lg shadow-2xl py-1 min-w-[160px]"
           style={{ left: playlistCtx.x, top: playlistCtx.y }}
@@ -551,6 +553,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
             {t("sidebar.deletePlaylist")}
           </button>
         </div>
+        </>
       )}
 
       {/* Duplicate folder dialog */}

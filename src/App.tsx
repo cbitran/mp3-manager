@@ -74,6 +74,8 @@ export default function App() {
     fontScale,
     colorMode,
     helpMarkersEnabled,
+    globalLoading,
+    setGlobalLoading,
   } = useAppStore();
 
   const { t } = useTranslation();
@@ -578,6 +580,7 @@ export default function App() {
   async function normalizeTags() {
     if (allTracks.length === 0) return;
     setNormalizing(true);
+    setGlobalLoading("normalizando…");
     try {
       const paths = allTracks.map((t) => t.path);
       const results = await invoke<{ path: string; changed: boolean }[]>("normalize_tags", { paths });
@@ -585,6 +588,7 @@ export default function App() {
       toast(changed > 0 ? t("toolbar.toast.normalized", { count: changed }) : t("toolbar.toast.alreadyNormalized"), changed > 0 ? "success" : "info");
     } finally {
       setNormalizing(false);
+      setGlobalLoading(null);
     }
   }
 
@@ -2751,6 +2755,41 @@ export default function App() {
             batchEnrich("all");
           }}
         />
+      )}
+
+      {/* Loading overlay — operações longas em background */}
+      {globalLoading && !appLoading && (
+        <div
+          className="fixed inset-0 z-[900] flex flex-col items-center justify-center gap-4 pointer-events-none"
+          style={{ background: "rgba(14,13,12,0.72)", backdropFilter: "blur(4px)" }}
+        >
+          <div className="relative" style={{ width: 64, height: 64 }}>
+            <svg
+              className="animate-[spin_1.6s_linear_infinite]"
+              viewBox="0 0 100 100" width="64" height="64"
+              style={{ position: 'absolute', inset: 0 }}
+            >
+              <circle cx="50" cy="50" r="49" fill="none" stroke="#D95340" strokeWidth="1.5"
+                strokeLinecap="round" strokeDasharray="100 209" opacity="0.22"/>
+              <circle cx="50" cy="50" r="49" fill="none" stroke="#D95340" strokeWidth="2"
+                strokeLinecap="round" strokeDasharray="48 261" opacity="0.9"/>
+            </svg>
+            <svg viewBox="0 0 100 100" width="58" height="58"
+              style={{ position: 'absolute', top: 3, left: 3 }}>
+              <circle cx="50" cy="50" r="46" fill="#D95340"/>
+              <circle cx="50" cy="50" r="43.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.7"/>
+              <circle cx="50" cy="50" r="41"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.65"/>
+              <circle cx="50" cy="50" r="38.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.6"/>
+              <circle cx="50" cy="50" r="36"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.55"/>
+              <circle cx="50" cy="50" r="33.5" fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.5"/>
+              <circle cx="50" cy="50" r="31"   fill="none" stroke="#B84030" strokeWidth="0.6" opacity="0.4"/>
+              <circle cx="50" cy="50" r="27"   fill="#0E0D0C"/>
+            </svg>
+          </div>
+          <span className="text-[11px] font-mono tracking-widest uppercase" style={{ color: '#8F8883' }}>
+            {globalLoading}
+          </span>
+        </div>
       )}
 
       {/* Loading overlay — abertura e fechamento */}
