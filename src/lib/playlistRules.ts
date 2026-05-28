@@ -18,15 +18,25 @@ export async function applyPlaylistRules(
 
   try {
   for (const path of paths) {
+    const tr = useAppStore.getState().tracks.find((t) => t.path === path);
+
     // Só chama save_tags se há campos de metadados para atualizar (não só capa)
     if (hasTagFields) {
       await invoke("save_tags", {
         path,
-        title: null, artist: null, year: null, trackNumber: null,
-        totalTracks: null, bpm: null, key: null, rating: null,
-        album:   props.activeFields.includes("album")   ? props.album   ?? null : null,
-        genre:   props.activeFields.includes("genre")   ? props.genre   ?? null : null,
-        comment: props.activeFields.includes("comment") ? props.comment ?? null : null,
+        // Sempre preservar title/artist/demais campos do track — nunca sobrescrever
+        title:        tr?.title        ?? null,
+        artist:       tr?.artist       ?? null,
+        year:         tr?.year         ?? null,
+        trackNumber:  tr?.track_number ?? null,
+        totalTracks:  tr?.total_tracks ?? null,
+        bpm:          tr?.bpm          ?? null,
+        key:          tr?.key          ?? null,
+        rating:       tr?.rating       ?? null,
+        // Sobrescrever só os campos ativos nas regras da playlist
+        album:   props.activeFields.includes("album")   ? props.album   ?? null : tr?.album   ?? null,
+        genre:   props.activeFields.includes("genre")   ? props.genre   ?? null : tr?.genre   ?? null,
+        comment: props.activeFields.includes("comment") ? props.comment ?? null : tr?.comment ?? null,
       }).catch(() => {});
     }
 
@@ -34,7 +44,6 @@ export async function applyPlaylistRules(
       await invoke("save_cover_from_file", { path, imagePath: props.cover }).catch(() => {});
     }
 
-    const tr = useAppStore.getState().tracks.find((t) => t.path === path);
     if (!tr) continue;
     st.updateTrack({
       ...tr,

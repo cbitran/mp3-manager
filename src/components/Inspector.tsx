@@ -237,39 +237,42 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
     try {
       const targets = isBatch ? tracks.filter((t) => selectedIds.has(t.id)) : [first!];
       for (const track of targets) {
+        // Em batch, preservar title/artist de cada faixa individualmente
+        const effectiveTitle  = isBatch ? (track.title  || null) : (title  || null);
+        const effectiveArtist = isBatch ? (track.artist || null) : (artist || null);
         await invoke("save_tags", {
           path: track.path,
-          title: title || null,
-          artist: artist || null,
-          album: album || null,
-          genre: genre || null,
-          year: year ? parseInt(year) : null,
+          title:       effectiveTitle,
+          artist:      effectiveArtist,
+          album:       album || null,
+          genre:       genre || null,
+          year:        year ? parseInt(year) : null,
           trackNumber: trackNumber ? parseInt(trackNumber) : null,
           totalTracks: totalTracks ? parseInt(totalTracks) : null,
-          bpm: bpm || null,
-          key: key || null,
-          rating: rating > 0 ? rating : null,
-          comment: comment || null,
+          bpm:         bpm || null,
+          key:         key || null,
+          rating:      rating > 0 ? rating : null,
+          comment:     comment || null,
         });
         const newIssues: string[] = [];
-        if (!title)  newIssues.push("sem título");
-        if (!artist) newIssues.push("sem artista");
-        if (!genre)  newIssues.push("sem gênero");
+        if (!effectiveTitle)  newIssues.push("sem título");
+        if (!effectiveArtist) newIssues.push("sem artista");
+        if (!genre)           newIssues.push("sem gênero");
         if (!track.has_cover) newIssues.push("sem capa");
-        if (!bpm)    newIssues.push("sem BPM");
+        if (!bpm)             newIssues.push("sem BPM");
         updateTrack({
           ...track,
-          title: title || undefined,
-          artist: artist || undefined,
-          album: album || undefined,
-          genre: genre || undefined,
-          year: year ? parseInt(year) : undefined,
-          track_number: trackNumber ? parseInt(trackNumber) : undefined,
-          total_tracks: totalTracks ? parseInt(totalTracks) : undefined,
-          bpm: bpm || undefined,
-          key: key || undefined,
-          comment: comment || undefined,
-          issues: newIssues,
+          title:        isBatch ? track.title  : (title  || undefined),
+          artist:       isBatch ? track.artist : (artist || undefined),
+          album:        album        || undefined,
+          genre:        genre        || undefined,
+          year:         year         ? parseInt(year) : undefined,
+          track_number: trackNumber  ? parseInt(trackNumber) : undefined,
+          total_tracks: totalTracks  ? parseInt(totalTracks) : undefined,
+          bpm:          bpm          || undefined,
+          key:          key          || undefined,
+          comment:      comment      || undefined,
+          issues:       newIssues,
         });
       }
       setSaved(true);
@@ -314,23 +317,47 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       {/* Header — só quando não embedded */}
       {!embedded && (
         <div className="px-4 pt-4 pb-3 border-b border-white/[0.05]">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em]">
-              {isBatch ? t("inspector.selectedMany", { count: selectedArr.length }) : t("inspector.selectedOne")}
-            </p>
-            <button
-              onClick={() => { clearSelection(); onClose?.(); }}
-              title={t("common.close")}
-              className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
-            >
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <line x1="1" y1="1" x2="7" y2="7"/>
-                <line x1="7" y1="1" x2="1" y2="7"/>
-              </svg>
-            </button>
-          </div>
-          {!isBatch && (
+          {isBatch ? (
+            <div className="flex items-center gap-2.5">
+              {coverDataUrl ? (
+                <img src={coverDataUrl} alt="" className="w-9 h-9 rounded object-cover shrink-0 opacity-80" />
+              ) : (
+                <div className="w-9 h-9 rounded bg-white/[0.06] flex items-center justify-center shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#4C4743"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-[#C2BEBC] leading-tight">{t("inspector.selectedMany", { count: selectedArr.length })}</p>
+                <p className="text-[10px] text-[#605A55] mt-0.5">Edição em lote</p>
+              </div>
+              <button
+                onClick={() => { clearSelection(); onClose?.(); }}
+                title={t("common.close")}
+                className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors shrink-0"
+              >
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <line x1="1" y1="1" x2="7" y2="7"/>
+                  <line x1="7" y1="1" x2="1" y2="7"/>
+                </svg>
+              </button>
+            </div>
+          ) : (
             <>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-[0.25em]">
+                  {t("inspector.selectedOne")}
+                </p>
+                <button
+                  onClick={() => { clearSelection(); onClose?.(); }}
+                  title={t("common.close")}
+                  className="w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#8F8883] transition-colors"
+                >
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <line x1="1" y1="1" x2="7" y2="7"/>
+                    <line x1="7" y1="1" x2="1" y2="7"/>
+                  </svg>
+                </button>
+              </div>
               <p className="text-sm font-semibold text-[#F5F5F4] leading-snug truncate">
                 {first.title ?? first.filename}
               </p>
@@ -355,7 +382,19 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       )}
       {embedded && isBatch && (
         <div className="px-4 pt-3 pb-2 border-b border-white/[0.05]">
-          <p className="text-[11px] text-[#8F8883]">{t("inspector.selectedMany", { count: selectedArr.length })}</p>
+          <div className="flex items-center gap-2.5">
+            {coverDataUrl ? (
+              <img src={coverDataUrl} alt="" className="w-9 h-9 rounded object-cover shrink-0 opacity-80" />
+            ) : (
+              <div className="w-9 h-9 rounded bg-white/[0.06] flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#4C4743"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+              </div>
+            )}
+            <div>
+              <p className="text-[12px] font-semibold text-[#C2BEBC] leading-tight">{t("inspector.selectedMany", { count: selectedArr.length })}</p>
+              <p className="text-[10px] text-[#605A55] mt-0.5">Edição em lote</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -620,8 +659,8 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
 
       {/* Fields */}
       <div className="flex flex-col gap-2.5 px-3 py-3" data-help="inspector-fields">
-        <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? t("inspector.multiple") : ""} />
-        <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? t("inspector.multiple") : ""} />
+        {!isBatch && <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />}
+        {!isBatch && <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />}
         <Field label={t("inspector.album")} value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <Field label={t("inspector.genre")} value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <div className="grid grid-cols-2 gap-2">
@@ -656,7 +695,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           <Field label={t("inspector.bpm")} value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
           <Field label={t("inspector.key")} value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
         </div>
-        <Field label={t("inspector.comment")} value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline />
+        <Field label={t("inspector.comment")} value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline={!isBatch} />
       </div>
 
       </div>{/* fim área scrollável */}
