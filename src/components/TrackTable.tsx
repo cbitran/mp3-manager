@@ -26,10 +26,12 @@ interface WaveBarMini { amp: number; bass: number; treble: number; }
 const miniWaveCache = new Map<string, WaveBarMini[]>();
 
 
-const WaveformCell = memo(function WaveformCell({ path, isCurrentTrack }: { path: string; isCurrentTrack: boolean }) {
+const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: string; trackId: string }) {
   const [bars, setBars] = useState<WaveBarMini[] | null>(miniWaveCache.get(path) ?? null);
   const playerProgress = useAppStore((s) => s.playerProgress);
   const playerDuration = useAppStore((s) => s.playerDuration);
+  const playerTrackId  = useAppStore((s) => s.playerTrackId);
+  const isCurrentTrack = trackId === playerTrackId;
 
   useEffect(() => {
     if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
@@ -655,7 +657,7 @@ export default function TrackTable({
         cell: ({ row }) => (
           <WaveformCell
             path={row.original.path}
-            isCurrentTrack={row.original.id === playerTrackId}
+            trackId={row.original.id}
           />
         ),
         size: 90, minSize: 70,

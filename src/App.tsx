@@ -2334,6 +2334,7 @@ export default function App() {
                   setDuplicateGroups([]); setGenreFilter(null); setNewTrackIds(new Set());
                   setScanDone(0); setScanTotal(null);
                 }}
+                onNavigate={() => setBrowsePath(null)}
               />
             {/* Drag handle */}
             <div
@@ -2363,6 +2364,7 @@ export default function App() {
               key={`${browsePath}-${browseKey}`}
               rootPath={browsePath}
               onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
+              onLoadFiles={(paths, name) => { setBrowsePath(null); loadFileDrop(paths, name); }}
               onClose={() => setBrowsePath(null)}
             />
           )}
@@ -2935,7 +2937,7 @@ export default function App() {
 
       {/* Loading overlay — abertura e fechamento */}
       {appLoading && (
-        <div className="fixed inset-0 z-[1000] bg-[#0E0D0C] flex flex-col items-center justify-center gap-5 pointer-events-none">
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center gap-5 pointer-events-none" style={{ background: "rgba(14,13,12,0.72)", backdropFilter: "blur(4px)" }}>
           <div className="relative" style={{ width: 80, height: 80 }}>
             {/* Spinner: anel fino com cauda girando ao redor do disco */}
             <svg

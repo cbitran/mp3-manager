@@ -21,6 +21,7 @@ interface SidebarProps {
   onNewPlaylist?: () => void;
   onFolderClear?: () => void; // limpa análise/timers ao remover pasta
   scanProgress?: number | null; // 0–1 determinado, null = indeterminado
+  onNavigate?: () => void; // fecha FolderBrowser ao mudar de aba/playlist
 }
 
 interface DeleteDialogState {
@@ -28,7 +29,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onFolderClear, scanProgress }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -247,6 +248,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                 onClick={() => {
                   setSidebarTab(tab.id);
                   if (tab.id !== "playlists") setActivePlaylistId(null);
+                  onNavigate?.();
                 }}
                 className={`flex items-center gap-1 px-1.5 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
                   active
@@ -384,7 +386,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                       key={pl.id}
                       pl={pl}
                       isActive={activePlaylistId === pl.id}
-                      onOpen={() => setActivePlaylistId(pl.id)}
+                      onOpen={() => { setActivePlaylistId(pl.id); onNavigate?.(); }}
                       onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
                       isDragging={dragState.isDragging}
                       isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}

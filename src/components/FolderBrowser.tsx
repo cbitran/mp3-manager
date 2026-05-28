@@ -12,18 +12,20 @@ interface DirEntry {
 interface Props {
   rootPath: string;
   onLoadFolder: (path: string) => void;
+  onLoadFiles?: (paths: string[], name: string) => void;
   onClose: () => void;
 }
 
 // Normaliza backslashes para forward slashes (compatibilidade Windows)
 const norm = (p: string) => p.replace(/\\/g, "/");
 
-export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props) {
+export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onClose }: Props) {
   const [currentPath, setCurrentPath] = useState(norm(rootPath));
   const [history, setHistory] = useState<string[]>([]);
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const lastClickRef = useRef<{ path: string; time: number }>({ path: "", time: 0 });
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
   function navigate(path: string) {
     setHistory((h) => [...h, currentPath]);
     setCurrentPath(norm(path));
+    setSelectedFiles(new Set());
   }
 
   function goBack() {
@@ -48,12 +51,30 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
     if (!prev) { onClose(); return; }
     setHistory((h) => h.slice(0, -1));
     setCurrentPath(prev);
+    setSelectedFiles(new Set());
   }
 
   function goToCrumb(path: string) {
     if (path === currentPath) return;
     setHistory((h) => [...h, currentPath]);
     setCurrentPath(path);
+    setSelectedFiles(new Set());
+  }
+
+  function toggleFile(path: string) {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selectedFiles.size === files.length) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(files.map((f) => f.path)));
+    }
   }
 
   // Build breadcrumb segments from path (já normalizado com forward slashes)
@@ -178,23 +199,57 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
             ))}
 
             {folders.length > 0 && files.length > 0 && (
-              <div className="h-px mx-2 my-1 shrink-0" style={{ background: "rgba(255,255,255,0.04)" }} />
+              <div className="flex items-center justify-between px-2 pt-2 pb-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#4C4743" }}>
+                  {files.length} faixa{files.length !== 1 ? "s" : ""}
+                </span>
+                {onLoadFiles && files.length > 0 && (
+                  <button
+                    onClick={toggleAll}
+                    className="text-[10px] transition-colors"
+                    style={{ color: selectedFiles.size === files.length ? "#D95340" : "#605A55" }}>
+                    {selectedFiles.size === files.length ? "Desmarcar tudo" : "Selecionar tudo"}
+                  </button>
+                )}
+              </div>
             )}
 
-            {files.slice(0, 100).map((f) => (
-              <div key={f.path}
-                className="flex items-center gap-2 px-2 h-7 rounded-md"
-                style={{ color: "#706A65" }}>
-                <svg width="8" height="9" viewBox="0 0 8 9" fill="#D95340" opacity={0.4} className="shrink-0">
-                  <path d="M1 0.5L7.5 4.5 1 8.5V0.5z"/>
-                </svg>
+            {files.slice(0, 200).map((f) => (
+              <div
+                key={f.path}
+                onClick={() => onLoadFiles && toggleFile(f.path)}
+                className="flex items-center gap-2 px-2 h-7 rounded-md transition-colors"
+                style={{
+                  color: selectedFiles.has(f.path) ? "#C2BEBC" : "#706A65",
+                  background: selectedFiles.has(f.path) ? "rgba(217,83,64,0.08)" : "transparent",
+                  cursor: onLoadFiles ? "pointer" : "default",
+                }}>
+                {onLoadFiles && (
+                  <div
+                    className="w-3.5 h-3.5 rounded shrink-0 flex items-center justify-center transition-colors"
+                    style={{
+                      background: selectedFiles.has(f.path) ? "#D95340" : "transparent",
+                      border: selectedFiles.has(f.path) ? "1px solid #D95340" : "1px solid rgba(255,255,255,0.15)",
+                    }}>
+                    {selectedFiles.has(f.path) && (
+                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 3l2 2 4-4"/>
+                      </svg>
+                    )}
+                  </div>
+                )}
+                {!onLoadFiles && (
+                  <svg width="8" height="9" viewBox="0 0 8 9" fill="#D95340" opacity={0.4} className="shrink-0">
+                    <path d="M1 0.5L7.5 4.5 1 8.5V0.5z"/>
+                  </svg>
+                )}
                 <span className="flex-1 text-[11px] font-mono truncate">{f.name}</span>
               </div>
             ))}
 
-            {files.length > 100 && (
+            {files.length > 200 && (
               <div className="px-2 py-1 text-[10px]" style={{ color: "#4C4743" }}>
-                +{files.length - 100} arquivos…
+                +{files.length - 200} arquivos…
               </div>
             )}
           </div>
@@ -203,12 +258,20 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onClose }: Props
 
       {/* ── Footer: load button ─────────────────────────────────────── */}
       {!loading && entries && (folders.length > 0 || files.length > 0) && (
-        <div className="shrink-0 px-5 py-3 border-t" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.25)" }}>
+        <div className="shrink-0 px-5 py-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.25)" }}>
+          {selectedFiles.size > 0 && onLoadFiles && (
+            <button
+              onClick={() => { onLoadFiles([...selectedFiles], folderName); onClose(); }}
+              className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.99]"
+              style={{ background: "#D95340" }}>
+              Carregar {selectedFiles.size} faixa{selectedFiles.size !== 1 ? "s" : ""} selecionada{selectedFiles.size !== 1 ? "s" : ""}
+            </button>
+          )}
           <button
             onClick={() => onLoadFolder(currentPath)}
-            className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.99]"
-            style={{ background: "#D95340" }}>
-            Carregar faixas de "{folderName}"
+            className="w-full py-2.5 rounded-xl text-[13px] font-semibold transition-all hover:brightness-110 active:scale-[0.99]"
+            style={selectedFiles.size > 0 ? { background: "rgba(255,255,255,0.06)", color: "#8F8883", border: "1px solid rgba(255,255,255,0.08)" } : { background: "#D95340", color: "white" }}>
+            Carregar pasta "{folderName}"
           </button>
         </div>
       )}
