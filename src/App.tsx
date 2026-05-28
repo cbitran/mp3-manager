@@ -2346,6 +2346,7 @@ export default function App() {
                 onExportPlaylist={(pl) => setExportPlaylistTarget(pl)}
                 onLoadAllFolders={loadAllFolders}
                 onNewPlaylist={() => setCreatePlaylistTracks([])}
+                onNewLibrary={pickFolder}
                 onFolderClear={() => {
                   // Cancela timers e limpa análise ao remover/deletar pasta
                   if (bgAnalysisTimerRef.current) { clearTimeout(bgAnalysisTimerRef.current); bgAnalysisTimerRef.current = null; }

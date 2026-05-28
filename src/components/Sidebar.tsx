@@ -19,6 +19,7 @@ interface SidebarProps {
   onExportPlaylist?: (pl: Playlist) => void;
   onLoadAllFolders?: () => void;
   onNewPlaylist?: () => void;
+  onNewLibrary?: () => void;
   onFolderClear?: () => void; // limpa análise/timers ao remover pasta
   scanProgress?: number | null; // 0–1 determinado, null = indeterminado
   onNavigate?: () => void; // fecha FolderBrowser ao mudar de aba/playlist
@@ -29,7 +30,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -312,7 +313,29 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               >
                 A–Z
               </button>
+              {onNewLibrary && (
+                <button
+                  onClick={onNewLibrary}
+                  title="Nova biblioteca"
+                  className="ml-0.5 p-1 rounded-md hover:bg-white/[0.08] text-[#605A55] hover:text-[#C2BEBC] transition-colors"
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <path d="M5.5 1v9M1 5.5h9"/>
+                  </svg>
+                </button>
+              )}
             </div>
+          )}
+          {sidebarTab === "recent" && recentFolders.length <= 1 && onNewLibrary && (
+            <button
+              onClick={onNewLibrary}
+              title="Nova biblioteca"
+              className="ml-auto mb-1.5 p-1 rounded-md hover:bg-white/[0.08] text-[#605A55] hover:text-[#C2BEBC] transition-colors flex-shrink-0"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <path d="M5.5 1v9M1 5.5h9"/>
+              </svg>
+            </button>
           )}
           {sidebarTab === "playlists" && playlists.length > 1 && (
             <div className="ml-auto mb-1.5 flex items-center gap-0.5">
@@ -431,6 +454,17 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                 })
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma biblioteca adicionada</p>
             }
+            {onNewLibrary && (
+              <button
+                onClick={onNewLibrary}
+                className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-white/[0.07] text-[#605A55] hover:text-[#8F8883] hover:border-white/[0.14] hover:bg-white/[0.03] transition-all"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <path d="M5 1v8M1 5h8"/>
+                </svg>
+                <span className="text-[11px]">Nova biblioteca</span>
+              </button>
+            )}
             </>
           )}
           {sidebarTab === "favorites" && (
