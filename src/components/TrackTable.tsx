@@ -626,7 +626,7 @@ export default function TrackTable({
             className={`leading-none transition-colors ${
               favoriteTrackPaths.has(row.original.path)
                 ? "text-[#D95340]"
-                : "text-[#756D67] hover:text-[#8F8883]"
+                : "text-[#9E9893] hover:text-[#C2BEBC]"
             }`}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill={favoriteTrackPaths.has(row.original.path) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
