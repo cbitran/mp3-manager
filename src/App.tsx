@@ -446,8 +446,6 @@ export default function App() {
   const [scanDone, setScanDone]         = useState<number>(0);
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
-  const [pendingFileDrop, setPendingFileDrop] = useState<{ paths: string[]; defaultName: string } | null>(null);
-  const [fileDropDraftName, setFileDropDraftName] = useState("");
   const [pendingFileChoice, setPendingFileChoice] = useState<{ paths: string[]; name: string } | null>(null);
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
   const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
@@ -556,8 +554,7 @@ export default function App() {
           const mediaPaths = audioPaths.length > 0 ? audioPaths : videoPaths;
           const parentDir = mediaPaths[0].split(/[\\/]/).slice(0, -1);
           const defaultName = parentDir[parentDir.length - 1] ?? "Seleção";
-          setPendingFileDrop({ paths: mediaPaths, defaultName });
-          setFileDropDraftName(defaultName);
+          setPendingFileChoice({ paths: mediaPaths, name: defaultName });
         } else {
           // Nenhum arquivo de áudio/vídeo reconhecido — tratar como pasta
           // (inclui o caso de pastas com ponto no nome, aliases, etc.)
@@ -1394,7 +1391,7 @@ export default function App() {
   }
 
   async function loadFileDrop(paths: string[], name: string) {
-    setPendingFileDrop(null);
+    setPendingFileChoice(null);
     setFileSessionName(name);
     setLastFolder(null);
     const showOverlay = !appLoading;
@@ -2865,40 +2862,6 @@ export default function App() {
           </div>
         );
       })()}
-
-      {/* Modal de nome para seleção de arquivos arrastados */}
-      {pendingFileDrop && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60" onClick={() => setPendingFileDrop(null)}>
-          <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[340px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-white/[0.06]">
-              <h2 className="text-sm font-semibold text-[#E8E4E1]">Carregar seleção de arquivos</h2>
-              <p className="text-[11px] text-[#605A55] mt-0.5">{pendingFileDrop.paths.length} arquivo{pendingFileDrop.paths.length > 1 ? "s" : ""} selecionado{pendingFileDrop.paths.length > 1 ? "s" : ""}</p>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743] mb-2">Nome da seleção</p>
-              <input
-                autoFocus
-                type="text"
-                value={fileDropDraftName}
-                onChange={(e) => setFileDropDraftName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && fileDropDraftName.trim()) loadFileDrop(pendingFileDrop.paths, fileDropDraftName.trim());
-                  if (e.key === "Escape") setPendingFileDrop(null);
-                }}
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-[#E8E4E1] placeholder-[#4C4743] focus:outline-none focus:border-[#D95340]/50"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
-              <button onClick={() => setPendingFileDrop(null)} className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]">Cancelar</button>
-              <button
-                onClick={() => { if (fileDropDraftName.trim()) loadFileDrop(pendingFileDrop.paths, fileDropDraftName.trim()); }}
-                disabled={!fileDropDraftName.trim()}
-                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors disabled:opacity-40"
-              >Carregar</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal destino: Biblioteca ou Playlist */}
       {pendingFileChoice && (
