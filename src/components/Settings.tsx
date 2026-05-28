@@ -27,6 +27,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     daysElapsed, daysRemaining, tracksAnalyzed, tagsEnriched, estimatedTimeSaved,
     shortcutOverrides, setShortcutOverride, resetSingleShortcut, resetShortcutOverrides,
     enrichmentOptIn, setEnrichmentOptIn, privacyAcceptedVersion,
+    helpMarkersEnabled, setHelpMarkersEnabled,
   } = useAppStore();
 
   const COLUMN_ORDER: { id: string; label: string }[] = [
@@ -614,6 +615,41 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Toolchips */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-[#8F8883]">
+                  Toolchips — Ajuda Visual
+                </p>
+                <p className="text-[11px] text-[#4C4743] mb-3">
+                  Exibe marcadores "?" sobre as principais funcionalidades. Clique em qualquer marcador para ver descrição e atalhos.
+                </p>
+                <label
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-colors hover:bg-white/[0.02]"
+                  style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                >
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#C2BEBC]">Mostrar marcadores de ajuda</p>
+                    <p className="text-[11px] text-[#4C4743] mt-0.5">Badges "?" sobrepostos na interface</p>
+                  </div>
+                  <div
+                    onClick={() => setHelpMarkersEnabled(!helpMarkersEnabled)}
+                    className="shrink-0 rounded-full transition-colors relative cursor-pointer"
+                    style={{
+                      width: 32, height: 18,
+                      background: helpMarkersEnabled ? "#D95340" : "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 left-0.5 rounded-full bg-white shadow transition-transform"
+                      style={{
+                        width: 14, height: 14,
+                        transform: helpMarkersEnabled ? "translateX(14px)" : "translateX(0)",
+                      }}
+                    />
+                  </div>
+                </label>
               </div>
 
             </div>

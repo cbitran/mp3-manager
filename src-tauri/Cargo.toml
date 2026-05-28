@@ -1,6 +1,6 @@
 [package]
 name = "mp3-manager-tauri"
-version = "0.5.4"
+version = "0.5.21"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -37,4 +37,5 @@ base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "pcm", "aiff", "flac", "wav"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 

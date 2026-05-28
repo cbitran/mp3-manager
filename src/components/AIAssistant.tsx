@@ -1,16 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAppStore, setAutoPlayOnLoad } from "../store";
 import { invoke } from "@tauri-apps/api/core";
+import { buildAiKnowledge } from "../helpContent";
 
 // ── Knowledge base ─────────────────────────────────────────────────────────────
-// Padrões: palavras-chave que ativam a resposta. Quanto mais palavras em comum
-// com a pergunta do usuário, maior a pontuação (threshold 0.35).
+// As entradas abaixo derivadas do helpContent.ts são a fonte de verdade compartilhada
+// com os Toolchips visuais. Entradas exclusivas do AI (contextuais, biblioteca ao vivo)
+// ficam abaixo.
 
 const KNOWLEDGE: Array<{ patterns: string[]; answer: string }> = [
-  // ── Salvar / Auto-save ───────────────────────────────────────────────────────
+  // Derivadas do helpContent (Toolchips → AI)
+  ...buildAiKnowledge(),
+
+  // ── Salvar / Auto-save (complementar — resposta mais rica) ──────────────────
   {
     patterns: ["salvar", "precisa salvar", "salvo automatico", "gravar", "preciso salvar", "toda hora salvar", "salva sozinho", "auto save", "autosave"],
-    answer: "A biblioteca é salva automaticamente — você não precisa fazer nada. Mas as edições de tags (título, artista, álbum, gênero…) precisam ser confirmadas clicando em 'Salvar Tags' no painel Inspector à direita. Se não clicar, as edições são perdidas ao trocar de faixa.",
+    answer: "A biblioteca é salva automaticamente — você não precisa fazer nada. Mas as edições de tags (título, artista, álbum, gênero…) precisam ser confirmadas clicando em 'Salvar' no painel Inspector à direita, ou pressionando Enter em qualquer campo.",
   },
 
   // ── Editar metadados / tags ──────────────────────────────────────────────────
@@ -560,6 +565,7 @@ export default function AIAssistant() {
     <>
       {/* Floating button — maior, com ícone de balão usando a logo donut */}
       <button
+        data-help="ai-assistant"
         onClick={() => { setOpen((v) => !v); setBouncing(false); }}
         title="Assistente TagWave (⌘K)"
         className={`fixed bottom-[68px] right-4 z-[300] w-12 h-12 rounded-full shadow-xl flex items-center justify-center transition-all duration-200 ${

@@ -67,7 +67,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
   const [key, setKey]                   = useState(first?.key ?? "");
   const [rating, setRating]             = useState(first?.rating ?? 0);
   const [comment, setComment]           = useState(first?.comment ?? "");
-  const [, setSaving]                   = useState(false);
+  const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
   const [enriching, setEnriching]       = useState(false);
   const [enrichSummary, setEnrichSummary] = useState<string | null>(null);
@@ -619,9 +619,9 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       </div>
 
       {/* Fields */}
-      <div className="flex flex-col gap-2.5 px-3 py-3">
+      <div className="flex flex-col gap-2.5 px-3 py-3" data-help="inspector-fields">
         <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? t("inspector.multiple") : ""} />
-        <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+        <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isBatch} placeholder={isBatch ? t("inspector.multiple") : ""} />
         <Field label={t("inspector.album")} value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <Field label={t("inspector.genre")} value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
         <div className="grid grid-cols-2 gap-2">
@@ -666,6 +666,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
         {/* Enriquecer */}
         <button
           data-tour="enrich-inspector"
+          data-help="enrich-inspector"
           onClick={isBatch && onBatchEnrich ? onBatchEnrich : enrichAll}
           disabled={enriching || !!enrichProgress}
           className="w-full rounded-lg disabled:opacity-90 overflow-hidden"
@@ -726,15 +727,38 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           )}
         </button>
 
-        {/* Indicador de auto-save */}
-        {saved && (
-          <div className="flex items-center justify-center gap-1.5 py-1">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#5BA055" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="2 5 4 7 8 3"/>
-            </svg>
-            <span className="text-[10px] text-[#5BA055] font-semibold">{t("inspector.tagsSaved")}</span>
-          </div>
-        )}
+        {/* Botão Salvar */}
+        <button
+          data-help="save-tags-btn"
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-60 flex items-center justify-center gap-1.5"
+          style={{
+            background: saved ? "rgba(91,160,85,0.18)" : "rgba(255,255,255,0.06)",
+            color: saved ? "#5BA055" : "#C2BEBC",
+            border: saved ? "1px solid rgba(91,160,85,0.3)" : "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {saving ? (
+            <><span className="animate-spin text-sm">⟳</span>{t("common.saving")}</>
+          ) : saved ? (
+            <>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#5BA055" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="2 5 4 7 8 3"/>
+              </svg>
+              {t("inspector.tagsSaved")}
+            </>
+          ) : (
+            <>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8.5 9.5H2.5a1 1 0 0 1-1-1V2.5l2-1.5h5l2 1.5V8.5a1 1 0 0 1-1 1z"/>
+                <rect x="3.5" y="6" width="4" height="3.5"/>
+                <rect x="3.5" y="1" width="3" height="2.5"/>
+              </svg>
+              {t("common.save")}
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

@@ -62,6 +62,7 @@ export interface DragState {
   isDragging: boolean;
   draggedTrackIds: string[];
   hoveredPlaylistId: string | null;
+  hoveringNewPlaylist: boolean;
 }
 
 export interface UndoEntry {
@@ -126,12 +127,14 @@ interface AppState {
   licenseEmail: string;
 
   setTracks: (tracks: Track[]) => void;
+  appendTracks: (tracks: Track[]) => void;
   updateTrack: (track: Track) => void;
   removeTracks: (ids: string[]) => void;
   setScanning: (v: boolean) => void;
   toggleSelect: (id: string) => void;
   selectOnly: (id: string) => void;
   selectAll: (ids: string[]) => void;
+  replaceSelection: (ids: string[]) => void;
   clearSelection: () => void;
   setFilterTab: (tab: FilterTab) => void;
   setSearchQuery: (q: string) => void;
@@ -169,6 +172,8 @@ interface AppState {
   setFontScale: (scale: "100" | "115" | "130" | "150") => void;
   colorMode: "default" | "deuteranopia" | "high-contrast";
   setColorMode: (mode: "default" | "deuteranopia" | "high-contrast") => void;
+  helpMarkersEnabled: boolean;
+  setHelpMarkersEnabled: (v: boolean) => void;
   djPrimary: string;
   djAutoImport: boolean;
   djShowAll: boolean;
@@ -378,9 +383,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setActivePlaylistId: (activePlaylistId) => set({ activePlaylistId }),
 
-  dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null },
+  dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null, hoveringNewPlaylist: false },
   setDragState: (partial) => set((s) => ({ dragState: { ...s.dragState, ...partial } })),
-  clearDragState: () => set({ dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null } }),
+  clearDragState: () => set({ dragState: { isDragging: false, draggedTrackIds: [], hoveredPlaylistId: null, hoveringNewPlaylist: false } }),
 
   undoStack: [],
   pushUndoEntry: (entry) => set((s) => ({ undoStack: [entry, ...s.undoStack].slice(0, 10) })),
@@ -461,6 +466,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem("tagwave_color_mode", colorMode);
     set({ colorMode });
   },
+  helpMarkersEnabled: localStorage.getItem("tagwave_help_markers") === "true",
+  setHelpMarkersEnabled: (v) => {
+    localStorage.setItem("tagwave_help_markers", v ? "true" : "false");
+    set({ helpMarkersEnabled: v });
+  },
   djPrimary: localStorage.getItem("tagwave_dj_primary") ?? "none",
   djAutoImport: localStorage.getItem("tagwave_dj_autoimport") === "true",
   djShowAll: localStorage.getItem("tagwave_dj_showall") === "true",
@@ -473,6 +483,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setTracks: (tracks) =>
     set({ tracks: tracks.map((t) => ({ ...t, cover_version: 0 })), selectedIds: new Set() }),
+
+  appendTracks: (tracks) =>
+    set((s) => ({ tracks: [...s.tracks, ...tracks.map((t) => ({ ...t, cover_version: 0 }))] })),
 
   updateTrack: (track) =>
     set((s) => ({ tracks: s.tracks.map((t) => (t.id === track.id ? track : t)) })),
@@ -495,6 +508,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectOnly: (id) => set({ selectedIds: new Set([id]) }),
 
   selectAll: (ids) => set({ selectedIds: new Set(ids) }),
+
+  replaceSelection: (ids) => set({ selectedIds: new Set(ids) }),
 
   clearSelection: () => set({ selectedIds: new Set() }),
 

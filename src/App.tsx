@@ -33,6 +33,7 @@ import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
 import VideoPlayerModal from "./components/VideoPlayerModal";
 import EnrichResultModal from "./components/EnrichResultModal";
 import AIAssistant from "./components/AIAssistant";
+import HelpMarkers from "./components/HelpMarkers";
 import FolderBrowser from "./components/FolderBrowser";
 import NewTracksModal from "./components/NewTracksModal";
 import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
@@ -71,6 +72,7 @@ export default function App() {
     theme,
     fontScale,
     colorMode,
+    helpMarkersEnabled,
   } = useAppStore();
 
   const { t } = useTranslation();
@@ -173,17 +175,33 @@ export default function App() {
       }
     };
 
-    const onUp = async () => {
+    const onUp = async (ue: MouseEvent) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.body.style.cursor = '';
       if (ghostRef.current) ghostRef.current.style.display = 'none';
 
       const st = useAppStore.getState();
-      const { draggedTrackIds, hoveredPlaylistId } = st.dragState;
+      const { draggedTrackIds, hoveredPlaylistId, hoveringNewPlaylist } = st.dragState;
       st.clearDragState();
 
-      if (!hoveredPlaylistId || draggedTrackIds.length === 0) return;
+      if (draggedTrackIds.length === 0) return;
+
+      // elementFromPoint como fallback — mouseenter não dispara se o elemento aparecer
+      // sob o cursor (a zona só renderiza quando isDragging fica true)
+      const elAtDrop = document.elementFromPoint(ue.clientX, ue.clientY);
+      const dropOnNewPlaylistZone = !!elAtDrop?.closest('[data-new-playlist-zone]');
+
+      // Drop na zona "Nova playlist" → abre modal de criação com as faixas
+      if (hoveringNewPlaylist || dropOnNewPlaylistZone) {
+        const draggedTracks = draggedTrackIds
+          .map((id) => st.tracks.find((t) => t.id === id))
+          .filter(Boolean) as import('./store').Track[];
+        if (draggedTracks.length > 0) setCreatePlaylistTracks(draggedTracks);
+        return;
+      }
+
+      if (!hoveredPlaylistId) return;
       const playlist = st.playlists.find((p) => p.id === hoveredPlaylistId);
       if (!playlist) return;
 
@@ -458,6 +476,7 @@ export default function App() {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [showOfflineBanner, setShowOfflineBanner] = useState(false);
   const [browsePath, setBrowsePath] = useState<string | null>(null);
+  const [browseKey, setBrowseKey] = useState(0);
   const isOnline = useIsOnline();
   // Fecha o banner automaticamente quando a conexão voltar
   useEffect(() => { if (isOnline) setShowOfflineBanner(false); }, [isOnline]);
@@ -469,7 +488,9 @@ export default function App() {
     if (filterTab === "recent" && recentCount === 0) setFilterTab("all");
   }, [favoriteCount, problemCount, recentCount, filterTab, setFilterTab]);
 
-  const isBusyRef = useRef(false);
+  const scanUnlistenRef = useRef<(() => void) | null>(null);
+  const scanIdRef = useRef(0); // guard: só o último scan aplica resultados
+  const bgAnalysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Estado dos modais de novas faixas
   const [newTracksModal, setNewTracksModal] = useState<Track[] | null>(null);
@@ -529,7 +550,7 @@ export default function App() {
         const paths = event.payload.paths;
         if (paths.length > 0) {
           const droppedPath = paths[0];
-          const fileName = droppedPath.split("/").pop() ?? droppedPath;
+          const fileName = droppedPath.split(/[\\/]/).pop() ?? droppedPath;
           const lastDot = fileName.lastIndexOf(".");
           const ext = lastDot > 0 ? fileName.slice(lastDot + 1).toLowerCase() : "";
           const ALLOWED = new Set(["mp3","flac","aiff","aif","wav","m4a","mp4","aac",
@@ -557,9 +578,23 @@ export default function App() {
     return () => { unlisten?.(); };
   }, []);
 
-  // Sync busy state to ref for window close handler
-  useEffect(() => { isBusyRef.current = isScanning || normalizing || exporting || enriching; }, [isScanning, normalizing, exporting, enriching]);
 
+  // Auto-load: quando uma playlist é ativada e suas faixas não estão no scan atual,
+  // escaneia automaticamente a pasta que as contém
+  useEffect(() => {
+    if (!activePlaylistId) return;
+    const { playlists: pls, tracks: currentTracks, recentFolders } = useAppStore.getState();
+    const playlist = pls.find((p) => p.id === activePlaylistId);
+    if (!playlist || playlist.trackPaths.length === 0) return;
+    const loadedPaths = new Set(currentTracks.map((t) => t.path));
+    if (playlist.trackPaths.some((p) => loadedPaths.has(p))) return; // já estão carregadas
+    // Procura a pasta recente que contém as faixas da playlist
+    const sep = (p: string) => p.includes("\\") ? "\\" : "/";
+    const match = recentFolders.find((rf) =>
+      playlist.trackPaths.some((tp) => tp.startsWith(rf + sep(tp)))
+    );
+    if (match) scanFolder(match);
+  }, [activePlaylistId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
 
@@ -1279,48 +1314,58 @@ export default function App() {
   }
 
   async function scanFolder(folder: string) {
-    setLastFolder(folder);
-    addWatchedFolder(folder);
-    setScanning(true);
-    setScanTotal(null);
-    setScanDone(0);
-    setFilenameIssues([]);
-    setFilenameMetaIssues([]);
-    setParenIssues([]);
-    setDuplicateGroups([]);
-    setGenreFilter(null);
-    setNewTrackIds(new Set());
+    // Cancela workers Rust do scan anterior — await garante que o cancel
+    // chegue antes do novo scan_folder ser invocado (evita race de SCAN_GEN)
+    await invoke("cancel_current_scan").catch(() => {});
+
+    const myScanId = ++scanIdRef.current;
+
+    if (bgAnalysisTimerRef.current) { clearTimeout(bgAnalysisTimerRef.current); bgAnalysisTimerRef.current = null; }
+    scanUnlistenRef.current?.(); scanUnlistenRef.current = null;
+    setBrowsePath(null); setLastFolder(folder); addWatchedFolder(folder);
+    setScanning(true); setScanTotal(null); setScanDone(0);
+    setFilenameIssues([]); setFilenameMetaIssues([]); setParenIssues([]);
+    setDuplicateGroups([]); setGenreFilter(null); setNewTrackIds(new Set());
     if (pendingBpmTimerRef.current) { clearTimeout(pendingBpmTimerRef.current); pendingBpmTimerRef.current = null; }
 
     const unlistenSkipped = await listen<{ count: number }>("scan_skipped", ({ payload }) => {
-      const n = payload.count;
-      toast(t("toolbar.toast.unsupported", { count: n }), "info");
+      if (scanIdRef.current !== myScanId) return;
+      toast(t("toolbar.toast.unsupported", { count: payload.count }), "info");
     });
+    scanUnlistenRef.current = unlistenSkipped;
 
     try {
       const result = await invoke<Track[]>("scan_folder", { folder });
+      if (scanIdRef.current !== myScanId) return;
+
       setTracks(result);
       recordScan(result.length);
       checkMissingMeta(result);
       checkFilenameMetaIssues(result);
 
-      // Background analysis
       if (result.length > 0) {
-        const paths = result.map((t) => t.path);
-        invoke<FilenameIssue[]>("analyze_filename_issues", { paths })
-          .then((raw) => filterNumericPrefixIssues(raw, result))
-          .then((issues) => { if (issues.length > 0) setFilenameIssues(issues); })
-          .catch(() => {});
-        invoke<ParenIssue[]>("analyze_paren_content", { paths })
-          .then((issues) => { if (issues.length > 0) setParenIssues(issues); })
-          .catch(() => {});
-        invoke<DuplicateGroup[]>("find_duplicates", { tracks: result })
-          .then((groups) => { if (groups.length > 0) setDuplicateGroups(groups); })
-          .catch(() => {});
+        const capturedId = myScanId;
+        const capturedResult = result;
+        bgAnalysisTimerRef.current = setTimeout(() => {
+          bgAnalysisTimerRef.current = null;
+          if (scanIdRef.current !== capturedId) return;
+          const paths = capturedResult.map((t) => t.path);
+          invoke<FilenameIssue[]>("analyze_filename_issues", { paths })
+            .then((raw) => { if (scanIdRef.current === capturedId) return filterNumericPrefixIssues(raw, capturedResult); return []; })
+            .then((issues) => { if (issues.length > 0 && scanIdRef.current === capturedId) setFilenameIssues(issues); })
+            .catch(() => {});
+          invoke<ParenIssue[]>("analyze_paren_content", { paths })
+            .then((issues) => { if (issues.length > 0 && scanIdRef.current === capturedId) setParenIssues(issues); })
+            .catch(() => {});
+          invoke<DuplicateGroup[]>("find_duplicates", { tracks: capturedResult })
+            .then((groups) => { if (groups.length > 0 && scanIdRef.current === capturedId) setDuplicateGroups(groups); })
+            .catch(() => {});
+        }, 800);
       }
     } finally {
       unlistenSkipped();
-      setScanning(false);
+      if (scanUnlistenRef.current === unlistenSkipped) scanUnlistenRef.current = null;
+      if (scanIdRef.current === myScanId) setScanning(false);
     }
   }
 
@@ -1613,6 +1658,7 @@ export default function App() {
         {/* Abrir pasta — ícone compacto */}
         <button
           data-tour="open-folder"
+          data-help="open-folder"
           onClick={pickFolder}
           disabled={isScanning}
           title={`${t("toolbar.openFolder")} (${CMD}O)`}
@@ -1686,6 +1732,7 @@ export default function App() {
           {allTracks.length > 0 && (
             <button
               data-tour="analyze-bpm"
+              data-help="analyze-bpm"
               onClick={() => batchAnalyzeBpm()}
               disabled={analyzingBpm || isScanning || enriching}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap shrink-0 ${
@@ -1710,7 +1757,7 @@ export default function App() {
             </button>
           )}
           {allTracks.length > 0 && (
-            <div className="relative group" data-tour="enrich">
+            <div className="relative group" data-tour="enrich" data-help="enrich">
               <button
                 onClick={() => batchEnrich("all")}
                 disabled={enriching || isScanning}
@@ -1762,6 +1809,7 @@ export default function App() {
           )}
           {allTracks.length > 0 && (
             <button
+              data-help="normalize"
               onClick={normalizeTags}
               disabled={normalizing}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
@@ -1783,7 +1831,7 @@ export default function App() {
               ? t("toolbar.exportPlaylist", { name: activePlaylist.name })
               : t("toolbar.export");
             return (
-            <div className="relative group">
+            <div className="relative group" data-help="export-btn">
               <button
                 disabled={exporting || !canExport}
                 title={canExport ? undefined : t("toolbar.selectToExport")}
@@ -1856,7 +1904,7 @@ export default function App() {
         {/* Filter chips */}
         <div
           className="flex gap-0.5 ml-2"
-         
+          data-help="filter-tabs"
         >
           {(
             [
@@ -1925,7 +1973,7 @@ export default function App() {
         {/* Advanced filter + Search */}
         <div
           className="flex items-center gap-1"
-         
+          data-help="advanced-filters"
         >
           {/* Filter popover */}
           <div className="relative" ref={advFilterRef}>
@@ -2048,6 +2096,7 @@ export default function App() {
               </>
             ) : (
               <button
+                data-help="search"
                 onClick={() => setSearchExpanded(true)}
                 title={t("toolbar.searchExpand")}
                 className="flex items-center justify-center w-7 h-7 rounded-md text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
@@ -2134,6 +2183,7 @@ export default function App() {
             {/* Column picker */}
             <div className="relative" ref={colPickerRef}>
               <button
+                data-help="col-picker"
                 onClick={() => setShowColPicker((v) => !v)}
                 title={t("app.manageCols")}
                 className={`flex items-center justify-center w-5 h-5 rounded transition-colors ${
@@ -2193,6 +2243,7 @@ export default function App() {
             </div>
 
             <button
+              data-help="settings-btn"
               onClick={() => setShowSettings(true)}
               title={`${t("settings.title")} (${CMD},)`}
               className="flex items-center justify-center w-5 h-5 rounded text-[#D95340] hover:text-[#E07364] hover:bg-white/[0.06] transition-colors"
@@ -2211,8 +2262,12 @@ export default function App() {
         {showSidebar && (
           <div className="shrink-0 flex relative" style={{ width: sidebarWidth }}>
             <Sidebar
+                scanProgress={scanTotal && scanTotal > 0 ? scanDone / scanTotal : null}
                 onFolderSelect={scanFolder}
-                onBrowse={(path) => setBrowsePath(path)}
+                onBrowse={(path) => {
+                  setBrowsePath(path);
+                  setBrowseKey((k) => k + 1); // reseta o browser ao clicar no mesmo device
+                }}
                 onAnalyzeBpmFolder={(folderPath) => {
                   const folderTracks = allTracks.filter((t) => t.path.startsWith(folderPath + "/") || t.path.startsWith(folderPath + "\\"));
                   if (folderTracks.length === 0) { toast("Nenhuma faixa nesta pasta", "info"); return; }
@@ -2226,6 +2281,15 @@ export default function App() {
                 }}
                 onExportPlaylist={(pl) => setExportPlaylistTarget(pl)}
                 onLoadAllFolders={loadAllFolders}
+                onNewPlaylist={() => setCreatePlaylistTracks([])}
+                onFolderClear={() => {
+                  // Cancela timers e limpa análise ao remover/deletar pasta
+                  if (bgAnalysisTimerRef.current) { clearTimeout(bgAnalysisTimerRef.current); bgAnalysisTimerRef.current = null; }
+                  if (pendingBpmTimerRef.current) { clearTimeout(pendingBpmTimerRef.current); pendingBpmTimerRef.current = null; }
+                  setFilenameIssues([]); setFilenameMetaIssues([]); setParenIssues([]);
+                  setDuplicateGroups([]); setGenreFilter(null); setNewTrackIds(new Set());
+                  setScanDone(0); setScanTotal(null);
+                }}
               />
             {/* Drag handle */}
             <div
@@ -2252,7 +2316,7 @@ export default function App() {
           {/* Folder Browser — substitui a tabela quando navegando */}
           {browsePath && (
             <FolderBrowser
-              key={browsePath}
+              key={`${browsePath}-${browseKey}`}
               rootPath={browsePath}
               onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
               onClose={() => setBrowsePath(null)}
@@ -2500,7 +2564,7 @@ export default function App() {
       )}
 
       {(selectedIds.size > 0 || !!playerTrackId || tourPlayerVisible) && (
-        <div data-tour="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>
+        <div data-tour="player" data-help="player" style={{ animation: 'slide-up-player 0.18s ease-out' }}>
           <MiniPlayer displayTracks={tracks} />
         </div>
       )}
@@ -2602,6 +2666,7 @@ export default function App() {
       )}
       <ToastContainer />
       <AIAssistant />
+      {helpMarkersEnabled && <HelpMarkers />}
 
       {/* Ghost de drag — posicionado pelo handleTrackDragStart */}
       <div
@@ -2617,32 +2682,16 @@ export default function App() {
         <span id="drag-ghost-label">1 faixa</span>
       </div>
 
-      {/* Overlay bloqueante durante scan — impede interação e crash em pastas grandes */}
-      {isScanning && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center select-none bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1c1715] border border-white/[0.08] rounded-xl shadow-2xl p-6 flex flex-col items-center gap-4" style={{ minWidth: 300 }}>
-            <div className="w-11 h-11 rounded-xl bg-[#D95340]/10 border border-[#D95340]/20 flex items-center justify-center">
-              <svg className="animate-spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="rgba(217,83,64,0.2)" strokeWidth="2"/>
-                <path d="M10 2a8 8 0 0 1 8 8" stroke="#D95340" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <div className="flex flex-col items-center gap-1 text-center">
-              <p className="text-[13px] font-semibold text-[#F5F5F4]">Carregando arquivos…</p>
-              <p className="text-[11px] text-[#8F8883]">
-                {scanTotal !== null && scanTotal > 0 ? `${scanDone} de ${scanTotal} arquivos` : "Lendo pasta…"}
-              </p>
-            </div>
-            <div className="w-full rounded-full overflow-hidden" style={{ height: 3, background: "rgba(255,255,255,0.06)" }}>
-              <div
-                className="h-full rounded-full transition-all duration-150"
-                style={{
-                  width: scanTotal && scanTotal > 0 ? `${Math.round((scanDone / scanTotal) * 100)}%` : "0%",
-                  background: "linear-gradient(90deg, #B34435, #D95340)"
-                }}
-              />
-            </div>
-          </div>
+      {/* Barra de progresso fina no topo durante scan — não bloqueia a UI */}
+      {isScanning && scanTotal !== null && scanTotal > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[500] pointer-events-none" style={{ height: 2 }}>
+          <div
+            className="h-full transition-all duration-150"
+            style={{
+              width: `${Math.round((scanDone / scanTotal) * 100)}%`,
+              background: "linear-gradient(90deg, #B34435, #D95340)"
+            }}
+          />
         </div>
       )}
 

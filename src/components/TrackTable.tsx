@@ -15,6 +15,7 @@ import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, mem
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
+import { useShallow } from "zustand/react/shallow";
 import { useAppStore, type Track } from "../store";
 
 
@@ -429,22 +430,40 @@ export default function TrackTable({
   resetColToken?: number;
   onTrackDragStart?: (trackIds: string[], startX: number, startY: number) => void;
 }) {
+  // Dados estáveis (funções + raramente alterados) — shallow evita re-render quando refs não mudam
   const {
-    selectedIds,
     toggleSelect,
     selectAll,
+    replaceSelection,
     clearSelection,
     tracks: allTracks,
     toggleTrackFavorite,
     favoriteTrackPaths,
     requestPlay,
-    playerTrackId,
     columnVisibility,
     setColumnVisibility,
     removeTracks,
     playlists,
     addTracksToPlaylist,
-  } = useAppStore();
+  } = useAppStore(useShallow((s) => ({
+    toggleSelect: s.toggleSelect,
+    selectAll: s.selectAll,
+    replaceSelection: s.replaceSelection,
+    clearSelection: s.clearSelection,
+    tracks: s.tracks,
+    toggleTrackFavorite: s.toggleTrackFavorite,
+    favoriteTrackPaths: s.favoriteTrackPaths,
+    requestPlay: s.requestPlay,
+    columnVisibility: s.columnVisibility,
+    setColumnVisibility: s.setColumnVisibility,
+    removeTracks: s.removeTracks,
+    playlists: s.playlists,
+    addTracksToPlaylist: s.addTracksToPlaylist,
+  })));
+
+  // Subscriptions granulares para dados que mudam frequentemente
+  const selectedIds = useAppStore((s) => s.selectedIds);
+  const playerTrackId = useAppStore((s) => s.playerTrackId);
 
   const { t } = useTranslation();
   const [analyzingBpmId, setAnalyzingBpmId] = useState<string | null>(null);
@@ -452,6 +471,8 @@ export default function TrackTable({
 
   const anchorIdRef = useRef<string | null>(null);
   const sortedRowsRef = useRef<Array<{id: string}>>([]);
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
 
   const [sorting, setSorting] = useState<SortingState>(() => {
     try {
@@ -606,15 +627,18 @@ export default function TrackTable({
         header: ({ table }) => (
           <input
             type="checkbox"
-            checked={table.getIsAllRowsSelected()}
-            onChange={table.getToggleAllRowsSelectedHandler()}
+            checked={selectedIdsRef.current.size > 0 && selectedIdsRef.current.size === table.getRowCount()}
+            onChange={(e) => {
+              if (e.target.checked) selectAll(table.getRowModel().rows.map((r) => r.id));
+              else clearSelection();
+            }}
           />
         ),
         cell: ({ row }) => (
           <input
             type="checkbox"
-            checked={row.getIsSelected()}
-            onChange={row.getToggleSelectedHandler()}
+            checked={selectedIdsRef.current.has(row.id)}
+            onChange={() => useAppStore.getState().toggleSelect(row.id)}
             onClick={(e) => e.stopPropagation()}
           />
         ),
@@ -983,12 +1007,10 @@ export default function TrackTable({
     [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite, playlists]
   );
 
-  const rowSelection = Object.fromEntries([...selectedIds].map((id) => [id, true]));
-
   const table = useReactTable({
     data: tracks,
     columns,
-    state: { sorting, rowSelection, columnVisibility: mergedVisibility, columnSizing, columnOrder },
+    state: { sorting, columnVisibility: mergedVisibility, columnSizing, columnOrder },
     getRowId: (row) => row.id,
     columnResizeMode: 'onChange' as const,
     enableColumnResizing: true,
@@ -1001,13 +1023,6 @@ export default function TrackTable({
       const next = typeof updater === "function" ? updater(sorting) : updater;
       setSorting(next);
       localStorage.setItem("tagwave_sort", JSON.stringify(next));
-    },
-    onRowSelectionChange: (updater) => {
-      const next = typeof updater === "function" ? updater(rowSelection) : updater;
-      const added = Object.keys(next).filter((id) => next[id] && !rowSelection[id]);
-      const removed = Object.keys(rowSelection).filter((id) => !next[id]);
-      added.forEach(toggleSelect);
-      removed.forEach(toggleSelect);
     },
     onColumnVisibilityChange: (updater) => {
       const next = typeof updater === "function" ? updater(mergedVisibility) : updater;
@@ -1045,8 +1060,9 @@ export default function TrackTable({
         const lo = Math.min(from, idx);
         const hi = Math.max(from, idx);
         const rangeIds = rows.slice(lo, hi + 1).map((r) => r.id);
-        if (!e.metaKey) clearSelection();
-        selectAll(rangeIds);
+        // replaceSelection = clearSelection + selectAll em 1 único update do store
+        if (e.metaKey) selectAll(rangeIds);
+        else replaceSelection(rangeIds);
       } else if (e.metaKey) {
         toggleSelect(id);
         anchorIdRef.current = id;
@@ -1056,7 +1072,7 @@ export default function TrackTable({
         anchorIdRef.current = id;
       }
     },
-    [toggleSelect, selectAll, clearSelection, requestPlay]
+    [toggleSelect, selectAll, replaceSelection, clearSelection, requestPlay]
   );
 
   const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v"]);

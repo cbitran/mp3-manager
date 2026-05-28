@@ -17,6 +17,9 @@ interface SidebarProps {
   onEnrichFolder?: (folderPath: string) => void;
   onExportPlaylist?: (pl: Playlist) => void;
   onLoadAllFolders?: () => void;
+  onNewPlaylist?: () => void;
+  onFolderClear?: () => void; // limpa análise/timers ao remover pasta
+  scanProgress?: number | null; // 0–1 determinado, null = indeterminado
 }
 
 interface DeleteDialogState {
@@ -24,9 +27,9 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onFolderClear, scanProgress }: SidebarProps) {
   const { t } = useTranslation();
-  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning } = useAppStore();
+  const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
   const setPlayerTrack = useAppStore((s) => s.setPlayerTrack);
   const clearSelection = useAppStore((s) => s.clearSelection);
@@ -64,7 +67,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   }, []);
 
   useEffect(() => {
-    if (dragState.isDragging && playlists.length > 0) setSidebarTab("playlists");
+    if (dragState.isDragging) setSidebarTab("playlists");
   }, [dragState.isDragging, playlists.length]);
 
   // Contagem de faixas por pasta, calculada a partir das faixas atualmente carregadas
@@ -96,7 +99,11 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   }, []);
 
   const clearFolderTracks = (path: string) => {
+    // Cancela qualquer scan/análise em curso (independente de qual pasta)
+    invoke("cancel_current_scan").catch(() => {});
+    onFolderClear?.();
     if (path === lastFolder) {
+      setScanning(false);
       setTracks([]);
       setPlayerTrack(null);
       clearSelection();
@@ -206,7 +213,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
       {/* Abas Recentes / Favoritos / Playlists */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Tab bar */}
-        <div className="flex px-2 pt-2 gap-0 border-b border-white/[0.05]">
+        <div className="flex items-center px-2 pt-2 gap-0 border-b border-white/[0.05]" data-help="sidebar-tabs">
           {([
             { id: "recent",    label: t("sidebar.recent"),    count: recentFolders.length },
             { id: "favorites", label: t("sidebar.favorites"), count: favoriteFolders.length },
@@ -237,6 +244,17 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               </button>
             );
           })}
+          {sidebarTab === "playlists" && onNewPlaylist && (
+            <button
+              onClick={onNewPlaylist}
+              title="Nova playlist"
+              className="ml-auto mb-1.5 p-1 rounded-md hover:bg-white/[0.08] text-[#605A55] hover:text-[#C2BEBC] transition-colors flex-shrink-0"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                <path d="M5.5 1v9M1 5.5h9"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Botão "Todos" — visão unificada de toda a biblioteca */}
@@ -283,6 +301,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                         tracks={tracks}
                         expandedFolders={expandedFolders}
                         subfolderMap={subfolderMap}
+                        activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
                       />
                     </div>
                   );
@@ -315,6 +334,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                         tracks={tracks}
                         expandedFolders={expandedFolders}
                         subfolderMap={subfolderMap}
+                        activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
                       />
                     </div>
                   );
@@ -322,34 +342,61 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               : <p className="px-2 py-4 text-[10px] text-[#4C4743]">{t("sidebar.noFavorites")}</p>
           )}
           {sidebarTab === "playlists" && (
-            playlists.length > 0
-              ? playlists.map((pl) => (
-                  <PlaylistRow
-                    key={pl.id}
-                    pl={pl}
-                    isActive={activePlaylistId === pl.id}
-                    onOpen={() => setActivePlaylistId(pl.id)}
-                    onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
-                    isDragging={dragState.isDragging}
-                    isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}
-                    onDragEnter={() => setDragState({ hoveredPlaylistId: pl.id })}
-                    onDragLeave={() => setDragState({ hoveredPlaylistId: null })}
-                  />
-                ))
-              : (
-                <div className="px-2 py-4 flex flex-col items-center gap-2 text-center">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="3" width="16" height="14" rx="2"/>
-                    <path d="M7 8h6M7 12h4"/>
-                    <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
-                    <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
+            <div data-help="playlists-section">
+              {playlists.length > 0
+                ? playlists.map((pl) => (
+                    <PlaylistRow
+                      key={pl.id}
+                      pl={pl}
+                      isActive={activePlaylistId === pl.id}
+                      onOpen={() => setActivePlaylistId(pl.id)}
+                      onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
+                      isDragging={dragState.isDragging}
+                      isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}
+                      onDragEnter={() => setDragState({ hoveredPlaylistId: pl.id, hoveringNewPlaylist: false })}
+                      onDragLeave={() => setDragState({ hoveredPlaylistId: null })}
+                    />
+                  ))
+                : !dragState.isDragging && (
+                  <div className="px-2 py-4 flex flex-col items-center gap-2 text-center">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="16" height="14" rx="2"/>
+                      <path d="M7 8h6M7 12h4"/>
+                      <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
+                      <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
+                    </svg>
+                    <p className="text-[10px] text-[#4C4743]">{t("sidebar.noPlaylists")}</p>
+                    <p className="text-[9px] text-[#373331]">{t("sidebar.noPlaylistsHint")}</p>
+                  </div>
+                )
+              }
+
+              {/* Zona de drop para criar nova playlist — aparece sempre durante drag */}
+              {dragState.isDragging && (
+                <div
+                  data-new-playlist-zone="true"
+                  className="mx-1 mt-1.5 flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-all"
+                  style={{
+                    borderColor: dragState.hoveringNewPlaylist ? "#D95340" : "rgba(255,255,255,0.12)",
+                    background: dragState.hoveringNewPlaylist ? "rgba(217,83,64,0.10)" : "rgba(255,255,255,0.02)",
+                  }}
+                  onMouseEnter={() => setDragState({ hoveredPlaylistId: null, hoveringNewPlaylist: true })}
+                  onMouseLeave={() => setDragState({ hoveringNewPlaylist: false })}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+                    stroke={dragState.hoveringNewPlaylist ? "#D95340" : "#605A55"}
+                    strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M6 1v10M1 6h10"/>
                   </svg>
-                  <p className="text-[10px] text-[#4C4743]">{t("sidebar.noPlaylists")}</p>
-                  <p className="text-[9px] text-[#373331]">{t("sidebar.noPlaylistsHint")}</p>
+                  <span className="text-[11px]" style={{ color: dragState.hoveringNewPlaylist ? "#D95340" : "#605A55" }}>
+                    Nova playlist
+                  </span>
                 </div>
-              )
+              )}
+            </div>
           )}
         </div>
+
       </div>
 
       {/* Dispositivos (volumes montados) */}
@@ -662,19 +709,19 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
             </p>
             <div className="flex flex-col gap-2">
               <button
-                className="w-full py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium transition-colors"
-                onClick={() => handleMoveToTrash(deleteDialog.path)}
-              >
-                {t("sidebar.moveToTrash")}
-              </button>
-              <button
-                className="w-full py-2 rounded-lg bg-white/8 hover:bg-white/12 text-[#D95340] text-sm font-medium transition-colors"
+                className="w-full py-2 rounded-lg bg-[#D95340]/20 hover:bg-[#D95340]/30 text-[#D95340] text-sm font-medium transition-colors border border-[#D95340]/30"
                 onClick={() => handleRemoveFromList(deleteDialog.path)}
               >
                 {t("sidebar.removeFromList")}
               </button>
               <button
-                className="w-full py-2 rounded-lg bg-transparent hover:bg-white/5 text-[#756D67] text-sm transition-colors"
+                className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/8 text-[#756D67] hover:text-[#8F8883] text-xs transition-colors"
+                onClick={() => handleMoveToTrash(deleteDialog.path)}
+              >
+                {t("sidebar.moveToTrash")}
+              </button>
+              <button
+                className="w-full py-1.5 rounded-lg bg-transparent hover:bg-white/5 text-[#4C4743] text-xs transition-colors"
                 onClick={() => setDeleteDialog(null)}
               >
                 {t("common.cancel")}
@@ -706,6 +753,7 @@ interface FolderRowProps {
   lastFolder: string | null;
   expandedFolders: Set<string>;
   subfolderMap: Record<string, string[]>;
+  activeScanProgress?: number | null; // undefined = sem scan; null = indeterminado; 0–1 = progresso
 }
 
 function SubFolderTree({ path, depth, expandedFolders, subfolderMap, onFolderSelect, onToggleExpandPath, lastFolder, tracks }: {
@@ -761,14 +809,14 @@ function SubFolderTree({ path, depth, expandedFolders, subfolderMap, onFolderSel
 function FolderRow({
   path, isSelected, isFavorite, isExpanded, subfolders, trackCount, tracks,
   onOpen, onToggleExpand, onToggleExpandPath, onToggleFavorite, onContextMenu, onFolderSelect, lastFolder,
-  expandedFolders, subfolderMap,
+  expandedFolders, subfolderMap, activeScanProgress,
 }: FolderRowProps) {
   const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   const hasSubs = subfolders === null || subfolders.length > 0;
-
+  const showProgress = activeScanProgress !== undefined;
 
   return (
-    <div>
+    <div className="relative">
       <div className="flex items-center group">
         {/* Chevron */}
         <button
@@ -821,6 +869,20 @@ function FolderRow({
           </button>
         )}
       </div>
+
+      {/* Barra de progresso do scan — visível só na pasta ativa durante o scan */}
+      {showProgress && (
+        <div className="absolute bottom-0 left-0 right-0 overflow-hidden" style={{ height: 2 }}>
+          {activeScanProgress !== null && activeScanProgress !== undefined && activeScanProgress > 0 ? (
+            <div
+              className="h-full transition-all duration-200 ease-out"
+              style={{ width: `${Math.round(activeScanProgress * 100)}%`, background: "#D95340" }}
+            />
+          ) : (
+            <div className="h-full w-full" style={{ background: "#D95340", animation: "progress-indeterminate 1.4s ease-in-out infinite" }} />
+          )}
+        </div>
+      )}
 
       {/* Subfolders — recursivos */}
       {isExpanded && subfolders && subfolders.length > 0 && (

@@ -7,11 +7,13 @@ import es from "./es.json";
 
 function resolveInitialLang(): string {
   const saved = localStorage.getItem("tagwave_language");
-  if (saved) return saved;
+  const explicit = localStorage.getItem("tagwave_language_explicit");
+  // Só respeita valor salvo se foi escolha explícita do usuário via Settings
+  if (saved && explicit) return saved;
   const nav = navigator.language.toLowerCase();
   if (nav.startsWith("pt")) return "pt-BR";
   if (nav.startsWith("es")) return "es";
-  if (nav.startsWith("en")) return "en";
+  // Inglês nunca por auto-detecção — sempre requer escolha explícita
   return "pt-BR";
 }
 
@@ -34,6 +36,7 @@ i18n
 
 export function changeLanguage(lang: string) {
   localStorage.setItem("tagwave_language", lang);
+  localStorage.setItem("tagwave_language_explicit", "1");
   i18n.changeLanguage(lang);
 }
 

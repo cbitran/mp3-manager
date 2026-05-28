@@ -3,6 +3,7 @@ use urlencoding;
 use id3::frame::{Comment as Id3Comment, Picture, PictureType};
 use id3::TagLike;
 use lofty::picture::{MimeType as LoftyMime, Picture as LoftyPic, PictureType as LoftyPicType};
+use lofty::config::ParseOptions;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey as LoftyKey, ItemValue as LoftyVal, TagItem as LoftyItem};
@@ -14,7 +15,100 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+static SCAN_GEN: AtomicUsize = AtomicUsize::new(0);
+
+// ── Tag cache SQLite ──────────────────────────────────────────────────────────
+
+static TAG_CACHE_DB: OnceLock<Mutex<rusqlite::Connection>> = OnceLock::new();
+
+fn tag_cache_db() -> &'static Mutex<rusqlite::Connection> {
+    TAG_CACHE_DB.get_or_init(|| {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let dir = std::path::PathBuf::from(&home).join(".tagwave");
+        std::fs::create_dir_all(&dir).ok();
+        let conn = rusqlite::Connection::open(dir.join("tag_cache.db"))
+            .expect("cannot open tag cache db");
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             CREATE TABLE IF NOT EXISTS tag_cache (
+                 path  TEXT PRIMARY KEY,
+                 mtime INTEGER NOT NULL,
+                 data  TEXT NOT NULL
+             );"
+        ).expect("cannot init tag cache");
+        Mutex::new(conn)
+    })
+}
+
+fn file_mtime(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Lê em lote as entradas do cache.
+/// 1. Lê mtimes em paralelo (Rayon, sem lock)
+/// 2. Uma única query SQL com IN (...)
+/// 3. Verifica mtime e deserializa em paralelo (sem lock)
+fn read_cache_batch(paths: &[std::path::PathBuf]) -> HashMap<String, Track> {
+    if paths.is_empty() { return HashMap::new(); }
+
+    // Passo 1: mtimes em paralelo, fora do lock
+    let path_mtimes: Vec<(String, u64)> = paths.par_iter()
+        .map(|p| (p.to_string_lossy().to_string(), file_mtime(p)))
+        .collect();
+
+    // Passo 2: uma query batch — lock mínimo
+    let rows: Vec<(String, i64, String)> = {
+        let Ok(db) = tag_cache_db().lock() else { return HashMap::new(); };
+        let placeholders: String = std::iter::repeat("?")
+            .take(path_mtimes.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT path, mtime, data FROM tag_cache WHERE path IN ({})",
+            placeholders
+        );
+        let Ok(mut stmt) = db.prepare(&sql) else { return HashMap::new(); };
+        let path_strings: Vec<String> = path_mtimes.iter().map(|(p, _)| p.clone()).collect();
+        stmt.query_map(rusqlite::params_from_iter(path_strings.iter()), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+        })
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+    }; // lock liberado aqui
+
+    // Passo 3: verificar mtime e deserializar em paralelo
+    let mtime_map: HashMap<String, u64> = path_mtimes.into_iter().collect();
+    rows.into_par_iter()
+        .filter_map(|(path, stored_mtime, data)| {
+            let actual_mtime = *mtime_map.get(&path)?;
+            if stored_mtime as u64 != actual_mtime { return None; }
+            let track = serde_json::from_str::<Track>(&data).ok()?;
+            Some((path, track))
+        })
+        .collect()
+}
+
+/// Grava em lote novas entradas no cache dentro de uma única transação.
+fn write_cache_batch(entries: Vec<(String, u64, String)>) {
+    if entries.is_empty() { return; }
+    let Ok(db) = tag_cache_db().lock() else { return; };
+    let Ok(tx) = db.unchecked_transaction() else { return; };
+    for (path, mtime, data) in entries {
+        let _ = tx.execute(
+            "INSERT OR REPLACE INTO tag_cache (path, mtime, data) VALUES (?1, ?2, ?3)",
+            rusqlite::params![path, mtime as i64, data],
+        );
+    }
+    let _ = tx.commit();
+}
 use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 
@@ -112,7 +206,8 @@ fn cue_sidecar_path(path: &Path) -> std::path::PathBuf {
     let mut hasher = Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     let hash = format!("{:x}", hasher.finalize())[..24].to_string();
-    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    let home = home_dir().map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
     std::path::PathBuf::from(home).join(".tagwave").join("cues").join(format!("{}.json", hash))
 }
 
@@ -238,6 +333,57 @@ fn file_format(path: &Path) -> String {
         .to_string()
 }
 
+// Varre cabeçalhos de frames ID3v2 para detectar APIC (capa) e GEOB (Serato).
+// Lê apenas 10 bytes por frame — não carrega nenhum dado de imagem.
+fn scan_id3_frames(path: &Path) -> (bool, bool) {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(path) else { return (false, false); };
+    let mut hdr = [0u8; 10];
+    if f.read_exact(&mut hdr).is_err() || &hdr[0..3] != b"ID3" { return (false, false); }
+    let ver = hdr[3]; // 3 = ID3v2.3 (big-endian sizes), 4 = ID3v2.4 (syncsafe)
+    let tag_size: u32 = ((hdr[6] as u32 & 0x7F) << 21) | ((hdr[7] as u32 & 0x7F) << 14)
+        | ((hdr[8] as u32 & 0x7F) << 7) | (hdr[9] as u32 & 0x7F);
+    let mut has_cover = false;
+    let mut has_serato = false;
+    let mut pos: u32 = 0;
+    while pos + 10 <= tag_size {
+        let mut fhdr = [0u8; 10];
+        if f.read_exact(&mut fhdr).is_err() { break; }
+        if fhdr[0..4] == [0u8; 4] { break; } // padding
+        let fsize: u32 = if ver >= 4 {
+            ((fhdr[4] as u32 & 0x7F) << 21) | ((fhdr[5] as u32 & 0x7F) << 14)
+            | ((fhdr[6] as u32 & 0x7F) << 7) | (fhdr[7] as u32 & 0x7F)
+        } else {
+            u32::from_be_bytes([fhdr[4], fhdr[5], fhdr[6], fhdr[7]])
+        };
+        if &fhdr[0..4] == b"APIC" { has_cover = true; }
+        if &fhdr[0..4] == b"GEOB" { has_serato = true; }
+        if has_cover && has_serato { break; }
+        pos += 10 + fsize;
+        if f.seek(SeekFrom::Current(fsize as i64)).is_err() { break; }
+    }
+    (has_cover, has_serato)
+}
+
+// Varre blocos de metadados FLAC para detectar bloco PICTURE (tipo 6).
+// Lê apenas 4 bytes por bloco — não carrega dados de imagem.
+fn scan_flac_has_cover(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(path) else { return false; };
+    let mut sig = [0u8; 4];
+    if f.read_exact(&mut sig).is_err() || &sig != b"fLaC" { return false; }
+    loop {
+        let mut blk = [0u8; 4];
+        if f.read_exact(&mut blk).is_err() { return false; }
+        let is_last = (blk[0] & 0x80) != 0;
+        let btype   = blk[0] & 0x7F;
+        let blen: u32 = ((blk[1] as u32) << 16) | ((blk[2] as u32) << 8) | (blk[3] as u32);
+        if btype == 6 { return true; } // PICTURE block encontrado
+        if is_last    { return false; }
+        if f.seek(SeekFrom::Current(blen as i64)).is_err() { return false; }
+    }
+}
+
 fn read_track(path: &Path) -> Option<Track> {
     let metadata = fs::metadata(path).ok()?;
     let file_size_bytes = metadata.len();
@@ -251,77 +397,142 @@ fn read_track(path: &Path) -> Option<Track> {
     hasher.update(path.to_string_lossy().as_bytes());
     let id = format!("{:x}", hasher.finalize())[..16].to_string();
 
-    // Use lofty for all format-agnostic reading
-    let tagged = Probe::open(path).ok()?.read().ok()?;
-    let props = tagged.properties();
-    let duration_secs = Some(props.duration().as_secs_f64()).filter(|&d| d > 0.0);
-    let bitrate_kbps = props.audio_bitrate();
-    let sample_rate_hz = props.sample_rate();
+    let is_id3_format = format == "MP3" || format == "AIFF" || format == "AIF" || format == "WAV";
+    let is_flac = format == "FLAC";
 
-    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+    let mut title: Option<String> = None;
+    let mut artist: Option<String> = None;
+    let mut album: Option<String> = None;
+    let mut genre: Option<String> = None;
+    let mut year: Option<u32> = None;
+    let mut track_number: Option<u32> = None;
+    let mut has_cover = false;
+    let mut bpm: Option<String> = None;
+    let mut key: Option<String> = None;
+    let mut rating: Option<u8> = None;
+    let mut comment: Option<String> = None;
+    let mut total_tracks: Option<u32> = None;
+    let mut cue_points: Vec<CuePoint> = Vec::new();
+    let mut beat_phase_ms: Option<f32> = None;
+    let mut beat_anchors: Option<Vec<BeatAnchor>> = None;
+    let mut duration_secs: Option<f64> = None;
+    let mut bitrate_kbps: Option<u32> = None;
+    let mut sample_rate_hz: Option<u32> = None;
 
-    let title        = tag.and_then(|t| t.title()).map(|s| s.to_string()).filter(|s| !s.is_empty());
-    let artist       = tag.and_then(|t| t.artist()).map(|s| s.to_string()).filter(|s| !s.is_empty());
-    let album        = tag.and_then(|t| t.album()).map(|s| s.to_string()).filter(|s| !s.is_empty());
-    let genre        = tag.and_then(|t| t.genre()).map(|s| s.to_string()).filter(|s| !s.is_empty());
-    let year         = tag.and_then(|t| t.year()).map(|y| y as u32);
-    let track_number = tag.and_then(|t| t.track());
-    let has_cover    = tag.map(|t| !t.pictures().is_empty()).unwrap_or(false);
+    if is_id3_format {
+        // Scan rápido: detecta capa e Serato lendo apenas IDs de frames (sem dados)
+        let (cover_found, has_serato) = scan_id3_frames(path);
+        has_cover = cover_found;
 
-    // BPM, KEY, RATING, COMMENT, TOTAL_TRACKS, CUE_POINTS, BEAT_PHASE, BEAT_ANCHORS — read via id3 crate for MP3/AIFF/WAV
-    let (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors) = if format == "MP3" || format == "AIFF" || format == "AIF" || format == "WAV" {
-        if let Ok(id3tag) = id3::Tag::read_from_path(path) {
-            let bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
-                if let id3::Content::Text(t) = f.content() {
-                    let s = t.trim().to_string();
-                    // Valida que é numérico e dentro de faixa razoável (20–300 BPM)
-                    if s.parse::<f64>().map(|v| v >= 20.0 && v <= 300.0).unwrap_or(false) {
-                        Some(s)
-                    } else {
-                        None
-                    }
-                } else { None }
-            });
-            let key = id3tag.frames().find(|f| f.id() == "TKEY").and_then(|f| {
-                if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
-            }).filter(|s| !s.is_empty());
-            let rating = id3tag.extended_texts()
-                .find(|e| e.description.eq_ignore_ascii_case("rating"))
-                .and_then(|e| e.value.trim().parse::<u8>().ok())
-                .filter(|&r| r >= 1 && r <= 5);
-            let comment = id3tag.comments().next().map(|c| c.text.clone()).filter(|s| !s.is_empty());
-            let total_tracks = id3tag.frames().find(|f| f.id() == "TRCK").and_then(|f| {
-                if let id3::Content::Text(t) = f.content() {
-                    t.split('/').nth(1).and_then(|s| s.trim().parse::<u32>().ok())
-                } else { None }
-            });
-            let cue_points = parse_serato_cue_points(&id3tag);
-            let beat_phase_ms = id3tag.extended_texts()
-                .find(|e| e.description == "TAGWAVE_BEAT_PHASE")
-                .and_then(|e| e.value.parse::<f32>().ok());
-            let beat_anchors = id3tag.extended_texts()
-                .find(|e| e.description == "TAGWAVE_BEAT_ANCHORS")
-                .and_then(|e| serde_json::from_str::<Vec<BeatAnchor>>(&e.value).ok());
-            (bpm, key, rating, comment, total_tracks, cue_points, beat_phase_ms, beat_anchors)
+        if has_serato {
+            // Arquivos Serato: id3 crate necessário para GEOB frames
+            // Lofty para propriedades de áudio (id3 crate não lê duração/bitrate)
+            let tagged = Probe::open(path).ok()?.options(ParseOptions::new().read_tags(false)).read().ok()?;
+            let props = tagged.properties();
+            duration_secs = Some(props.duration().as_secs_f64()).filter(|&d| d > 0.0);
+            bitrate_kbps  = props.audio_bitrate();
+            sample_rate_hz = props.sample_rate();
+
+            if let Ok(id3tag) = id3::Tag::read_from_path(path) {
+                title  = id3tag.title().map(|s| s.to_string()).filter(|s| !s.is_empty());
+                artist = id3tag.artist().map(|s| s.to_string()).filter(|s| !s.is_empty());
+                album  = id3tag.album().map(|s| s.to_string()).filter(|s| !s.is_empty());
+                genre  = id3tag.genre().map(|s| s.to_string()).filter(|s| !s.is_empty());
+                year   = id3tag.year().map(|y| y as u32);
+                track_number = id3tag.track();
+                bpm = id3tag.frames().find(|f| f.id() == "TBPM").and_then(|f| {
+                    if let id3::Content::Text(t) = f.content() {
+                        let s = t.trim().to_string();
+                        if s.parse::<f64>().map(|v| v >= 20.0 && v <= 300.0).unwrap_or(false) { Some(s) } else { None }
+                    } else { None }
+                });
+                key = id3tag.frames().find(|f| f.id() == "TKEY").and_then(|f| {
+                    if let id3::Content::Text(t) = f.content() { Some(t.trim().to_string()) } else { None }
+                }).filter(|s| !s.is_empty());
+                rating = id3tag.extended_texts()
+                    .find(|e| e.description.eq_ignore_ascii_case("rating"))
+                    .and_then(|e| e.value.trim().parse::<u8>().ok())
+                    .filter(|&r| r >= 1 && r <= 5);
+                comment = id3tag.comments().next().map(|c| c.text.clone()).filter(|s| !s.is_empty());
+                total_tracks = id3tag.frames().find(|f| f.id() == "TRCK").and_then(|f| {
+                    if let id3::Content::Text(t) = f.content() {
+                        t.split('/').nth(1).and_then(|s| s.trim().parse::<u32>().ok())
+                    } else { None }
+                });
+                cue_points = parse_serato_cue_points(&id3tag);
+                beat_phase_ms = id3tag.extended_texts()
+                    .find(|e| e.description == "TAGWAVE_BEAT_PHASE")
+                    .and_then(|e| e.value.parse::<f32>().ok());
+                beat_anchors = id3tag.extended_texts()
+                    .find(|e| e.description == "TAGWAVE_BEAT_ANCHORS")
+                    .and_then(|e| serde_json::from_str::<Vec<BeatAnchor>>(&e.value).ok());
+            }
         } else {
-            (None, None, None, None, None, Vec::new(), None, None)
+            // Sem Serato: Lofty com read_cover_art(false) — não carrega dados de imagem
+            // Para arquivos com capas embutidas, isso economiza 100-500KB por arquivo de disco
+            let tagged = Probe::open(path).ok()?
+                .options(ParseOptions::new().read_cover_art(false))
+                .read().ok()?;
+            let props = tagged.properties();
+            duration_secs  = Some(props.duration().as_secs_f64()).filter(|&d| d > 0.0);
+            bitrate_kbps   = props.audio_bitrate();
+            sample_rate_hz = props.sample_rate();
+            let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+            title  = tag.and_then(|t| t.title()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+            artist = tag.and_then(|t| t.artist()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+            album  = tag.and_then(|t| t.album()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+            genre  = tag.and_then(|t| t.genre()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+            year   = tag.and_then(|t| t.year()).map(|y| y as u32);
+            track_number = tag.and_then(|t| t.track());
+            total_tracks = tag.and_then(|t| t.track_total());
+            bpm = tag.and_then(|t| t.get_string(&LoftyKey::Bpm)).map(|s| s.to_string())
+                .filter(|s| s.parse::<f64>().map(|v| v >= 20.0 && v <= 300.0).unwrap_or(false));
+            key = tag.and_then(|t| t.get_string(&LoftyKey::InitialKey))
+                .map(|s| s.to_string()).filter(|s| !s.is_empty());
+            comment = tag.and_then(|t| t.get_string(&LoftyKey::Comment))
+                .map(|s| s.to_string()).filter(|s| !s.is_empty());
+            rating = tag.and_then(|t| t.get_string(&LoftyKey::Unknown("rating".to_string())))
+                .and_then(|v| v.trim().parse::<u8>().ok()).filter(|&r| r >= 1 && r <= 5);
+            beat_phase_ms = tag.and_then(|t| t.get_string(&LoftyKey::Unknown("TAGWAVE_BEAT_PHASE".to_string())))
+                .and_then(|v| v.parse::<f32>().ok());
+            beat_anchors = tag.and_then(|t| t.get_string(&LoftyKey::Unknown("TAGWAVE_BEAT_ANCHORS".to_string())))
+                .and_then(|v| serde_json::from_str::<Vec<BeatAnchor>>(&v).ok());
         }
     } else {
-        // For FLAC/OGG: BPM and KEY in Vorbis comments
-        let bpm = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Bpm))
+        // FLAC/OGG/M4A: Lofty tags
+        let tagged = if is_flac {
+            // FLAC: pula dados de capa — economiza centenas de KB por arquivo
+            Probe::open(path).ok()?.options(ParseOptions::new().read_cover_art(false)).read().ok()?
+        } else {
+            Probe::open(path).ok()?.read().ok()?
+        };
+        let props = tagged.properties();
+        duration_secs  = Some(props.duration().as_secs_f64()).filter(|&d| d > 0.0);
+        bitrate_kbps   = props.audio_bitrate();
+        sample_rate_hz = props.sample_rate();
+        let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+        title  = tag.and_then(|t| t.title()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+        artist = tag.and_then(|t| t.artist()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+        album  = tag.and_then(|t| t.album()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+        genre  = tag.and_then(|t| t.genre()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+        year   = tag.and_then(|t| t.year()).map(|y| y as u32);
+        track_number = tag.and_then(|t| t.track());
+        has_cover = if is_flac {
+            scan_flac_has_cover(path) // scan rápido — não carrega dados de imagem
+        } else {
+            tag.map(|t| !t.pictures().is_empty()).unwrap_or(false)
+        };
+        bpm = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Bpm))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
-        let key = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::InitialKey))
+        key = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::InitialKey))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
-        let comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
+        comment = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Comment))
             .map(|s| s.to_string()).filter(|s| !s.is_empty());
-        let total_tracks = tag.and_then(|t| t.track_total());
-        // FLAC/OGG: Popularimeter → vorbis "RATING" (texto). M4A: "rate" atom (UTF8 pelo TagWave).
-        let rating = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Popularimeter))
+        total_tracks = tag.and_then(|t| t.track_total());
+        rating = tag.and_then(|t| t.get_string(&lofty::tag::ItemKey::Popularimeter))
             .and_then(|s| s.parse::<u8>().ok());
-        // For non-ID3 formats, load beat_anchors from sidecar
-        let beat_anchors = load_beat_anchor_sidecar(path);
-        (bpm, key, rating, comment, total_tracks, Vec::new(), None, beat_anchors)
-    };
+        beat_anchors = load_beat_anchor_sidecar(path);
+    }
 
     let mut issues = Vec::new();
     if title.is_none()                         { issues.push("sem título".to_string()); }
@@ -356,38 +567,86 @@ fn count_audio_files(folder: String) -> usize {
 }
 
 #[tauri::command]
+fn cancel_current_scan() {
+    SCAN_GEN.fetch_add(1, Ordering::SeqCst);
+}
+
+#[tauri::command]
 fn scan_folder(folder: String, app: tauri::AppHandle) -> Vec<Track> {
-    // Separa arquivos suportados e não-suportados (excluindo ocultos)
-    let mut audio_paths: Vec<std::path::PathBuf> = Vec::new();
-    let mut skipped: usize = 0;
+    let _scan_start = std::time::Instant::now();
+    let my_gen = SCAN_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+
+    // ── 1. Walk: coleta paths (leitura de diretório, sem IO de arquivo) ──────
+    let mut all_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut skipped_count = 0usize;
     for entry in WalkDir::new(&folder).into_iter().filter_map(|e| e.ok()) {
+        if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return vec![]; }
         if !entry.file_type().is_file() { continue; }
         let name = entry.file_name().to_string_lossy();
-        if name.starts_with('.') { continue; } // ocultos
+        if name.starts_with('.') || name.starts_with("._") { continue; }
         let is_audio = entry.path().extension()
             .map(|ext| AUDIO_EXTENSIONS.iter().any(|&a| ext.eq_ignore_ascii_case(a)))
             .unwrap_or(false);
-        if is_audio {
-            audio_paths.push(entry.path().to_path_buf());
-        } else {
-            skipped += 1;
-        }
+        if is_audio { all_paths.push(entry.path().to_path_buf()); }
+        else { skipped_count += 1; }
     }
 
-    let total = audio_paths.len();
+    if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return vec![]; }
+
+    let total = all_paths.len();
+    let _ = app.emit("scan_progress", serde_json::json!({ "done": 0, "total": total }));
+
+    // ── 2. Cache read: busca em lote no SQLite (única lock, microsegundos) ───
+    let cache_hits = read_cache_batch(&all_paths);
+    let cache_hit_count = cache_hits.len();
+
+    if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return vec![]; }
+
+    // ── 3. Rayon: cache hit → retorna; cache miss → lê arquivo ───────────────
     let counter = Arc::new(AtomicUsize::new(0));
-    let tracks: Vec<Track> = audio_paths.par_iter().filter_map(|p| {
-        let result = read_track(p);
+    let app_events = app.clone();
+
+    struct CacheEntry { path: String, mtime: u64, data: String }
+
+    let results: Vec<Option<(Track, Option<CacheEntry>)>> = all_paths.par_iter().map(|path| {
+        if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return None; }
+
+        let path_str = path.to_string_lossy().to_string();
+
+        let (track, new_entry) = if let Some(cached) = cache_hits.get(&path_str) {
+            (cached.clone(), None)
+        } else {
+            let t = read_track(path)?;
+            let mtime = file_mtime(path);
+            let data = serde_json::to_string(&t).unwrap_or_default();
+            (t, Some(CacheEntry { path: path_str.clone(), mtime, data }))
+        };
+
         let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
-        if done % 10 == 0 || done == total {
-            let _ = app.emit("scan_progress", serde_json::json!({ "done": done, "total": total }));
+        if done % 20 == 0 || done == total {
+            let _ = app_events.emit("scan_progress", serde_json::json!({ "done": done, "total": total }));
         }
-        result
+
+        Some((track, new_entry))
     }).collect();
 
-    if skipped > 0 {
-        let _ = app.emit("scan_skipped", serde_json::json!({ "count": skipped }));
+    if skipped_count > 0 {
+        let _ = app.emit("scan_skipped", serde_json::json!({ "count": skipped_count }));
     }
+
+    // ── 4. Cache write: grava novos em lote (única transação) ─────────────────
+    let new_entries: Vec<(String, u64, String)> = results.iter()
+        .filter_map(|r| r.as_ref()?.1.as_ref().map(|e| (e.path.clone(), e.mtime, e.data.clone())))
+        .collect();
+    write_cache_batch(new_entries);
+
+    let tracks: Vec<Track> = results.into_iter().filter_map(|r| Some(r?.0)).collect();
+
+    eprintln!("[PERF] scan_folder '{}': {} faixas em {:.2}s ({} cache, {} lidos)",
+        folder.split(|c| c == '/' || c == '\\').last().unwrap_or(&folder),
+        tracks.len(), _scan_start.elapsed().as_secs_f64(),
+        cache_hit_count, tracks.len().saturating_sub(cache_hit_count)
+    );
 
     tracks
 }
@@ -626,24 +885,9 @@ fn list_dir_contents(path: String) -> Result<Vec<FsDirEntry>, String> {
         let entry_path = entry.path();
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
         if is_dir {
-            let mut has_subdirs = false;
-            let mut audio_count: u32 = 0;
-            if let Ok(sub_entries) = std::fs::read_dir(&entry_path) {
-                for sub in sub_entries.flatten() {
-                    let sub_name = sub.file_name().to_string_lossy().to_string();
-                    if sub_name.starts_with('.') { continue; }
-                    if sub.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        has_subdirs = true;
-                    } else {
-                        let is_audio = sub.path().extension()
-                            .and_then(|e| e.to_str())
-                            .map(|e| AUDIO_EXTENSIONS.iter().any(|&a| e.eq_ignore_ascii_case(a)))
-                            .unwrap_or(false);
-                        if is_audio { audio_count += 1; }
-                    }
-                }
-            }
-            result.push(FsDirEntry { name, path: entry_path.to_string_lossy().to_string(), is_dir: true, has_subdirs, audio_count });
+            // Não abre a subpasta — mesma velocidade do Finder
+            // has_subdirs=true conservativo: mostra "›" em todas as pastas
+            result.push(FsDirEntry { name, path: entry_path.to_string_lossy().to_string(), is_dir: true, has_subdirs: true, audio_count: 0 });
         } else {
             let is_audio = entry_path.extension()
                 .and_then(|e| e.to_str())
@@ -761,7 +1005,7 @@ fn generate_waveform(path: String, bars: usize) -> Result<Vec<f32>, String> {
 fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> {
     use std::io::{Read, Seek, SeekFrom};
 
-    let fname = path.split('/').last().unwrap_or(&path).to_string();
+    let fname = path.split(|c| c == '/' || c == '\\').last().unwrap_or(&path).to_string();
 
     if duration_secs <= 0.0 {
         dlog!("[BPM] {} — SKIP: duration_secs={}", fname, duration_secs);
@@ -911,7 +1155,8 @@ fn analyze_bpm(path: String, duration_secs: f32) -> Result<Option<f32>, String> 
 // ── Waveform disk cache ───────────────────────────────────────────────────────
 
 fn wave_cache_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    let home = home_dir().map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
     std::path::PathBuf::from(home).join(".tagwave").join("wave_cache")
 }
 
@@ -1382,7 +1627,8 @@ fn beat_anchor_sidecar_path(path: &Path) -> std::path::PathBuf {
     let mut hasher = Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     let hash = format!("{:x}", hasher.finalize())[..24].to_string();
-    let home = std::env::var("HOME").unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+    let home = home_dir().map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
     std::path::PathBuf::from(home).join(".tagwave").join("cues").join(format!("{}_anchors.json", hash))
 }
 
@@ -1542,7 +1788,10 @@ fn clean_filename_str(name: &str) -> (String, Vec<String>) {
 
 #[tauri::command]
 fn analyze_filename_issues(paths: Vec<String>) -> Vec<FilenameIssue> {
+    let my_gen = SCAN_GEN.load(Ordering::Relaxed);
     paths.par_iter().filter_map(|path| {
+        // Aborta se um novo scan foi iniciado — evita starvation do thread pool
+        if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return None; }
         let p = Path::new(path);
         let filename = p.file_name()?.to_string_lossy().to_string();
         let (suggested, tags) = clean_filename_str(&filename);
@@ -1628,7 +1877,10 @@ fn paren_has_issues(s: &str) -> bool {
 
 #[tauri::command]
 fn analyze_paren_content(paths: Vec<String>) -> Vec<ParenIssue> {
+    let my_gen = SCAN_GEN.load(Ordering::Relaxed);
     paths.par_iter().filter_map(|path| {
+        // Aborta se um novo scan foi iniciado
+        if SCAN_GEN.load(Ordering::Relaxed) != my_gen { return None; }
         let p = Path::new(path);
         let filename = p.file_name()?.to_string_lossy().to_string();
         if !paren_has_issues(&filename) { return None; }
@@ -2002,7 +2254,7 @@ async fn query_itunes(
         urlencoding::encode(&term)
     );
 
-    dlog!("[iTunes] Buscando: {:?}  |  arquivo: {}", term, path.split('/').last().unwrap_or(path));
+    dlog!("[iTunes] Buscando: {:?}  |  arquivo: {}", term, path.split(|c| c == '/' || c == '\\').last().unwrap_or(path));
 
     let resp = match client.get(&url).send().await {
         Ok(r) => r,
@@ -2929,6 +3181,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![
+            cancel_current_scan,
             scan_folder,
             save_tags,
             save_cover,
