@@ -130,14 +130,16 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
     setEnrichSummary(null);
   }, [first?.id, first?.rating]);
 
-  // Reload cover when cover_version changes
+  // Reload cover when cover_version changes — cancelled flag prevents stale resolves
   useEffect(() => {
     if (!first?.has_cover) { setCoverDataUrl(null); return; }
+    let cancelled = false;
     invoke<string | null>("read_cover_base64", { path: first.path })
       .then((b64) => {
-        setCoverDataUrl(b64 ? `data:image/jpeg;base64,${b64}` : null);
+        if (!cancelled) setCoverDataUrl(b64 ? `data:image/jpeg;base64,${b64}` : null);
       })
-      .catch(() => setCoverDataUrl(null));
+      .catch(() => { if (!cancelled) setCoverDataUrl(null); });
+    return () => { cancelled = true; };
   }, [first?.id, first?.cover_version]);
 
   async function enrichAll() {
@@ -434,12 +436,12 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
         </div>
       )}
 
-      {/* Disco de vinil — só quando tocando */}
+      {/* Disco de vinil — só quando tocando (compacto para dar espaço aos campos) */}
       {!isBatch && isVinylPlaying && (
         <div>
           <div
-            className="mx-8 mt-3 relative group"
-            style={{ aspectRatio: "1/1" }}
+            className="mt-3 relative group"
+            style={{ width: '96px', height: '96px', margin: '12px auto 0' }}
           >
             {/* Wrapper com folga para o disco não cortar nas bordas */}
             <div className="absolute" style={{ inset: "6px" }}>
@@ -606,8 +608,8 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 <div>
                   <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest mb-0.5">TOM</p>
                   <span
-                    className="inline-block px-2 py-0.5 rounded-sm text-sm font-mono font-bold text-white"
-                    style={{ backgroundColor: `hsl(${((["Abm","G#m","B","Ebm","D#m","Gb","F#","Bbm","A#m","Db","C#","Fm","Ab","G#","Cm","Eb","D#","Gm","Bb","A#","Dm","F","Am","C","Em","G","Bm","D","F#m","Gbm","A","Dbm","C#m","E"].indexOf(first.key)+1)%12)*30}, 60%, 44%)` }}
+                    className="inline-block px-2 py-0.5 rounded-sm text-sm font-mono font-bold"
+                    style={{ color: 'white', backgroundColor: `hsl(${((["Abm","G#m","B","Ebm","D#m","Gb","F#","Bbm","A#m","Db","C#","Fm","Ab","G#","Cm","Eb","D#","Gm","Bb","A#","Dm","F","Am","C","Em","G","Bm","D","F#m","Gbm","A","Dbm","C#m","E"].indexOf(first.key)+1)%12)*30}, 60%, 44%)` }}
                   >
                     {first.key}
                   </span>
@@ -809,9 +811,9 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           disabled={saving}
           className="w-full py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-60 flex items-center justify-center gap-1.5"
           style={{
-            background: saved ? "rgba(91,160,85,0.18)" : "rgba(255,255,255,0.06)",
-            color: saved ? "#5BA055" : "#C2BEBC",
-            border: saved ? "1px solid rgba(91,160,85,0.3)" : "1px solid rgba(255,255,255,0.08)",
+            background: saved ? "rgba(91,160,85,0.18)" : "#D95340",
+            color: saved ? "#5BA055" : "white",
+            border: saved ? "1px solid rgba(91,160,85,0.3)" : "1px solid transparent",
           }}
         >
           {saving ? (

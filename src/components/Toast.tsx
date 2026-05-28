@@ -36,7 +36,7 @@ export default function ToastContainer() {
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed top-[72px] left-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none"
+    <div className="toast-container fixed top-[72px] left-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none"
       style={{ transform: "translateX(-50%)" }}
     >
       {items.map((msg) => (

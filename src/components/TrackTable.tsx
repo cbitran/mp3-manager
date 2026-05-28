@@ -387,8 +387,10 @@ const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { pa
     if (!hasCover) { setSrc(null); return; }
     const cached = coverCache.get(cacheKey);
     if (cached) { setSrc(cached); return; }
+    let cancelled = false;
     queuedInvoke<string | null>(() => invoke("read_cover_base64", { path }))
       .then((b64) => {
+        if (cancelled) return;
         if (b64) {
           const dataUrl = `data:image/jpeg;base64,${b64}`;
           setCoverCache(cacheKey, dataUrl);
@@ -398,6 +400,7 @@ const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { pa
         }
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [path, hasCover, cacheKey]);
 
   if (!src) return (
@@ -623,7 +626,7 @@ export default function TrackTable({
             className={`leading-none transition-colors ${
               favoriteTrackPaths.has(row.original.path)
                 ? "text-[#D95340]"
-                : "text-[#4C4743] hover:text-[#8F8883]"
+                : "text-[#756D67] hover:text-[#8F8883]"
             }`}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill={favoriteTrackPaths.has(row.original.path) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
@@ -1189,8 +1192,8 @@ export default function TrackTable({
         ) : (
           <>
             <p className="text-xs text-[#605A55] uppercase tracking-widest">Nenhuma faixa carregada</p>
-            <p className="text-[12px] text-[#8F8883] leading-relaxed max-w-[280px]">
-              Selecione uma pasta na barra lateral esquerda ou adicione uma nova pasta com suas músicas.
+            <p className="text-[12px] text-[#ABA5A0] leading-relaxed max-w-[280px] text-center">
+              Selecione uma pasta na barra lateral esquerda<br/>ou adicione uma nova pasta com suas músicas.
             </p>
             {onOpenFolder && (
               <button

@@ -445,10 +445,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly }: Pro
       style={{ background: "rgba(0,0,0,0.65)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
-        className="rounded-xl shadow-2xl w-[420px] overflow-hidden"
-        style={{ background: "#1c1715", border: "1px solid rgba(255,255,255,0.08)" }}
-      >
+      <div className="rounded-xl shadow-2xl w-[420px] overflow-hidden bg-[#1c1715] border border-white/[0.08]">
         {exportOnly
           ? <ExportMode tracks={tracks} onClose={onClose} exportOnly={exportOnly} />
           : <CreateMode tracks={tracks} onClose={onClose} />

@@ -442,6 +442,34 @@ html[data-theme="light"] .border-yellow-500\/20       { border-color: rgba(161,9
 html[data-theme="light"] ::-webkit-scrollbar-thumb         { background: rgba(0,0,0,0.18) !important; }
 html[data-theme="light"] ::-webkit-scrollbar-thumb:hover   { background: rgba(0,0,0,0.32) !important; }
 
+/* ── Divisórias de coluna mais visíveis em tema claro ─────────── */
+html[data-theme="light"] thead th {
+  box-shadow: inset -1px 0 0 rgba(0,0,0,0.14) !important;
+}
+
+/* ── Logo: círculo interno transparente em tema claro ─────────── */
+html[data-theme="light"] .logo-inner {
+  fill: #F2EFEB !important;
+}
+
+/* ── Toast em tema claro: texto laranja ──────────────────────── */
+html[data-theme="light"] .bg-\[\#18120F\] { background-color: #FFFFFF !important; }
+html[data-theme="light"] .bg-\[\#1c1110\] { background-color: #FFF5F4 !important; }
+html[data-theme="light"] .toast-container .text-\[\#C2BEBC\] { color: #D95340 !important; }
+html[data-theme="light"] .toast-container .text-\[\#F5F5F4\] { color: #D95340 !important; }
+
+/* ── Assistente IA em tema claro ─────────────────────────────── */
+html[data-theme="light"] .bg-\[\#1a1816\] { background-color: #EDE9E4 !important; }
+
+/* ── Modal Criar Playlist — texto inline → cores claras ─────── */
+html[data-theme="light"] .bg-\[\#1c1715\] h2 { color: rgba(0,0,0,0.87) !important; }
+html[data-theme="light"] .bg-\[\#1c1715\] p  { color: rgba(0,0,0,0.60) !important; }
+html[data-theme="light"] .bg-\[\#1c1715\] label { color: rgba(0,0,0,0.60) !important; }
+html[data-theme="light"] .bg-\[\#1c1715\] input { color: rgba(0,0,0,0.87) !important; }
+html[data-theme="light"] .bg-\[\#1c1715\] span:not([class*="text-[#D95340]"]):not([class*="text-[#5BA055]"]) {
+  color: rgba(0,0,0,0.70) !important;
+}
+
 /* Checkbox em tema claro */
 html[data-theme="light"] input[type="checkbox"] {
   border-color: rgba(0,0,0,0.20);

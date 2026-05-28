@@ -76,7 +76,6 @@ export default function App() {
     helpMarkersEnabled,
     textContrastBoost,
     globalLoading,
-    setGlobalLoading,
     setFileSessionName,
   } = useAppStore();
 
@@ -427,7 +426,7 @@ export default function App() {
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [missingPlaylistPaths, setMissingPlaylistPaths] = useState<{ playlistId: string; paths: string[] } | null>(null);
   const [showSettings, setShowSettings]     = useState(false);
-  const [compact, setCompact]               = useState(false);
+  const [compact] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [newTrackIds, setNewTrackIds]       = useState<Set<string>>(new Set());
   const [showSidebar, setShowSidebar]       = useState(true);
@@ -439,7 +438,6 @@ export default function App() {
   const [filenameMetaIssues, setFilenameMetaIssues] = useState<FilenameMetaIssue[]>([]);
   const [parenIssues, setParenIssues] = useState<ParenIssue[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
-  const [normalizing, setNormalizing]     = useState(false);
   const [exporting, setExporting]         = useState(false);
   const pendingBpmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [enriching, setEnriching]         = useState(false);
@@ -595,7 +593,8 @@ export default function App() {
     const playlist = pls.find((p) => p.id === activePlaylistId);
     if (!playlist || playlist.trackPaths.length === 0) return;
     const loadedPaths = new Set(currentTracks.map((t) => t.path));
-    if (playlist.trackPaths.some((p) => loadedPaths.has(p))) return; // já estão carregadas
+    const loadedCount = playlist.trackPaths.filter((p) => loadedPaths.has(p)).length;
+    if (loadedCount === playlist.trackPaths.length) return; // todas já carregadas
     // Procura a pasta recente que contém as faixas da playlist
     const sep = (p: string) => p.includes("\\") ? "\\" : "/";
     const match = recentFolders.find((rf) =>
@@ -629,20 +628,6 @@ export default function App() {
 
   // Nenhum handler de onCloseRequested — deixa o botão nativo fechar normalmente
 
-  async function normalizeTags() {
-    if (allTracks.length === 0) return;
-    setNormalizing(true);
-    setGlobalLoading("normalizando…");
-    try {
-      const paths = allTracks.map((t) => t.path);
-      const results = await invoke<{ path: string; changed: boolean }[]>("normalize_tags", { paths });
-      const changed = results.filter((r) => r.changed).length;
-      toast(changed > 0 ? t("toolbar.toast.normalized", { count: changed }) : t("toolbar.toast.alreadyNormalized"), changed > 0 ? "success" : "info");
-    } finally {
-      setNormalizing(false);
-      setGlobalLoading(null);
-    }
-  }
 
   // Retorna as faixas a exportar: seleção > playlist ativa > null (bloqueia)
   function getExportTargets(): Track[] | null {
@@ -1696,7 +1681,7 @@ export default function App() {
         <div className="shrink-0 flex items-center justify-center w-8 h-8">
           <svg width="22" height="22" viewBox="0 0 100 100" fill="none">
             <circle cx="50" cy="50" r="46" fill="#D95340"/>
-            <circle cx="50" cy="50" r="27" fill="#1A0D0B"/>
+            <circle cx="50" cy="50" r="27" fill="#1A0D0B" className="logo-inner"/>
           </svg>
         </div>
 
@@ -1865,19 +1850,6 @@ export default function App() {
               </div>
             </div>
           )}
-          {allTracks.length > 0 && (
-            <button
-              data-help="normalize"
-              onClick={normalizeTags}
-              disabled={normalizing}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-[#605A55] hover:text-[#756D67] hover:bg-white/[0.04] disabled:opacity-40 transition-colors whitespace-nowrap shrink-0"
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 3h9M3 5.5h5M4.5 8h2"/>
-              </svg>
-              {normalizing ? t("toolbar.normalizing") : t("toolbar.normalize")}
-            </button>
-          )}
           {allTracks.length > 0 && (() => {
             const hasSelection = selectedIds.size > 0;
             const canExport = hasSelection || !!activePlaylist;
@@ -1910,8 +1882,7 @@ export default function App() {
                       <button
                         key={sw.id}
                         onClick={() => exportToDj(sw.id)}
-                        className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
-                        style={{ color: "#E8E4E1" }}
+                        className="w-full px-3 py-1.5 text-left text-[11px] text-[#E8E4E1] hover:bg-white/[0.07] transition-colors"
                       >
                         {sw.name}
                       </button>
@@ -2002,31 +1973,6 @@ export default function App() {
 
         <div className="flex-1" />
 
-        {/* Lista / Grade toggle */}
-        <button
-          onClick={() => setCompact((v) => !v)}
-          title={compact ? t("toolbar.viewList") : t("toolbar.viewCompact")}
-          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
-            compact ? "bg-white/[0.08] text-[#F5F5F4]" : "text-[#605A55] hover:text-[#8F8883] hover:bg-white/[0.04]"
-          }`}
-        >
-          {compact ? (
-            /* Ícone lista (modo atual = grade → clica p/ lista) */
-            <svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <line x1="0" y1="1" x2="13" y2="1"/>
-              <line x1="0" y1="5.5" x2="13" y2="5.5"/>
-              <line x1="0" y1="10" x2="13" y2="10"/>
-            </svg>
-          ) : (
-            /* Ícone grade (modo atual = lista → clica p/ grade) */
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="0.5" y="0.5" width="4.5" height="4.5" rx="0.8"/>
-              <rect x="7" y="0.5" width="4.5" height="4.5" rx="0.8"/>
-              <rect x="0.5" y="7" width="4.5" height="4.5" rx="0.8"/>
-              <rect x="7" y="7" width="4.5" height="4.5" rx="0.8"/>
-            </svg>
-          )}
-        </button>
 
         {/* Advanced filter + Search */}
         <div
@@ -2228,7 +2174,8 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setShowTrialInfo(true)}
-                  className="px-2 py-0.5 rounded text-[9px] font-bold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] text-white transition-colors"
+                  className="px-2 py-0.5 rounded text-[9px] font-bold bg-[#D95340] hover:bg-[#E07364] active:bg-[#B34435] transition-colors"
+                  style={{ color: 'white' }}
                   title={t("app.buyLicense")}
                 >
                   Upgrade
@@ -2263,20 +2210,31 @@ export default function App() {
                     {t("settings.tabs.columns")}
                   </p>
                   <div className="py-1">
-                    {HIDEABLE_COLS.map((col) => (
-                      <label
-                        key={col.id}
-                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-white/[0.04] transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isColVisible(col.id)}
-                          onChange={() => setColumnVisibility({ ...columnVisibility, [col.id]: !isColVisible(col.id) })}
-                          className="accent-[#D95340]"
-                        />
-                        <span className="text-[11px] text-[#C2BEBC]">{col.label}</span>
-                      </label>
-                    ))}
+                    {HIDEABLE_COLS.map((col) => {
+                      const vis = isColVisible(col.id);
+                      return (
+                        <button
+                          key={col.id}
+                          onClick={() => setColumnVisibility({ ...columnVisibility, [col.id]: !vis })}
+                          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-white/[0.04] transition-colors"
+                        >
+                          <span
+                            className="w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center"
+                            style={{
+                              background: vis ? "#D95340" : "transparent",
+                              border: vis ? "1px solid #D95340" : "1px solid rgba(0,0,0,0.25)",
+                            }}
+                          >
+                            {vis && (
+                              <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 3l2 2 4-4"/>
+                              </svg>
+                            )}
+                          </span>
+                          <span className="text-[11px] text-[#C2BEBC]">{col.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                   <div className="border-t border-white/[0.05] pt-1.5 px-3 mt-0.5 flex items-center gap-3">
                     <button
@@ -2539,9 +2497,15 @@ export default function App() {
                 onTrackDragStart={handleTrackDragStart}
               />
             </div>
-            {showRightPanel && allTracks.length > 0 && (() => {
+            {allTracks.length > 0 && (() => {
               const panel = (
-                <div className="w-64 shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C]">
+                <div
+                  className="shrink-0 flex flex-col border-l border-white/[0.05] bg-[#0E0D0C] overflow-hidden"
+                  style={{
+                    width: showRightPanel ? '256px' : '0',
+                    transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+                  }}
+                >
                   {/* Tab bar */}
                   <div className="flex items-center border-b border-white/[0.05] px-3 pt-2 gap-0">
                     <button

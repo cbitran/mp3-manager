@@ -586,8 +586,8 @@ export default function AIAssistant() {
       {/* Chat panel */}
       {open && (
         <div
-          className="fixed bottom-[124px] right-4 z-[299] w-[320px] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-          style={{ background: "#1a1816", border: "1px solid rgba(255,255,255,0.08)", maxHeight: "420px" }}
+          className="fixed bottom-[124px] right-4 z-[299] w-[320px] rounded-xl shadow-2xl flex flex-col overflow-hidden bg-[#1c1715] border border-white/[0.08]"
+          style={{ maxHeight: "420px" }}
         >
           {/* Header */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.06]">
@@ -658,8 +658,7 @@ export default function AIAssistant() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               placeholder="Pergunte algo…"
-              className="flex-1 px-2.5 py-1.5 rounded-lg text-[12px] text-[#C2BEBC] placeholder-[#4C4743] focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+              className="flex-1 px-2.5 py-1.5 rounded-lg text-[12px] text-[#C2BEBC] placeholder-[#4C4743] focus:outline-none bg-white/[0.04] border border-white/[0.07]"
             />
             <button
               onClick={listening ? stopListening : startListening}

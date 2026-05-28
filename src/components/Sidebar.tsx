@@ -46,6 +46,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites" | "playlists">("recent");
+  const [librarySort, setLibrarySort] = useState<"recent" | "alpha">("recent");
   const [isDragOver, setIsDragOver] = useState(false);
   const [dupDialog, setDupDialog] = useState<{ path: string; name: string } | null>(null);
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
@@ -154,6 +155,11 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
   };
 
   const handleRemoveFromList = (path: string) => {
+    // Auto-delete playlists cujas faixas são todas desta pasta
+    playlists
+      .filter((p) => p.trackPaths.length > 0 && p.trackPaths.every((tp) => tp.startsWith(path)))
+      .forEach((p) => deletePlaylist(p.id));
+
     clearFolderTracks(path);
     removeRecentFolder(path);
     if (isFavorite(path)) toggleFavorite(path);
@@ -226,7 +232,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
         {/* Tab bar */}
         <div className="flex items-center px-2 pt-2 gap-0 border-b border-white/[0.05]" data-help="sidebar-tabs">
           {([
-            { id: "recent",    label: t("sidebar.recent"),    count: recentFolders.length },
+            { id: "recent",    label: t("sidebar.libraries"), count: recentFolders.length },
             { id: "favorites", label: t("sidebar.favorites"), count: favoriteFolders.length },
             { id: "playlists", label: t("sidebar.playlists"), count: playlists.length },
           ] as const).map((tab) => {
@@ -256,6 +262,24 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               </button>
             );
           })}
+          {sidebarTab === "recent" && recentFolders.length > 1 && (
+            <div className="ml-auto mb-1.5 flex items-center gap-0.5">
+              <button
+                onClick={() => setLibrarySort("recent")}
+                title="Recentes primeiro"
+                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${librarySort === "recent" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              >
+                Recente
+              </button>
+              <button
+                onClick={() => setLibrarySort("alpha")}
+                title="Ordem alfabética"
+                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${librarySort === "alpha" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
+              >
+                A–Z
+              </button>
+            </div>
+          )}
           {sidebarTab === "playlists" && onNewPlaylist && (
             <button
               onClick={onNewPlaylist}
@@ -301,7 +325,14 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
               </div>
             )}
             {recentFolders.length > 0
-              ? recentFolders.map((f) => {
+              ? (librarySort === "alpha"
+                  ? [...recentFolders].sort((a, b) => {
+                      const na = a.split(/[\\/]/).filter(Boolean).pop() ?? a;
+                      const nb = b.split(/[\\/]/).filter(Boolean).pop() ?? b;
+                      return na.localeCompare(nb);
+                    })
+                  : recentFolders
+                ).map((f) => {
                   const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
                   return (
                     <div key={f}
@@ -330,7 +361,7 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
                     </div>
                   );
                 })
-              : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma pasta recente</p>
+              : <p className="px-2 py-4 text-[10px] text-[#4C4743]">Nenhuma biblioteca adicionada</p>
             }
             </>
           )}
