@@ -446,6 +446,7 @@ export default function App() {
   const [isDragOver, setIsDragOver]     = useState(false);
   const [pendingFileDrop, setPendingFileDrop] = useState<{ paths: string[]; defaultName: string } | null>(null);
   const [fileDropDraftName, setFileDropDraftName] = useState("");
+  const [pendingFileChoice, setPendingFileChoice] = useState<{ paths: string[]; name: string } | null>(null);
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
   const [videoTrack, setVideoTrack]             = useState<Track | null>(null);
   const [enrichingIds, setEnrichingIds]         = useState<Set<string>>(new Set());
@@ -2373,7 +2374,7 @@ export default function App() {
               key={`${browsePath}-${browseKey}`}
               rootPath={browsePath}
               onLoadFolder={(path) => { setBrowsePath(null); scanFolder(path); }}
-              onLoadFiles={(paths, name) => { setBrowsePath(null); loadFileDrop(paths, name); }}
+              onLoadFiles={(paths, name) => { setBrowsePath(null); setPendingFileChoice({ paths, name }); }}
               onClose={() => setBrowsePath(null)}
             />
           )}
@@ -2904,6 +2905,100 @@ export default function App() {
                 disabled={!fileDropDraftName.trim()}
                 className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors disabled:opacity-40"
               >Carregar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal destino: Biblioteca ou Playlist */}
+      {pendingFileChoice && (
+        <div
+          className="fixed inset-0 z-[410] flex items-end justify-center pb-6"
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)" }}
+          onClick={() => setPendingFileChoice(null)}
+        >
+          <div
+            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl"
+            style={{ background: "#1A1815", border: "1px solid rgba(255,255,255,0.08)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#605A55]">Adicionar a…</p>
+              <p className="text-sm font-semibold text-[#E8E4E1] mt-0.5">
+                {pendingFileChoice.paths.length} faixa{pendingFileChoice.paths.length !== 1 ? "s" : ""} selecionada{pendingFileChoice.paths.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+
+            {/* Biblioteca */}
+            <div className="px-3 pb-2">
+              <button
+                onClick={() => { loadFileDrop(pendingFileChoice.paths, pendingFileChoice.name); setPendingFileChoice(null); }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(217,83,64,0.15)" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-[#E8E4E1]">Biblioteca</p>
+                  <p className="text-[11px] text-[#605A55]">Substituir visualização atual</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Separator */}
+            {playlists.length > 0 && (
+              <div className="px-5 py-2 flex items-center gap-2">
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">Playlists</span>
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+              </div>
+            )}
+
+            {/* Lista de playlists */}
+            <div className="px-3 max-h-[240px] overflow-y-auto no-scrollbar">
+              {playlists.map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={() => {
+                    useAppStore.getState().addTracksToPlaylist(pl.id, pendingFileChoice.paths);
+                    useAppStore.getState().setActivePlaylistId(pl.id);
+                    loadFileDrop(pendingFileChoice.paths, pl.name);
+                    setPendingFileChoice(null);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                  style={{ background: "transparent" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
+                    <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Cancelar */}
+            <div className="px-3 pt-2 pb-4">
+              <button
+                onClick={() => setPendingFileChoice(null)}
+                className="w-full py-2.5 rounded-xl text-[13px] font-medium text-[#756D67] hover:text-[#C2BEBC] transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>

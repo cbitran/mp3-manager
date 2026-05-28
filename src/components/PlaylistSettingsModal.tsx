@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useAppStore, type Playlist, type PlaylistGlobalProperties } from "../store";
 import { toast } from "./Toast";
 
@@ -78,7 +79,7 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
     );
   };
 
-  const coverName = props.cover ? props.cover.split(/[\\/]/).pop() : null;
+  const coverSrc = props.cover ? convertFileSrc(props.cover) : null;
 
   return (
     <div
@@ -139,14 +140,23 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                   label="Capa"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="flex-1 text-[11px] text-[#8F8883] truncate">
-                      {coverName ?? "Nenhuma imagem"}
-                    </span>
+                    {coverSrc ? (
+                      <img
+                        src={coverSrc}
+                        alt="Capa"
+                        className="w-8 h-8 rounded object-cover shrink-0"
+                        style={{ border: "1px solid rgba(255,255,255,0.10)" }}
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded shrink-0 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#4C4743"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" opacity="0"/><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      </div>
+                    )}
                     <button
                       onClick={handlePickCover}
                       className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] hover:bg-white/[0.10] text-[#8F8883] transition-colors whitespace-nowrap flex-shrink-0"
                     >
-                      Escolher…
+                      {coverSrc ? "Trocar…" : "Escolher…"}
                     </button>
                   </div>
                 </FieldRow>
