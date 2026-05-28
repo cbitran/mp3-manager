@@ -100,6 +100,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { queuedInvoke } from "../lib/ipcQueue";
 import { toast } from "./Toast";
+import { applyPlaylistRules } from "../lib/playlistRules";
 
 const col = createColumnHelper<Track>();
 
@@ -1711,12 +1712,16 @@ export default function TrackTable({
                   <button
                     key={pl.id}
                     className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.06] truncate" style={{ color: "#E8E4E1" }}
-                    onClick={() => {
+                    onClick={async () => {
                       const paths = selectedIds.size > 1
                         ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
                         : [contextMenu.track.path];
                       addTracksToPlaylist(pl.id, paths);
                       setContextMenu(null);
+                      const gp = pl.globalProperties;
+                      if (gp?.enabled && gp.activeFields.length > 0) {
+                        await applyPlaylistRules(gp, paths);
+                      }
                     }}
                   >
                     {pl.name}

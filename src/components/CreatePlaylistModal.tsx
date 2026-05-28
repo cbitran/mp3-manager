@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Track, type PlaylistGlobalProperties } from "../store";
+import { applyPlaylistRules } from "../lib/playlistRules";
 
 interface DjSoftwareInfo {
   id: string;
@@ -71,11 +72,13 @@ function CreateMode({ tracks, onClose }: { tracks: Track[]; onClose: () => void 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) return;
-    const id = createPlaylist(name.trim(), tracks.map((t) => t.path));
+    const paths = tracks.map((t) => t.path);
+    const id = createPlaylist(name.trim(), paths);
     if (props.enabled && props.activeFields.length > 0) {
       updatePlaylist(id, { globalProperties: props });
+      await applyPlaylistRules(props, paths);
     }
     setActivePlaylistId(id);
     onClose();

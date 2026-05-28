@@ -917,13 +917,37 @@ function PlaylistRow({
   onDragEnter?: () => void;
   onDragLeave?: () => void;
 }) {
+  const updatePlaylist = useAppStore((s) => s.updatePlaylist);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(pl.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDraft(pl.name);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  }
+
+  function commitEdit() {
+    const name = draft.trim();
+    if (name && name !== pl.name) updatePlaylist(pl.id, { name });
+    setEditing(false);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+    if (e.key === "Escape") { setEditing(false); }
+  }
+
   return (
-    <button
-      onClick={isDragging ? undefined : onOpen}
-      onContextMenu={onContextMenu}
+    <div
       onMouseEnter={() => isDragging && onDragEnter?.()}
       onMouseLeave={() => isDragging && onDragLeave?.()}
-      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors group
+      onContextMenu={onContextMenu}
+      onDoubleClick={isDragging ? undefined : startEdit}
+      onClick={isDragging || editing ? undefined : onOpen}
+      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors group cursor-pointer
         ${isHoveredDrop
           ? "bg-[#D95340]/25 border border-[#D95340]/50 text-[#F5F5F4]"
           : isActive
@@ -938,18 +962,35 @@ function PlaylistRow({
         <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
         <rect x="1" y="8" width="5" height="2" rx="0.5"/>
       </svg>
-      <span className="flex-1 truncate text-[11px]">{pl.name}</span>
-      {pl.pendingRulesApply && (
+
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={onKeyDown}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 text-[11px] bg-transparent border-b border-[#D95340]/60 outline-none text-[#F5F5F4] min-w-0"
+          style={{ padding: "0 1px" }}
+        />
+      ) : (
+        <span className="flex-1 truncate text-[11px]">{pl.name}</span>
+      )}
+
+      {pl.pendingRulesApply && !editing && (
         <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" title="Regras pendentes de aplicação" />
       )}
-      <span className={`text-[9px] font-mono tabular-nums ${isActive ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
-        {pl.trackPaths.length}
-      </span>
-      {pl.lastExportedTo && pl.lastExportedTo.length > 0 && (
+      {!editing && (
+        <span className={`text-[9px] font-mono tabular-nums ${isActive ? "text-[#D95340]/60" : "text-[#4C4743]"}`}>
+          {pl.trackPaths.length}
+        </span>
+      )}
+      {!editing && pl.lastExportedTo && pl.lastExportedTo.length > 0 && (
         <span className="text-[8px] font-bold px-1 rounded bg-white/[0.04] text-[#4C4743]">
           {DJ_BADGE[pl.lastExportedTo[0]] ?? pl.lastExportedTo[0]}
         </span>
       )}
-    </button>
+    </div>
   );
 }

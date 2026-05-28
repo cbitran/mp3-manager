@@ -40,6 +40,7 @@ import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
 import CreatePlaylistModal from "./components/CreatePlaylistModal";
 import type { PendingNewTrack } from "./store";
 import { checkLicenseStatus } from "./services/LicenseService";
+import { applyPlaylistRules } from "./lib/playlistRules";
 
 function loadingLabel(mode: "startup" | "closing"): string {
   const saved = localStorage.getItem("tagwave_language") ?? navigator.language;
@@ -219,46 +220,22 @@ export default function App() {
       st.addTracksToPlaylist(hoveredPlaylistId, newPaths);
 
       const gp = playlist.globalProperties;
-      if (gp?.enabled && gp.activeFields.length > 0) {
-        const snapshots = newPaths.map((p) => {
-          const tr = st.tracks.find((t) => t.path === p);
-          return { path: p, album: tr?.album, genre: tr?.genre, comment: tr?.comment };
-        });
+      const hasRules = gp?.enabled && gp.activeFields.length > 0;
 
-        for (const path of newPaths) {
-          await invoke('save_tags', {
-            path, title: null, artist: null, year: null, trackNumber: null,
-            totalTracks: null, bpm: null, key: null, rating: null,
-            album: gp.activeFields.includes('album') ? gp.album ?? null : null,
-            genre: gp.activeFields.includes('genre') ? gp.genre ?? null : null,
-            comment: gp.activeFields.includes('comment') ? gp.comment ?? null : null,
-          }).catch(() => {});
-          if (gp.activeFields.includes('cover') && gp.cover) {
-            await invoke('save_cover_from_file', { path, imagePath: gp.cover }).catch(() => {});
-          }
-        }
+      const snapshots = newPaths.map((p) => {
+        const tr = st.tracks.find((t) => t.path === p);
+        return { path: p, album: tr?.album, genre: tr?.genre, comment: tr?.comment };
+      });
 
-        const fresh = useAppStore.getState();
-        for (const path of newPaths) {
-          const tr = fresh.tracks.find((t) => t.path === path);
-          if (!tr) continue;
-          fresh.updateTrack({
-            ...tr,
-            album: gp.activeFields.includes('album') ? gp.album ?? tr.album : tr.album,
-            genre: gp.activeFields.includes('genre') ? gp.genre ?? tr.genre : tr.genre,
-            comment: gp.activeFields.includes('comment') ? gp.comment ?? tr.comment : tr.comment,
-            has_cover: gp.activeFields.includes('cover') && !!gp.cover ? true : tr.has_cover,
-            cover_version: gp.activeFields.includes('cover') && !!gp.cover ? (tr.cover_version ?? 0) + 1 : tr.cover_version,
-          });
-        }
+      useAppStore.getState().pushUndoEntry({
+        description: `${newPaths.length} faixa${newPaths.length > 1 ? 's' : ''} em "${playlist.name}"`,
+        playlistId: hoveredPlaylistId,
+        addedPaths: newPaths,
+        metadataSnapshot: snapshots,
+      });
 
-        useAppStore.getState().pushUndoEntry({
-          description: `${newPaths.length} faixa${newPaths.length > 1 ? 's' : ''} em "${playlist.name}"`,
-          playlistId: hoveredPlaylistId,
-          addedPaths: newPaths,
-          metadataSnapshot: snapshots,
-        });
-
+      if (hasRules && gp) {
+        await applyPlaylistRules(gp, newPaths);
         toast(
           `${newPaths.length} faixa${newPaths.length > 1 ? 's adicionadas' : ' adicionada'} — propriedades aplicadas`,
           'success'
