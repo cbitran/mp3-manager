@@ -1239,6 +1239,15 @@ function PlaylistRow({
       {pl.pendingRulesApply && !editing && (
         <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" title="Regras pendentes de aplicação" />
       )}
+      {!editing && pl.trackPaths.length > 0 && (
+        <span className={`shrink-0 text-[9px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md ${
+          isActive
+            ? "bg-[#D95340]/20 text-[#D95340]"
+            : "bg-white/[0.06] text-[#605A55]"
+        }`}>
+          {pl.trackPaths.length}
+        </span>
+      )}
       {!editing && pl.lastExportedTo && pl.lastExportedTo.length > 0 && (
         <span className="text-[8px] font-bold px-1 rounded bg-white/[0.04] text-[#4C4743]">
           {DJ_BADGE[pl.lastExportedTo[0]] ?? pl.lastExportedTo[0]}
