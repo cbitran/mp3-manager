@@ -423,6 +423,10 @@ export default function App() {
     [tracksAfterPlaylist, mediaTab]
   );
 
+  // Ref sempre atualizado — usado no keydown handler sem precisar re-registrar o listener
+  const tracksForMediaRef = useRef(tracksForMedia);
+  useEffect(() => { tracksForMediaRef.current = tracksForMedia; }, [tracksForMedia]);
+
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [missingPlaylistPaths, setMissingPlaylistPaths] = useState<{ playlistId: string; paths: string[] } | null>(null);
   const [showSettings, setShowSettings]     = useState(false);
@@ -1247,7 +1251,8 @@ export default function App() {
       }
       if ((e.key === "a" || e.key === "A") && (e.metaKey || e.ctrlKey) && !isInput) {
         e.preventDefault();
-        useAppStore.getState().selectAll(tracks.map((t) => t.id));
+        // tracksForMediaRef sempre reflete a view visível atual (playlist/pasta/filtros)
+        useAppStore.getState().selectAll(tracksForMediaRef.current.map((t) => t.id));
       }
       if ((e.key === "," || e.key === "،") && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
