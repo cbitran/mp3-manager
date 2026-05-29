@@ -1487,6 +1487,46 @@ export default function App() {
     await scanFolder(folder);
   }
 
+  async function refreshCurrentView() {
+    const { tracks, activePlaylistId, playlists } = useAppStore.getState();
+    const playlistPaths = activePlaylistId
+      ? playlists.find((p) => p.id === activePlaylistId)?.trackPaths ?? []
+      : null;
+    const targetPaths = playlistPaths ?? tracks.map((t) => t.path);
+    if (targetPaths.length === 0) return;
+
+    setAppLoading("scanning");
+    try {
+      const refreshed = await invoke<Track[]>("scan_specific_files", { paths: targetPaths });
+      const current = useAppStore.getState().tracks;
+      const freshMap = new Map(refreshed.map((t) => [t.path, t]));
+      const merged = current.map((t) => {
+        const fresh = freshMap.get(t.path);
+        if (!fresh) return t;
+        return {
+          ...fresh,
+          cue_points:    t.cue_points    ?? fresh.cue_points,
+          beat_phase_ms: t.beat_phase_ms ?? fresh.beat_phase_ms,
+          beat_anchors:  t.beat_anchors  ?? fresh.beat_anchors,
+          // Sempre bumpamos cover_version para invalidar cache do CoverCell
+          cover_version: (t.cover_version ?? 0) + 1,
+        };
+      });
+      // Adiciona faixas da playlist que ainda não estão no store
+      if (playlistPaths) {
+        const existingSet = new Set(current.map((t) => t.path));
+        const extra = refreshed.filter((t) => !existingSet.has(t.path));
+        if (extra.length > 0) {
+          setTracks([...merged, ...extra]);
+          return;
+        }
+      }
+      setTracks(merged);
+    } finally {
+      setAppLoading(null);
+    }
+  }
+
   async function loadAllFolders() {
     const folders = useAppStore.getState().recentFolders;
     if (folders.length === 0) { toast("Nenhuma pasta na biblioteca", "info"); return; }
@@ -1795,6 +1835,20 @@ export default function App() {
           <span className="text-[10px] font-mono text-[#8F8883] whitespace-nowrap shrink-0">
             {scanDone}/{scanTotal}
           </span>
+        )}
+
+        {/* Atualizar — re-escaneia view atual do disco */}
+        {allTracks.length > 0 && !isScanning && (
+          <button
+            onClick={refreshCurrentView}
+            title="Atualizar — relê metadados e capas do disco"
+            className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md text-[#605A55] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+            </svg>
+          </button>
         )}
 
         {/* Quick actions */}

@@ -20,7 +20,11 @@ import { useAppStore, type Track } from "../store";
 
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
-const MINI_BARS = 40;
+const MINI_BARS   = 80;
+const MINI_BAR_W  = 1;
+const MINI_STEP   = 1.4;   // gap = 0.4px
+const MINI_VB_W   = MINI_BARS * MINI_STEP;
+const MINI_VB_H   = 13;
 
 interface WaveBarMini { amp: number; bass: number; treble: number; }
 const miniWaveCache = new Map<string, WaveBarMini[]>();
@@ -52,26 +56,24 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
   }, [path]);
 
   const pct = isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0;
-  const VB_W = MINI_BARS * 2.8;
-  const VB_H = 13;
 
   return (
     <div className="w-full flex items-center justify-center" style={{ pointerEvents: "none" }}>
       {bars ? (
-        <svg width="100%" height="15" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" className="overflow-visible">
+        <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" className="overflow-visible">
           {bars.map((bar, i) => {
-            const barH   = Math.max(1, bar.amp * (VB_H - 2));
-            const y      = (VB_H - barH) / 2;
+            const barH   = Math.max(0.8, bar.amp * (MINI_VB_H - 2));
+            const y      = (MINI_VB_H - barH) / 2;
             const barPct = i / MINI_BARS;
             const played = isCurrentTrack && pct > 0 && barPct < pct;
             return (
               <rect
                 key={i}
-                x={i * 2.8}
+                x={i * MINI_STEP}
                 y={y}
-                width={2}
+                width={MINI_BAR_W}
                 height={barH}
-                rx={0.4}
+                rx={0.3}
                 fill={played ? "#D95340" : "#A8A3A0"}
                 opacity={played ? 1 : isCurrentTrack ? 0.45 + bar.amp * 0.45 : 0.28 + bar.amp * 0.45}
               />
@@ -79,17 +81,17 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
           })}
           {/* Playhead */}
           {isCurrentTrack && pct > 0 && (
-            <rect x={pct * VB_W - 0.5} y={0} width={1} height={VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
+            <rect x={pct * MINI_VB_W - 0.5} y={0} width={1} height={MINI_VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
           )}
         </svg>
       ) : (
-        <svg width="100%" height="15" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none">
+        <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none">
           {Array.from({ length: MINI_BARS }, (_, i) => {
             const amp = 0.15 + 0.12 * Math.abs(Math.sin(i * 0.7));
-            const barH = Math.max(1, amp * (VB_H - 2));
+            const barH = Math.max(0.8, amp * (MINI_VB_H - 2));
             return (
-              <rect key={i} x={i * 2.8} y={(VB_H - barH) / 2} width={2} height={barH}
-                fill="#A8A3A0" opacity={0.15} rx={0.4} />
+              <rect key={i} x={i * MINI_STEP} y={(MINI_VB_H - barH) / 2} width={MINI_BAR_W} height={barH}
+                fill="#A8A3A0" opacity={0.15} rx={0.3} />
             );
           })}
         </svg>
