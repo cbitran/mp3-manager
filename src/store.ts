@@ -529,11 +529,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateTrack: (track) =>
     set((s) => ({ tracks: s.tracks.map((t) => (t.id === track.id ? track : t)) })),
 
-  removeTracks: (ids) =>
-    set((s) => ({
+  removeTracks: (ids) => {
+    const s = get();
+    const pathsToRemove = new Set(
+      ids.map((id) => s.tracks.find((t) => t.id === id)?.path).filter(Boolean) as string[]
+    );
+    // Remove das playlists para evitar que o auto-load restaure as faixas ao voltar na playlist
+    const nextPlaylists = s.playlists.map((p) => ({
+      ...p,
+      trackPaths: p.trackPaths.filter((tp) => !pathsToRemove.has(tp)),
+    }));
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(nextPlaylists));
+    set({
       tracks: s.tracks.filter((t) => !ids.includes(t.id)),
       selectedIds: new Set([...s.selectedIds].filter((id) => !ids.includes(id))),
-    })),
+      playlists: nextPlaylists,
+    });
+  },
 
   setScanning: (isScanning) => set({ isScanning }),
 

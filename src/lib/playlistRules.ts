@@ -3,8 +3,10 @@ import { useAppStore, type PlaylistGlobalProperties, type Track } from "../store
 
 /**
  * Aplica as regras globais de uma playlist nas faixas indicadas.
- * Salva tags e capa no disco, depois re-escaneia para sincronizar o store
- * com o estado real dos arquivos (garante que o UI reflita o disco).
+ * - Tags: save_tags por faixa
+ * - Capa: lê a imagem UMA vez via read_file_base64, depois aplica via save_cover_b64
+ *   (separar leitura de imagem da escrita no áudio evita falhas de path no Windows)
+ * - Re-scan pós-save: sincroniza store com disco (cover_version bump invalida cache UI)
  */
 export async function applyPlaylistRules(
   props: PlaylistGlobalProperties,
@@ -18,7 +20,7 @@ export async function applyPlaylistRules(
   const hasCoverField = props.activeFields.includes("cover") && !!props.cover;
 
   try {
-    // Garante que todas as faixas estão no store antes de processar.
+    // Garante que todas as faixas estão no store
     const missingPaths = paths.filter(
       (p) => !useAppStore.getState().tracks.find((t) => t.path === p)
     );
@@ -30,6 +32,15 @@ export async function applyPlaylistRules(
         const fresh = scanned.filter((t) => !existingSet.has(t.path));
         if (fresh.length > 0) useAppStore.getState().setTracks([...current, ...fresh]);
       }
+    }
+
+    // Lê a imagem de capa UMA vez (antes do loop) — evita falha de path duplo no Windows
+    let coverB64: string | null = null;
+    let coverIsPng = false;
+    if (hasCoverField && props.cover) {
+      coverIsPng = props.cover.toLowerCase().endsWith(".png");
+      coverB64 = await invoke<string | null>("read_file_base64", { path: props.cover })
+        .catch(() => null);
     }
 
     // Aplica saves no disco para todas as faixas
@@ -53,26 +64,23 @@ export async function applyPlaylistRules(
         }).catch(() => null);
       }
 
-      if (hasCoverField) {
-        await invoke("save_cover_from_file", { path, imagePath: props.cover })
+      if (hasCoverField && coverB64) {
+        await invoke("save_cover_b64", { path, b64: coverB64, isPng: coverIsPng })
           .catch(() => null);
       }
     }
 
-    // Re-escaneia todas as faixas para sincronizar o store com o disco.
-    // cover_version retorna sempre 0 do Rust; ao comparar com o valor anterior,
-    // a mudança garante que CoverCell invalida o cache e re-busca a imagem.
+    // Re-scan para sincronizar store com estado real do disco
     const refreshed = await invoke<Track[]>("scan_specific_files", { paths });
     for (const fresh of refreshed) {
       const existing = useAppStore.getState().tracks.find((t) => t.path === fresh.path);
       useAppStore.getState().updateTrack({
         ...fresh,
-        // Preserva campos que não vêm do scan (CUE, beat grid, etc.)
         cue_points:    existing?.cue_points    ?? fresh.cue_points,
         beat_phase_ms: existing?.beat_phase_ms ?? fresh.beat_phase_ms,
         beat_anchors:  existing?.beat_anchors  ?? fresh.beat_anchors,
-        // Bump cover_version para invalidar cache do CoverCell quando capa foi aplicada
-        cover_version: hasCoverField
+        // Bump cover_version para invalidar cache do CoverCell
+        cover_version: hasCoverField && coverB64
           ? (existing?.cover_version ?? 0) + 1
           : existing?.cover_version ?? fresh.cover_version,
       });

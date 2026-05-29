@@ -39,9 +39,18 @@ export default function DeleteConfirmDialog({ tracks, onClose, playlistId }: Pro
 
   function removeFromLibrary() {
     const ids = new Set(tracks.map((t) => t.id));
+    const pathsToRemove = new Set(tracks.map((t) => t.path));
     const remaining = allTracks.filter((t) => !ids.has(t.id));
     setTracks(remaining);
     clearSelection();
+
+    // Remove das playlists — sem isso o auto-load restaura as faixas ao voltar à playlist
+    const st = useAppStore.getState();
+    for (const pl of st.playlists) {
+      for (const tp of pl.trackPaths) {
+        if (pathsToRemove.has(tp)) st.removeTrackFromPlaylist(pl.id, tp);
+      }
+    }
 
     for (const folder of recentFolders) {
       const hasTrack = remaining.some((t) => t.path.startsWith(folder));

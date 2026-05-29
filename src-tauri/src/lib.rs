@@ -787,6 +787,43 @@ fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> 
     }
 }
 
+/// Aplica capa a partir de dados base64 — alternativa ao save_cover_from_file para evitar
+/// dupla abertura de arquivo no Windows (imagem + áudio).
+#[tauri::command]
+fn save_cover_b64(path: String, b64: String, is_png: bool) -> Result<(), String> {
+    use base64::Engine as _;
+    let cover_data = base64::engine::general_purpose::STANDARD
+        .decode(&b64)
+        .map_err(|e| e.to_string())?;
+    let fmt = file_format(Path::new(&path));
+    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
+        let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
+        let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
+        tag.remove("APIC");
+        tag.add_frame(Picture {
+            mime_type: mime,
+            picture_type: PictureType::CoverFront,
+            description: String::new(),
+            data: cover_data,
+        });
+        ensure_writable(&path);
+        tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+    } else {
+        let lofty_mime = if is_png { LoftyMime::Png } else { LoftyMime::Jpeg };
+        let mut tagged = Probe::open(&path).map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
+        let has_primary = tagged.primary_tag().is_some();
+        let tag = if has_primary {
+            tagged.primary_tag_mut().unwrap()
+        } else {
+            tagged.first_tag_mut().ok_or("sem tag")?
+        };
+        tag.remove_picture_type(LoftyPicType::CoverFront);
+        tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data));
+        ensure_writable(&path);
+        tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
+    }
+}
+
 #[tauri::command]
 fn read_cover_base64(path: String) -> Option<String> {
     let tagged = Probe::open(&path).ok()?.read().ok()?;
@@ -3192,6 +3229,7 @@ pub fn run() {
             save_tags,
             save_cover,
             save_cover_from_file,
+            save_cover_b64,
             read_cover_base64,
             read_file_base64,
             list_subfolders,
