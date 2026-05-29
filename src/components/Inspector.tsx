@@ -412,8 +412,10 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
               } catch { /* silent */ }
             }}
-            className="w-full flex items-center gap-2.5 p-2 rounded-lg group transition-colors hover:bg-white/[0.06]"
+            className="w-full flex items-center gap-2.5 p-2 rounded-lg group transition-colors"
             style={{ background: "var(--divider-faint)", border: "1px solid var(--divider)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--divider)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--divider-faint)"; }}
           >
             <div className="w-12 h-12 rounded-md overflow-hidden shrink-0 relative"
               style={{ background: "var(--divider-faint)", border: "1px solid var(--divider)" }}>

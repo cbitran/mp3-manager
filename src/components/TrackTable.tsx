@@ -44,9 +44,10 @@ const WaveformCell = memo(function WaveformCell({ path, trackId, durationSecs }:
       : 0
   );
 
-  const scrubAudioRef = useRef<HTMLAudioElement | null>(null);
+  const scrubAudioRef  = useRef<HTMLAudioElement | null>(null);
+  const scrubSeekRef   = useRef<(() => void) | null>(null);
   const [scrubPct, setScrubPct] = useState<number | null>(null);
-  const svgRef        = useRef<SVGSVGElement>(null);
+  const svgRef         = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
@@ -69,6 +70,10 @@ const WaveformCell = memo(function WaveformCell({ path, trackId, durationSecs }:
   useEffect(() => {
     return () => {
       if (scrubAudioRef.current) {
+        if (scrubSeekRef.current) {
+          scrubAudioRef.current.removeEventListener("loadedmetadata", scrubSeekRef.current);
+          scrubSeekRef.current = null;
+        }
         scrubAudioRef.current.pause();
         scrubAudioRef.current.src = '';
         scrubAudioRef.current = null;
@@ -104,7 +109,9 @@ const WaveformCell = memo(function WaveformCell({ path, trackId, durationSecs }:
     const seekAndPlay = () => {
       audio.currentTime = pct * (durationSecs || 0);
       audio.play().catch(() => {});
+      scrubSeekRef.current = null;
     };
+    scrubSeekRef.current = seekAndPlay;
     if (audio.readyState >= 1) {
       seekAndPlay();
     } else {

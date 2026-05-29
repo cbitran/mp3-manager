@@ -2103,7 +2103,7 @@ export default function App() {
                       <button
                         key={sw.id}
                         onClick={() => exportToDj(sw.id)}
-                        className="w-full px-3 py-1.5 text-left text-[11px] text-[#E8E4E1] hover:bg-white/[0.07] transition-colors"
+                        className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors" style={{ color: "var(--text-primary)" }}
                       >
                         {sw.name}
                       </button>
@@ -3239,11 +3239,11 @@ export default function App() {
             {/* Separator + contagem */}
             {playlists.length > 0 && (
               <div className="px-5 py-2 flex items-center gap-2">
-                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <div className="flex-1 h-px" style={{ background: "var(--divider)" }} />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
                   Playlists{playlists.length > 5 ? ` (${playlists.length})` : ""}
                 </span>
-                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <div className="flex-1 h-px" style={{ background: "var(--divider)" }} />
               </div>
             )}
 
@@ -3285,7 +3285,7 @@ export default function App() {
                               <span className="shrink-0 w-2 h-px" style={{ background: "rgba(255,255,255,0.12)" }} />
                             )}
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                              style={{ background: isFolder ? "rgba(217,83,64,0.12)" : "rgba(255,255,255,0.06)" }}>
+                              style={{ background: isFolder ? "rgba(217,83,64,0.12)" : "var(--divider)" }}>
                               {isFolder ? (
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
@@ -3400,11 +3400,11 @@ export default function App() {
             {/* Separator + contagem */}
             {playlists.length > 0 && (
               <div className="px-5 py-2 flex items-center gap-2">
-                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <div className="flex-1 h-px" style={{ background: "var(--divider)" }} />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
                   Playlists{playlists.length > 5 ? ` (${playlists.length})` : ""}
                 </span>
-                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <div className="flex-1 h-px" style={{ background: "var(--divider)" }} />
               </div>
             )}
 
@@ -3425,7 +3425,7 @@ export default function App() {
                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                     >
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--divider)" }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
                           <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
