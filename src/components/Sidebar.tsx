@@ -13,6 +13,7 @@ const FILE_MANAGER = IS_WIN ? "Explorer" : "Finder";
 
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
+  onFolderDropWithChoice?: (folder: string) => void;
   onBrowse?: (path: string) => void;
   onAnalyzeBpmFolder?: (folderPath: string) => void;
   onEnrichFolder?: (folderPath: string) => void;
@@ -30,7 +31,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -235,12 +236,16 @@ export default function Sidebar({ onFolderSelect, onBrowse, onAnalyzeBpmFolder, 
     // Drag interno de pasta vinda do FolderBrowser (Dispositivos)
     const folderPath = e.dataTransfer.getData("text/folder-path");
     if (folderPath) {
-      setSidebarTab("recent");
-      if (recentFolders.includes(folderPath)) {
-        const name = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? folderPath;
-        setDupDialog({ path: folderPath, name });
+      if (onFolderDropWithChoice) {
+        onFolderDropWithChoice(folderPath);
       } else {
-        onFolderSelect(folderPath);
+        setSidebarTab("recent");
+        if (recentFolders.includes(folderPath)) {
+          const name = folderPath.split(/[\\/]/).filter(Boolean).pop() ?? folderPath;
+          setDupDialog({ path: folderPath, name });
+        } else {
+          onFolderSelect(folderPath);
+        }
       }
       return;
     }

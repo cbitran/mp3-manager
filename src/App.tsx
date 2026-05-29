@@ -447,6 +447,7 @@ export default function App() {
   const [windowWidth, setWindowWidth]   = useState(window.innerWidth);
   const [isDragOver, setIsDragOver]     = useState(false);
   const [pendingFileChoice, setPendingFileChoice] = useState<{ paths: string[]; name: string } | null>(null);
+  const [pendingFolderDrop, setPendingFolderDrop] = useState<string | null>(null);
   const [pendingNewPlaylistPaths, setPendingNewPlaylistPaths] = useState<string[] | null>(null);
   const [pendingRulesConfirm, setPendingRulesConfirm] = useState<{ paths: string[]; playlist: import("./store").Playlist } | null>(null);
   const [ghostFolders, setGhostFolders]         = useState<string[]>([]);
@@ -559,9 +560,8 @@ export default function App() {
           setPendingFileChoice({ paths: mediaPaths, name: defaultName });
         } else {
           // Nenhum arquivo de áudio/vídeo reconhecido — tratar como pasta
-          // (inclui o caso de pastas com ponto no nome, aliases, etc.)
           if (paths.length === 1) {
-            scanFolder(paths[0]);
+            setPendingFolderDrop(paths[0]);
           } else {
             toast("Nenhum arquivo de áudio encontrado.", "info");
           }
@@ -1460,6 +1460,27 @@ export default function App() {
     }
   }
 
+  async function addFolderToPlaylist(folderPath: string, playlistId: string) {
+    const audioPaths = await invoke<string[]>("find_new_files", { folder: folderPath, knownPaths: [] });
+    if (audioPaths.length === 0) {
+      toast("Nenhuma faixa encontrada na pasta.", "info");
+      return;
+    }
+    const pl = useAppStore.getState().playlists.find((p) => p.id === playlistId);
+    const hasRules = (pl?.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0) ?? false;
+    await addToPlaylistAndMerge(playlistId, audioPaths, hasRules);
+  }
+
+  async function addFolderAsNewPlaylist(folderPath: string) {
+    const audioPaths = await invoke<string[]>("find_new_files", { folder: folderPath, knownPaths: [] });
+    if (audioPaths.length === 0) {
+      toast("Nenhuma faixa encontrada na pasta.", "info");
+      return;
+    }
+    setPendingNewPlaylistPaths(audioPaths);
+    setCreatePlaylistTracks([]);
+  }
+
   async function pickFolder() {
     const folder = await open({ directory: true, multiple: false });
     if (!folder || typeof folder !== "string") return;
@@ -2356,6 +2377,7 @@ export default function App() {
                   setScanDone(0); setScanTotal(null);
                 }}
                 onNavigate={() => setBrowsePath(null)}
+                onFolderDropWithChoice={(path) => setPendingFolderDrop(path)}
               />
             {/* Drag handle */}
             <div
@@ -3082,6 +3104,116 @@ export default function App() {
             <div className="px-3 pt-1 pb-4">
               <button
                 onClick={() => setPendingFileChoice(null)}
+                className="w-full py-2.5 rounded-xl text-[13px] font-medium text-[#756D67] hover:text-[#C2BEBC] transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal destino: Pasta → Biblioteca ou Playlist */}
+      {pendingFolderDrop && (
+        <div
+          className="fixed inset-0 z-[410] flex items-end justify-center pb-6"
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(2px)" }}
+          onClick={() => setPendingFolderDrop(null)}
+        >
+          <div
+            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl"
+            style={{ background: "#1A1815", border: "1px solid rgba(255,255,255,0.08)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#605A55]">Adicionar pasta a…</p>
+              <p className="text-sm font-semibold text-[#E8E4E1] mt-0.5 truncate">
+                {pendingFolderDrop.split(/[\\/]/).filter(Boolean).pop() ?? pendingFolderDrop}
+              </p>
+            </div>
+
+            {/* Biblioteca */}
+            <div className="px-3 pb-2">
+              <button
+                onClick={() => { scanFolder(pendingFolderDrop); setPendingFolderDrop(null); }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(217,83,64,0.15)" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-[#E8E4E1]">Biblioteca</p>
+                  <p className="text-[11px] text-[#605A55]">Carregar pasta como nova biblioteca</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Separator */}
+            {playlists.length > 0 && (
+              <div className="px-5 py-2 flex items-center gap-2">
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">Playlists</span>
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+              </div>
+            )}
+
+            {/* Lista de playlists */}
+            <div className="px-3 max-h-[240px] overflow-y-auto no-scrollbar">
+              {playlists.map((pl) => (
+                <button
+                  key={pl.id}
+                  onClick={async () => { const fp = pendingFolderDrop; setPendingFolderDrop(null); await addFolderToPlaylist(fp, pl.id); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                  style={{ background: "transparent" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
+                    <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Nova playlist */}
+            <div className="px-3 pt-1 pb-1">
+              <button
+                onClick={async () => { const fp = pendingFolderDrop; setPendingFolderDrop(null); await addFolderAsNewPlaylist(fp); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                style={{ background: "transparent" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(217,83,64,0.10)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-[#C2BEBC]">Nova playlist</p>
+                  <p className="text-[11px] text-[#4C4743]">Criar e adicionar as faixas</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Cancelar */}
+            <div className="px-3 pt-1 pb-4">
+              <button
+                onClick={() => setPendingFolderDrop(null)}
                 className="w-full py-2.5 rounded-xl text-[13px] font-medium text-[#756D67] hover:text-[#C2BEBC] transition-colors"
                 style={{ background: "rgba(255,255,255,0.04)" }}
               >
