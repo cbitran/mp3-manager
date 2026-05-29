@@ -1232,7 +1232,8 @@ export default function App() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
-      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA"
+        || (target as HTMLElement).isContentEditable;
       if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
         if (selectedIds.size > 0) { e.preventDefault(); requestDelete(); }
       }
@@ -1253,8 +1254,9 @@ export default function App() {
         setShowSettings((v) => !v);
       }
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // capture:true garante que o evento chega antes do WebView2 (Windows) consumi-lo
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [selectedIds, allTracks]);
 
   function checkFilenameMetaIssues(loaded: Track[]) {
@@ -2738,6 +2740,7 @@ export default function App() {
       {deleteTargets.length > 0 && (
         <DeleteConfirmDialog
           tracks={deleteTargets}
+          playlistId={activePlaylistId ?? null}
           onClose={() => setDeleteTargets([])}
         />
       )}

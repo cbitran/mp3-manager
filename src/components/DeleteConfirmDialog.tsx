@@ -4,24 +4,40 @@ import { useAppStore, type Track } from "../store";
 interface Props {
   tracks: Track[];
   onClose: () => void;
+  playlistId?: string | null;
 }
 
-export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
+export default function DeleteConfirmDialog({ tracks, onClose, playlistId }: Props) {
   const { t } = useTranslation();
   const { setTracks, clearSelection, recentFolders, removeRecentFolder, lastFolder, setLastFolder } = useAppStore();
   const allTracks = useAppStore((s) => s.tracks);
+  const removeTrackFromPlaylist = useAppStore((s) => s.removeTrackFromPlaylist);
+  const playlist = useAppStore((s) => s.playlists.find((p) => p.id === playlistId));
+
+  const isPlaylistContext = !!playlistId && !!playlist;
 
   const title =
     tracks.length === 1
       ? t("table.deleteTitle", { name: tracks[0].title || tracks[0].filename })
       : t("table.deleteTitleCount", { count: tracks.length });
 
-  const subtitle =
-    tracks.length === 1
+  const subtitle = isPlaylistContext
+    ? tracks.length === 1
+      ? `Remover esta faixa da playlist "${playlist.name}"?`
+      : `Remover ${tracks.length} faixas da playlist "${playlist.name}"?`
+    : tracks.length === 1
       ? t("table.deleteMsg")
       : t("table.deleteMsgCount", { count: tracks.length });
 
-  function removeFromState() {
+  function removeFromPlaylist() {
+    for (const track of tracks) {
+      removeTrackFromPlaylist(playlistId!, track.path);
+    }
+    clearSelection();
+    onClose();
+  }
+
+  function removeFromLibrary() {
     const ids = new Set(tracks.map((t) => t.id));
     const remaining = allTracks.filter((t) => !ids.has(t.id));
     setTracks(remaining);
@@ -56,6 +72,11 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
         {/* Body */}
         <div className="px-5 py-4">
           <p className="text-[12px] text-[#8F8883] leading-relaxed">{subtitle}</p>
+          {isPlaylistContext && (
+            <p className="text-[11px] text-[#4C4743] mt-2">
+              As faixas permanecem na biblioteca. Para remover da biblioteca, use o context menu com a playlist fechada.
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -67,10 +88,10 @@ export default function DeleteConfirmDialog({ tracks, onClose }: Props) {
             {t("common.cancel")}
           </button>
           <button
-            onClick={removeFromState}
+            onClick={isPlaylistContext ? removeFromPlaylist : removeFromLibrary}
             className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
           >
-            {t("sidebar.removeFromList")}
+            {isPlaylistContext ? "Remover da playlist" : t("sidebar.removeFromList")}
           </button>
         </div>
       </div>

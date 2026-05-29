@@ -454,6 +454,7 @@ export default function TrackTable({
     playlists,
     addTracksToPlaylist,
     activePlaylistId,
+    removeTrackFromPlaylist,
   } = useAppStore(useShallow((s) => ({
     toggleSelect: s.toggleSelect,
     selectAll: s.selectAll,
@@ -469,6 +470,7 @@ export default function TrackTable({
     playlists: s.playlists,
     addTracksToPlaylist: s.addTracksToPlaylist,
     activePlaylistId: s.activePlaylistId,
+    removeTrackFromPlaylist: s.removeTrackFromPlaylist,
   })));
 
   // Subscriptions granulares para dados que mudam frequentemente
@@ -1810,37 +1812,54 @@ export default function TrackTable({
     )}
 
     {/* Diálogo de remoção de faixas */}
-    {removeDialog && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-        <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
-          <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
-            {removeDialog.targets.length === 1
-              ? t("table.removeDialogSingle", { name: removeDialog.targets[0].title ?? removeDialog.targets[0].filename })
-              : t("table.removeDialogTitle")}
-          </h3>
-          <p className="text-xs text-[#8F8883] mb-5">
-            {t("table.removeDialogMsg", { count: removeDialog.targets.length })}
-          </p>
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
-              onClick={() => setRemoveDialog(null)}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
-              onClick={() => {
-                removeTracks(removeDialog.targets.map((tr) => tr.id));
-                setRemoveDialog(null);
-              }}
-            >
-              {t("sidebar.removeFromList")}
-            </button>
+    {removeDialog && (() => {
+      const isPlaylist = !!activePlaylistId;
+      const pl = isPlaylist ? playlists.find((p) => p.id === activePlaylistId) : null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#1c1715] border border-white/10 rounded-xl p-6 w-80 shadow-2xl">
+            <h3 className="text-sm font-semibold text-[#F5F5F4] mb-1">
+              {removeDialog.targets.length === 1
+                ? t("table.removeDialogSingle", { name: removeDialog.targets[0].title ?? removeDialog.targets[0].filename })
+                : t("table.removeDialogTitle")}
+            </h3>
+            <p className="text-xs text-[#8F8883] mb-1">
+              {isPlaylist && pl
+                ? removeDialog.targets.length === 1
+                  ? `Remover da playlist "${pl.name}"?`
+                  : `Remover ${removeDialog.targets.length} faixas da playlist "${pl.name}"?`
+                : t("table.removeDialogMsg", { count: removeDialog.targets.length })}
+            </p>
+            {isPlaylist && (
+              <p className="text-[10px] text-[#4C4743] mb-4">As faixas permanecem na biblioteca.</p>
+            )}
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                onClick={() => setRemoveDialog(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
+                onClick={() => {
+                  if (isPlaylist && activePlaylistId) {
+                    for (const tr of removeDialog.targets) {
+                      removeTrackFromPlaylist(activePlaylistId, tr.path);
+                    }
+                  } else {
+                    removeTracks(removeDialog.targets.map((tr) => tr.id));
+                  }
+                  setRemoveDialog(null);
+                }}
+              >
+                {isPlaylist ? "Remover da playlist" : t("sidebar.removeFromList")}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      );
+    })()}
     {/* Column drag ghost */}
     {dragGhost && (
       <div
