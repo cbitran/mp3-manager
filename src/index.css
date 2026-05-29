@@ -318,6 +318,12 @@ html[data-theme="light"] .track-row-selected {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 
+/* ─── Badge de nova versão — pisca na toolbar ────────────── */
+@keyframes twUpdateBlink {
+  0%, 100% { opacity: 1; background: rgba(217,83,64,0.18); }
+  50%       { opacity: 0.55; background: rgba(217,83,64,0.32); }
+}
+
 /* ─── Tema Automático Escuro (segue macOS dark mode) ────── */
 /* Paleta neutra cinza — sem tons quentes da Skin TagWave    */
 html[data-theme="dark"] {

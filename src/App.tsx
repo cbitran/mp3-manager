@@ -1583,6 +1583,7 @@ export default function App() {
   const [appLoading, setAppLoading] = useState<"startup" | "closing" | "scanning" | null>("startup");
   const [appVersion, setAppVersion] = useState("");
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [pendingUpdateVersion, setPendingUpdateVersion] = useState<string | null>(null);
   const [showTrialInfo, setShowTrialInfo] = useState(false);
   const isSavingRef = useRef(false);
 
@@ -1848,6 +1849,22 @@ export default function App() {
               <polyline points="23 4 23 10 17 10"/>
               <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
             </svg>
+          </button>
+        )}
+
+        {/* Badge de nova versão — pisca quando há update e o modal está fechado */}
+        {pendingUpdateVersion && !showUpdateModal && (
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            title={`Nova versão disponível: v${pendingUpdateVersion}`}
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors"
+            style={{ background: "rgba(217,83,64,0.18)", color: "#D95340", animation: "twUpdateBlink 1.4s ease-in-out infinite" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+            </svg>
+            v{pendingUpdateVersion}
           </button>
         )}
 
@@ -2845,7 +2862,11 @@ export default function App() {
       )}
 
       {showUpdateModal && appVersion && (
-        <UpdateModal currentVersion={appVersion} onClose={() => setShowUpdateModal(false)} />
+        <UpdateModal
+          currentVersion={appVersion}
+          onClose={() => setShowUpdateModal(false)}
+          onUpdateFound={(v) => setPendingUpdateVersion(v)}
+        />
       )}
 
       {/* Modal de novas faixas detectadas */}

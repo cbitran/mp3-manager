@@ -40,9 +40,9 @@ function pickAsset(assets: Asset[]): Asset | null {
 
 type DlState = "idle" | "downloading" | "done" | "error";
 
-interface Props { currentVersion: string; onClose: () => void; }
+interface Props { currentVersion: string; onClose: () => void; onUpdateFound?: (version: string) => void; }
 
-export default function UpdateModal({ currentVersion, onClose }: Props) {
+export default function UpdateModal({ currentVersion, onClose, onUpdateFound }: Props) {
   const [release, setRelease]   = useState<Release | null>(null);
   const [dlState, setDlState]   = useState<DlState>("idle");
   const [dlPath,  setDlPath]    = useState<string | null>(null);
@@ -64,12 +64,14 @@ export default function UpdateModal({ currentVersion, onClose }: Props) {
         if (localStorage.getItem(SKIP_KEY) === version) return;
         const snooze = parseInt(localStorage.getItem(SNOOZE_KEY) ?? "0");
         if (Date.now() < snooze) return;
-        setRelease({
+        const rel: Release = {
           tag, version,
           body: data.body ?? "",
           url: data.html_url ?? "",
           assets: (data.assets as Asset[]) ?? [],
-        });
+        };
+        setRelease(rel);
+        onUpdateFound?.(version);
       })
       .catch(() => {});
   }, [currentVersion]);
