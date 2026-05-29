@@ -12,12 +12,15 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef, memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, type Track } from "../store";
 
+
+const IS_WIN_WAVE = navigator.platform.toLowerCase().startsWith("win") ||
+                    navigator.userAgent.toLowerCase().includes("windows");
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
 const MINI_BARS   = 80;
@@ -37,6 +40,17 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
   const playerTrackId  = useAppStore((s) => s.playerTrackId);
   const isCurrentTrack = trackId === playerTrackId;
 
+  // ── Scrub via AudioBufferSourceNode ──────────────────────────────
+  const scrubPcmRef    = useRef<Float32Array | null>(null);
+  const scrubCtxRef    = useRef<AudioContext | null>(null);
+  const scrubGainRef   = useRef<GainNode | null>(null);
+  const scrubBufRef    = useRef<AudioBuffer | null>(null);
+  const scrubNodeRef   = useRef<AudioBufferSourceNode | null>(null);
+  const scrubActiveRef = useRef(false);
+  const scrubPctRef    = useRef(0);
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
+  const svgRef         = useRef<SVGSVGElement>(null);
+
   useEffect(() => {
     if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
     let cancelled = false;
@@ -55,17 +69,126 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
     return () => { cancelled = true; };
   }, [path]);
 
-  const pct = isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0;
+  // Cleanup no unmount
+  useEffect(() => {
+    return () => {
+      try { scrubNodeRef.current?.stop(); } catch { /* */ }
+      scrubCtxRef.current?.close().catch(() => {});
+      scrubCtxRef.current = null; scrubGainRef.current = null;
+      scrubBufRef.current = null; scrubPcmRef.current  = null;
+    };
+  }, []);
+
+  function ensureCtx() {
+    if (scrubCtxRef.current || IS_WIN_WAVE) return;
+    const ctx  = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.85;
+    gain.connect(ctx.destination);
+    scrubCtxRef.current  = ctx;
+    scrubGainRef.current = gain;
+    buildBuf();
+  }
+
+  function buildBuf() {
+    const ctx = scrubCtxRef.current;
+    const pcm = scrubPcmRef.current;
+    if (!ctx || !pcm || !pcm.length || scrubBufRef.current) return;
+    const buf = ctx.createBuffer(1, pcm.length, 22050);
+    buf.copyToChannel(pcm, 0);
+    scrubBufRef.current = buf;
+  }
+
+  function playAt(pct: number) {
+    const ctx  = scrubCtxRef.current;
+    const buf  = scrubBufRef.current;
+    const gain = scrubGainRef.current;
+    try { scrubNodeRef.current?.stop(); } catch { /* */ }
+    scrubNodeRef.current = null;
+    if (!ctx || !buf || !gain) return;
+    const node = ctx.createBufferSource();
+    node.buffer = buf;
+    node.connect(gain);
+    node.start(0, Math.max(0, Math.min(pct * buf.duration, buf.duration - 0.001)));
+    scrubNodeRef.current = node;
+  }
+
+  function pctFromX(clientX: number): number {
+    const el = svgRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  }
+
+  function handleMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const pct = pctFromX(e.clientX);
+    scrubPctRef.current  = pct;
+    scrubActiveRef.current = true;
+    setScrubPct(pct);
+
+    // AudioContext DEVE ser criado dentro do mousedown (WebKit exige user gesture)
+    ensureCtx();
+
+    if (!scrubPcmRef.current) {
+      invoke<string>("get_scrub_pcm", { path })
+        .then((pcmPath) => fetch(convertFileSrc(pcmPath)).then((r) => r.arrayBuffer()))
+        .then((ab) => {
+          scrubPcmRef.current = new Float32Array(ab);
+          buildBuf();
+          if (scrubActiveRef.current) playAt(scrubPctRef.current);
+        })
+        .catch(() => {});
+    } else {
+      buildBuf();
+      playAt(pct);
+    }
+
+    const onMove = (me: MouseEvent) => {
+      if (!scrubActiveRef.current) return;
+      const p = pctFromX(me.clientX);
+      scrubPctRef.current = p;
+      setScrubPct(p);
+      playAt(p);
+    };
+    const onUp = () => {
+      scrubActiveRef.current = false;
+      setScrubPct(null);
+      try { scrubNodeRef.current?.stop(); } catch { /* */ }
+      scrubNodeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  const pct = scrubPct !== null
+    ? scrubPct
+    : (isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0);
+  const isScrubbing = scrubPct !== null;
 
   return (
-    <div className="w-full flex items-center justify-center" style={{ pointerEvents: "none" }}>
+    <div className="w-full flex items-center justify-center" style={{ cursor: "ew-resize" }}>
       {bars ? (
-        <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" className="overflow-visible">
+        <svg
+          ref={svgRef}
+          width="100%" height="15"
+          viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`}
+          preserveAspectRatio="none"
+          className="overflow-visible"
+          onMouseDown={handleMouseDown}
+          onClick={(e) => e.stopPropagation()}
+          style={{ cursor: "ew-resize" }}
+        >
           {bars.map((bar, i) => {
             const barH   = Math.max(0.8, bar.amp * (MINI_VB_H - 2));
             const y      = (MINI_VB_H - barH) / 2;
             const barPct = i / MINI_BARS;
-            const played = isCurrentTrack && pct > 0 && barPct < pct;
+            const played = pct > 0 && barPct < pct;
             return (
               <rect
                 key={i}
@@ -75,17 +198,20 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
                 height={barH}
                 rx={0.3}
                 fill={played ? "#D95340" : "#A8A3A0"}
-                opacity={played ? 1 : isCurrentTrack ? 0.45 + bar.amp * 0.45 : 0.28 + bar.amp * 0.45}
+                opacity={played ? 1 : isScrubbing || isCurrentTrack ? 0.45 + bar.amp * 0.45 : 0.28 + bar.amp * 0.45}
               />
             );
           })}
           {/* Playhead */}
-          {isCurrentTrack && pct > 0 && (
-            <rect x={pct * MINI_VB_W - 0.5} y={0} width={1} height={MINI_VB_H} fill="rgba(255,255,255,0.85)" rx={0.5} />
+          {pct > 0 && (
+            <rect x={pct * MINI_VB_W - 0.5} y={0} width={1} height={MINI_VB_H}
+              fill={isScrubbing ? "#D95340" : "rgba(255,255,255,0.85)"} rx={0.5} />
           )}
         </svg>
       ) : (
-        <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none">
+        <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none"
+          ref={svgRef} onMouseDown={handleMouseDown} onClick={(e) => e.stopPropagation()}
+          style={{ cursor: "ew-resize" }}>
           {Array.from({ length: MINI_BARS }, (_, i) => {
             const amp = 0.15 + 0.12 * Math.abs(Math.sin(i * 0.7));
             const barH = Math.max(0.8, amp * (MINI_VB_H - 2));
