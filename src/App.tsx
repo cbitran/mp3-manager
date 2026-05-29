@@ -2420,50 +2420,39 @@ export default function App() {
               )}
             </div>
 
-            {/* Botão sol/lua — alterna entre light e dark */}
+            {/* Botão sol/lua — alterna claro ↔ escuro */}
             <button
-              onClick={() => {
-                if (theme === "light") setTheme("dark");
-                else if (theme === "dark") setTheme("auto");
-                else setTheme("light");
-              }}
-              title={theme === "light" ? "Tema: Claro (clique para Escuro)" : theme === "dark" ? "Tema: Escuro (clique para Auto)" : "Tema: Auto (clique para Claro)"}
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              title={theme === "light" ? "Tema claro — clique para escuro" : "Tema escuro — clique para claro"}
               className="flex items-center justify-center w-5 h-5 rounded text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
             >
               {theme === "light" ? (
-                /* Sol */
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                  <circle cx="5.5" cy="5.5" r="2"/>
-                  <line x1="5.5" y1="1" x2="5.5" y2="2"/><line x1="5.5" y1="9" x2="5.5" y2="10"/>
-                  <line x1="1" y1="5.5" x2="2" y2="5.5"/><line x1="9" y1="5.5" x2="10" y2="5.5"/>
-                  <line x1="2.3" y1="2.3" x2="3" y2="3"/><line x1="8" y1="8" x2="8.7" y2="8.7"/>
-                  <line x1="8.7" y1="2.3" x2="8" y2="3"/><line x1="3" y1="8" x2="2.3" y2="8.7"/>
-                </svg>
-              ) : theme === "dark" ? (
-                /* Lua */
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 6.5A4 4 0 015 2.5a4 4 0 00-1 7.8A4 4 0 009 6.5z"/>
+                /* Sol — círculo cheio + 8 raios curtos */
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                  <circle cx="6" cy="6" r="2.2" fill="currentColor" stroke="none"/>
+                  <line x1="6" y1="0.5" x2="6" y2="2"/><line x1="6" y1="10" x2="6" y2="11.5"/>
+                  <line x1="0.5" y1="6" x2="2" y2="6"/><line x1="10" y1="6" x2="11.5" y2="6"/>
+                  <line x1="2" y1="2" x2="3" y2="3"/><line x1="9" y1="9" x2="10" y2="10"/>
+                  <line x1="10" y1="2" x2="9" y2="3"/><line x1="3" y1="9" x2="2" y2="10"/>
                 </svg>
               ) : (
-                /* Auto — sol + lua */
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                  <circle cx="4" cy="5.5" r="1.8"/>
-                  <line x1="4" y1="1" x2="4" y2="2"/><line x1="4" y1="9" x2="4" y2="10"/>
-                  <line x1="1" y1="5.5" x2="2" y2="5.5"/>
-                  <path d="M9.5 7A2.5 2.5 0 017 3.5a2.5 2.5 0 000 5z" opacity="0.7"/>
+                /* Lua — crescente clara */
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" stroke="none">
+                  <path d="M10 7.5A5 5 0 015.5 2a5 5 0 100 8.5A5 5 0 0010 7.5z"/>
                 </svg>
               )}
             </button>
 
+            {/* Settings — engrenagem com dentes */}
             <button
               data-help="settings-btn"
               onClick={() => setShowSettings(true)}
               title={`${t("settings.title")} (${CMD},)`}
               className="flex items-center justify-center w-5 h-5 rounded text-[#D95340] hover:text-[#E07364] hover:bg-white/[0.06] transition-colors"
             >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="5.5" cy="5.5" r="1.8"/>
-                <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.1 2.1l.7.7M8.2 8.2l.7.7M8.9 2.1l-.7.7M2.8 8.2l-.7.7"/>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <path fillRule="evenodd" clipRule="evenodd" d="M6 4a2 2 0 100 4 2 2 0 000-4zm-1 2a1 1 0 112 0 1 1 0 01-2 0z"/>
+                <path fillRule="evenodd" clipRule="evenodd" d="M4.93.5a.75.75 0 01.74.63l.13.87a4.05 4.05 0 01.4.17l.73-.5a.75.75 0 01.96.1l.87.87a.75.75 0 01.1.96l-.5.73c.07.13.13.27.17.4l.87.13a.75.75 0 01.63.74v1.24a.75.75 0 01-.63.74l-.87.13a4.05 4.05 0 01-.17.4l.5.73a.75.75 0 01-.1.96l-.87.87a.75.75 0 01-.96.1l-.73-.5c-.13.07-.27.13-.4.17l-.13.87a.75.75 0 01-.74.63H4.07a.75.75 0 01-.74-.63l-.13-.87a4.05 4.05 0 01-.4-.17l-.73.5a.75.75 0 01-.96-.1l-.87-.87a.75.75 0 01-.1-.96l.5-.73a4.05 4.05 0 01-.17-.4l-.87-.13A.75.75 0 010 6.62V5.38a.75.75 0 01.63-.74l.87-.13c.04-.13.1-.27.17-.4l-.5-.73a.75.75 0 01.1-.96l.87-.87a.75.75 0 01.96-.1l.73.5c.13-.07.27-.13.4-.17l.13-.87A.75.75 0 014.07.5h.86zm.07 1H5l-.1.72a.75.75 0 01-.55.6 3.05 3.05 0 00-.7.3.75.75 0 01-.8-.07l-.6-.41-.5.5.41.6a.75.75 0 01.07.8 3.05 3.05 0 00-.3.7.75.75 0 01-.6.55L1 6v.1l.72.1a.75.75 0 01.6.55c.08.24.18.48.3.7a.75.75 0 01-.07.8l-.41.6.5.5.6-.41a.75.75 0 01.8.07c.22.12.46.22.7.3a.75.75 0 01.55.6L5 11h.1l.1-.72a.75.75 0 01.55-.6c.24-.08.48-.18.7-.3a.75.75 0 01.8.07l.6.41.5-.5-.41-.6a.75.75 0 01-.07-.8c.12-.22.22-.46.3-.7a.75.75 0 01.6-.55L9 6.1V6l-.72-.1a.75.75 0 01-.6-.55 3.05 3.05 0 00-.3-.7.75.75 0 01.07-.8l.41-.6-.5-.5-.6.41a.75.75 0 01-.8-.07 3.05 3.05 0 00-.7-.3.75.75 0 01-.55-.6L5 1z"/>
               </svg>
             </button>
           </div>
