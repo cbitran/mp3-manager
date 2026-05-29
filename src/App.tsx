@@ -2060,6 +2060,24 @@ export default function App() {
                   Nome→Tag
                 </button>
               </ProGate>
+              {/* Tags Avançadas */}
+              <ProGate
+                feature="Extended Tags Editor"
+                description="Visualize e edite todos os campos ocultos de qualquer faixa, incluindo campos do Serato, rekordbox e tags customizadas."
+              >
+                <button
+                  onClick={() => setShowExtendedTags(true)}
+                  title="Editor de tags avançadas (Pro)"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
+                  style={{ color: "var(--c-t4)" }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="1" y="1" width="9" height="9" rx="1"/>
+                    <line x1="3" y1="4" x2="8" y2="4"/><line x1="3" y1="6" x2="8" y2="6"/><line x1="3" y1="8" x2="5.5" y2="8"/>
+                  </svg>
+                  Tags+
+                </button>
+              </ProGate>
             </div>
           )}
 
