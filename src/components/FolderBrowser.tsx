@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { setActiveFolderDragPath } from "../lib/folderDrag";
 
 interface DirEntry {
   name: string;
@@ -134,10 +135,10 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
     <div className="flex flex-col flex-1 overflow-hidden select-none" style={{ background: "#0E0D0C" }}>
 
       {/* ── Header / Breadcrumb ─────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-5 py-3 shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="flex items-center gap-2 px-5 py-3 shrink-0 border-b" style={{ borderColor: "var(--ctx-divider-bg)" }}>
         <button onClick={goBack} title="Voltar"
           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:brightness-125 shrink-0"
-          style={{ background: "rgba(255,255,255,0.06)", color: "#8F8883", border: "1px solid rgba(255,255,255,0.08)" }}>
+          style={{ background: "var(--icon-bg)", color: "var(--icon-text)", border: "1px solid var(--field-border)" }}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 2L4 6l4 4"/>
           </svg>
@@ -206,9 +207,11 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
               <button key={f.path}
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.setData("text/folder-path", f.path);
+                  setActiveFolderDragPath(f.path);
+                  e.dataTransfer.setData("text/plain", f.path); // fallback para compatibilidade
                   e.dataTransfer.effectAllowed = "copy";
                 }}
+                onDragEnd={() => setActiveFolderDragPath(null)}
                 onClick={() => {
                   const now = Date.now();
                   if (lastClickRef.current.path === f.path && now - lastClickRef.current.time < 400) {
@@ -300,7 +303,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
 
       {/* ── Footer: load button ─────────────────────────────────────── */}
       {!loading && entries && (folders.length > 0 || files.length > 0) && (
-        <div className="shrink-0 px-5 py-3 border-t flex flex-col gap-2" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.25)" }}>
+        <div className="shrink-0 px-5 py-3 border-t flex flex-col gap-2" style={{ borderColor: "var(--ctx-divider-bg)" }}>
           {selectedFiles.size > 0 && onLoadFiles && (
             <button
               onClick={() => { onLoadFiles([...selectedFiles], folderName); onClose(); }}
@@ -312,7 +315,7 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
           <button
             onClick={() => onLoadFolder(currentPath)}
             className="w-full py-2.5 rounded-xl text-[13px] font-semibold transition-all hover:brightness-110 active:scale-[0.99]"
-            style={selectedFiles.size > 0 ? { background: "rgba(255,255,255,0.06)", color: "#8F8883", border: "1px solid rgba(255,255,255,0.08)" } : { background: "#D95340", color: "white" }}>
+            style={selectedFiles.size > 0 ? { background: "var(--icon-bg)", color: "var(--icon-text)", border: "1px solid var(--field-border)" } : { background: "#D95340", color: "white" }}>
             Carregar pasta "{folderName}"
           </button>
         </div>

@@ -399,12 +399,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ playlists: next });
   },
   deletePlaylist: (id) => {
-    const next = get().playlists
-      .filter((p) => p.id !== id)
-      .map((p) => p.parentId === id ? { ...p, parentId: undefined } : p);
+    const pls = get().playlists;
+    // Collect all descendant ids recursively
+    const toDelete = new Set<string>([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of pls) {
+        if (p.parentId && toDelete.has(p.parentId) && !toDelete.has(p.id)) {
+          toDelete.add(p.id);
+          changed = true;
+        }
+      }
+    }
+    const next = pls.filter((p) => !toDelete.has(p.id));
     localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
     const active = get().activePlaylistId;
-    set({ playlists: next, activePlaylistId: active === id ? null : active });
+    set({ playlists: next, activePlaylistId: active && toDelete.has(active) ? null : active });
   },
   addTracksToPlaylist: (id, trackPaths) => {
     // Adiciona na filha E propaga para a mãe (e avó, etc.)

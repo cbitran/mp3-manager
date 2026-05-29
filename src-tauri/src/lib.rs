@@ -1432,26 +1432,106 @@ fn generate_waveform_rgb(path: String, bars: usize) -> Result<Vec<f32>, String> 
         return Ok(cached);
     }
 
-    // Decodifica áudio real com symphonia → PCM mono f32
-    let result = match decode_pcm_mono(&path) {
+    // Decodifica com stride de packets: máximo `bars * 5` packets decodificados
+    // (ex.: 400 para 80 barras) distribuídos ao longo do arquivo inteiro.
+    // Para um mix de 1h com ~93 600 frames MP3 → stride ≈ 234 (decode 1 em 234).
+    let result = match decode_pcm_strided(&path, bars * 5) {
         Ok(samples) if samples.len() >= bars => {
             build_waveform_rgb_from_pcm(&samples, bars)?
         }
         _ => {
-            // fallback: retorna forma neutra com variação sintética
             vec![0.35f32, 0.5, 0.3].into_iter().cycle().take(bars * 3).collect()
         }
     };
 
-    // Salva em disco para próximas chamadas (app restart, scroll)
     write_wave_cache(&path, bars, &result);
-
     Ok(result)
 }
 
-fn decode_pcm_mono(path: &str) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
-    decode_pcm_with_sr(path).map(|(s, _)| s)
+/// Gera amostras PCM para waveform com dois níveis de limitação:
+///
+/// 1. `MAX_READ_PKTS` — hard cap no total de packets LIDOS via `next_packet()`.
+///    Limita I/O e parsing de bitstream. Para um mix de 2h (~275 000 packets MP3)
+///    com cap=5 000 cobrimos os primeiros ~2,6 min — suficiente para thumbnail.
+///
+/// 2. `packet_stride` — só chama `decoder.decode()` 1 em cada N packets lidos.
+///    Limita o custo MDCT. Com target_packets=400 e MAX_READ_PKTS=5 000
+///    → stride=12, ~416 decodificações independente do tamanho do arquivo.
+fn decode_pcm_strided(path: &str, target_packets: usize) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+    use symphonia::core::errors::Error as SymphoniaError;
+
+    // Hard cap: nunca lê mais do que esta quantidade de packets do bitstream.
+    // 5 000 packets ≈ primeiros 2,6 min de um MP3 44 100 Hz (1 152 samples/pkt).
+    const MAX_READ_PKTS: usize = 5_000;
+
+    let file = std::fs::File::open(path)?;
+    let mss  = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())?;
+
+    let mut format = probed.format;
+
+    let track = format.tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+        .ok_or("no audio track")?;
+
+    let track_id = track.id;
+
+    // Stride de decodificação dentro dos MAX_READ_PKTS packets lidos.
+    let packet_stride = (MAX_READ_PKTS / target_packets).max(1);
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())?;
+
+    let mut mono: Vec<f32> = Vec::with_capacity(target_packets * 1152);
+    let mut read_count: usize = 0;
+    let mut pkt_idx: usize = 0;
+
+    loop {
+        if read_count >= MAX_READ_PKTS { break; }
+
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(SymphoniaError::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(SymphoniaError::ResetRequired) => { decoder.reset(); continue; }
+            Err(_) => break,
+        };
+        if packet.track_id() != track_id { continue; }
+
+        read_count += 1;
+        pkt_idx    += 1;
+
+        if pkt_idx % packet_stride != 0 { continue; }
+
+        let audio_buf = match decoder.decode(&packet) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        let spec = *audio_buf.spec();
+        let ch   = spec.channels.count().max(1);
+        let mut sample_buf = SampleBuffer::<f32>::new(audio_buf.capacity() as u64, spec);
+        sample_buf.copy_interleaved_ref(audio_buf);
+
+        mono.extend(sample_buf.samples().chunks(ch).map(|c| c.iter().sum::<f32>() / ch as f32));
+    }
+
+    Ok(mono)
 }
+
 
 // Returns (mono_samples, sample_rate_hz)
 fn decode_pcm_with_sr(path: &str) -> Result<(Vec<f32>, u32), Box<dyn std::error::Error + Send + Sync>> {

@@ -122,9 +122,9 @@ function CreateMode({ tracks, onClose, onCreated, parentId }: { tracks: Track[];
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
             className="w-full px-3 py-2 rounded-lg text-[13px] outline-none"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#F5F5F4" }}
+            style={{ background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--field-text)" }}
             onFocus={(e) => { e.target.style.border = "1px solid rgba(217,83,64,0.5)"; }}
-            onBlur={(e) => { e.target.style.border = "1px solid rgba(255,255,255,0.08)"; }}
+            onBlur={(e) => { e.target.style.border = "1px solid var(--field-border)"; }}
           />
         </div>
 
@@ -198,9 +198,9 @@ function CreateMode({ tracks, onClose, onCreated, parentId }: { tracks: Track[];
                   onChange={(e) => setProps((p) => ({ ...p, album: e.target.value }))}
                   placeholder="Nome do álbum"
                   className="flex-1 w-full bg-transparent border-b pb-0.5 text-[12px] focus:outline-none"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "#C2BEBC" }}
+                  style={{ borderColor: "var(--field-border)", color: "var(--field-text)" }}
                   onFocus={(e) => (e.target.style.borderColor = "rgba(217,83,64,0.5)")}
-                  onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.08)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--field-border)")}
                 />
               </FieldRow>
 
@@ -211,9 +211,9 @@ function CreateMode({ tracks, onClose, onCreated, parentId }: { tracks: Track[];
                   onChange={(e) => setProps((p) => ({ ...p, genre: e.target.value }))}
                   placeholder="Ex: House, Techno"
                   className="flex-1 w-full bg-transparent border-b pb-0.5 text-[12px] focus:outline-none"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "#C2BEBC" }}
+                  style={{ borderColor: "var(--field-border)", color: "var(--field-text)" }}
                   onFocus={(e) => (e.target.style.borderColor = "rgba(217,83,64,0.5)")}
-                  onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.08)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--field-border)")}
                 />
               </FieldRow>
 
@@ -224,9 +224,9 @@ function CreateMode({ tracks, onClose, onCreated, parentId }: { tracks: Track[];
                   onChange={(e) => setProps((p) => ({ ...p, comment: e.target.value }))}
                   placeholder="Comentário"
                   className="flex-1 w-full bg-transparent border-b pb-0.5 text-[12px] focus:outline-none"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "#C2BEBC" }}
+                  style={{ borderColor: "var(--field-border)", color: "var(--field-text)" }}
                   onFocus={(e) => (e.target.style.borderColor = "rgba(217,83,64,0.5)")}
-                  onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.08)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--field-border)")}
                 />
               </FieldRow>
             </div>
@@ -329,15 +329,15 @@ function ExportMode({ tracks, onClose, exportOnly }: { tracks: Track[]; onClose:
         key={id}
         className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
         style={{
-          background: isChecked ? "rgba(217,83,64,0.08)" : "rgba(255,255,255,0.02)",
-          border: isChecked ? "1px solid rgba(217,83,64,0.25)" : "1px solid rgba(255,255,255,0.05)",
+          background: isChecked ? "rgba(217,83,64,0.08)" : "var(--row-card-bg)",
+          border: isChecked ? "1px solid rgba(217,83,64,0.25)" : "1px solid var(--row-card-border)",
           opacity: isInstalled || isM3u ? 1 : 0.45,
         }}
       >
         <input type="checkbox" className="sr-only" checked={isChecked} onChange={() => toggle(id)} disabled={!isInstalled && !isM3u} />
         <div
           className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all"
-          style={{ borderColor: isChecked ? "#D95340" : "rgba(255,255,255,0.12)", background: isChecked ? "#D95340" : "transparent" }}
+          style={{ borderColor: isChecked ? "#D95340" : "var(--radio-border)", background: isChecked ? "#D95340" : "transparent" }}
         >
           {isChecked && (
             <svg width="9" height="7" viewBox="0 0 9 7" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -346,7 +346,7 @@ function ExportMode({ tracks, onClose, exportOnly }: { tracks: Track[]; onClose:
           )}
         </div>
         <div className="relative shrink-0">
-          <div className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold" style={{ background: "rgba(255,255,255,0.06)", color: "#8F8883" }}>
+          <div className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold" style={{ background: "var(--icon-bg)", color: "var(--icon-text)" }}>
             {isM3u ? (
               <svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1.5 1.5h5.5l2.5 2.5v8H1.5V1.5z"/>
@@ -447,7 +447,7 @@ function FieldRow({ active, onToggle, label, children }: { active: boolean; onTo
       <button
         onClick={onToggle}
         className="w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 flex items-center justify-center transition-colors"
-        style={{ background: active ? "#D95340" : "transparent", borderColor: active ? "#D95340" : "rgba(255,255,255,0.2)" }}
+        style={{ background: active ? "#D95340" : "transparent", borderColor: active ? "#D95340" : "var(--checkbox-border)" }}
       >
         {active && (
           <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

@@ -66,7 +66,7 @@ export default function OfflineBanner({ onClose }: { onClose?: () => void }) {
           <button
             onClick={onClose}
             className="mt-1 px-5 py-2 rounded-lg text-[12px] font-semibold text-[#C2BEBC] hover:text-white transition-colors"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}
+            style={{ background: "var(--icon-bg)", border: "1px solid var(--field-border)" }}
           >
             Entendi
           </button>

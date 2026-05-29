@@ -673,7 +673,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 {/* Prévia ao vivo */}
-                <div className="mt-3 px-3 py-2.5 rounded-lg border" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                <div className="mt-3 px-3 py-2.5 rounded-lg border" style={{ borderColor: "var(--ctx-divider-bg)", background: "var(--row-card-bg)" }}>
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[13px] font-semibold truncate" style={{ color: "var(--c-t1)" }}>Título da faixa</span>
                     <span className="text-[11px] truncate" style={{ color: "var(--c-t4)" }}>Nome do artista</span>
@@ -692,7 +692,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                 </p>
                 <label
                   className="flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-colors hover:bg-white/[0.02]"
-                  style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                  style={{ borderColor: "var(--ctx-divider-bg)" }}
                 >
                   <div>
                     <p className="text-[12px] font-semibold text-[#C2BEBC]">Mostrar marcadores de ajuda</p>
@@ -734,7 +734,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   para buscar BPM, tom e capas de álbum.
                 </p>
                 <label className="flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-colors hover:bg-white/[0.02]"
-                  style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                  style={{ borderColor: "var(--ctx-divider-bg)" }}>
                   <div>
                     <p className="text-[12px] font-semibold text-[#C2BEBC]">
                       Permitir envio de metadados externos
@@ -776,7 +776,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                   ].map((row) => (
                     <div key={row.name}
                       className="flex items-start gap-3 px-3 py-2.5 rounded-lg"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      style={{ background: "var(--row-card-bg)", border: "1px solid var(--row-card-border)" }}>
                       <div className="w-1.5 h-1.5 rounded-full bg-[#605A55] mt-1.5 shrink-0" />
                       <div>
                         <p className="text-[11px] font-semibold text-[#8F8883]">{row.name}</p>
@@ -810,7 +810,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
               </div>
 
               {/* Aceite e contato */}
-              <div className="px-4 py-3 rounded-lg" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div className="px-4 py-3 rounded-lg" style={{ background: "var(--row-card-bg)", border: "1px solid var(--row-card-border)" }}>
                 <p className="text-[11px] text-[#4C4743]">
                   <span className="text-[#605A55] font-semibold">Aceite registrado:</span>{" "}
                   {privacyAcceptedVersion

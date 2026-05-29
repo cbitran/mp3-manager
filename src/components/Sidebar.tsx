@@ -6,6 +6,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "./Toast";
 import PlaylistSettingsModal from "./PlaylistSettingsModal";
 import { applyPlaylistRules } from "../lib/playlistRules";
+import { activeFolderDragPath, setActiveFolderDragPath } from "../lib/folderDrag";
 
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
@@ -270,7 +271,11 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
     e.preventDefault();
     dragCounterRef.current++;
     setIsDragOver(true);
-    setIsDragFolderInternal(e.dataTransfer.types.includes("text/folder-path"));
+    // Detecta drag interno via variável de módulo (fallback: dataTransfer.types)
+    setIsDragFolderInternal(
+      activeFolderDragPath !== null ||
+      e.dataTransfer.types.includes("text/folder-path")
+    );
   }
 
   function handleDragLeave() {
@@ -288,8 +293,10 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
     setIsDragOver(false);
     setIsDragFolderInternal(false);
 
-    // Drag interno de pasta vinda do FolderBrowser (Dispositivos)
-    const folderPath = e.dataTransfer.getData("text/folder-path");
+    // Drag interno de pasta vinda do FolderBrowser (Dispositivos).
+    // Usa variável de módulo (mais confiável que dataTransfer no WebKit/Tauri).
+    const folderPath = activeFolderDragPath ?? e.dataTransfer.getData("text/folder-path");
+    setActiveFolderDragPath(null);
     if (folderPath) {
       if (onFolderDropWithChoice) {
         onFolderDropWithChoice(folderPath);
@@ -606,10 +613,10 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
                           <>
                             {/* linha vertical do pai */}
                             <span className="absolute top-0 bottom-0"
-                              style={{ left: (depth - 1) * INDENT + 8, width: "1px", background: "rgba(255,255,255,0.18)" }} />
+                              style={{ left: (depth - 1) * INDENT + 8, width: "1px", background: "var(--tree-line)" }} />
                             {/* gancho horizontal → item */}
                             <span className="absolute"
-                              style={{ left: (depth - 1) * INDENT + 8, top: "50%", width: 8, height: "1px", background: "rgba(255,255,255,0.18)" }} />
+                              style={{ left: (depth - 1) * INDENT + 8, top: "50%", width: 8, height: "1px", background: "var(--tree-line)" }} />
                           </>
                         )}
                         <div className="flex items-center gap-1 group/plrow" data-pl-id={pl.id}>
@@ -617,7 +624,7 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
                           {!dragState.isDragging && (
                             <button
                               className="shrink-0 w-4 h-4 flex items-center justify-center opacity-0 group-hover/plrow:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
-                              style={{ color: "rgba(255,255,255,0.30)" }}
+                              style={{ color: "var(--tree-chevron)" }}
                               onMouseDown={(e) => startPlDrag(pl.id, e)}
                               title="Arrastar para aninhar em outra playlist"
                             >
@@ -721,8 +728,8 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
                   data-new-playlist-zone="true"
                   className="mx-1 mt-1.5 flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-all"
                   style={{
-                    borderColor: dragState.hoveringNewPlaylist ? "#D95340" : "rgba(255,255,255,0.12)",
-                    background: dragState.hoveringNewPlaylist ? "rgba(217,83,64,0.10)" : "rgba(255,255,255,0.02)",
+                    borderColor: dragState.hoveringNewPlaylist ? "#D95340" : "var(--new-pl-border)",
+                    background: dragState.hoveringNewPlaylist ? "rgba(217,83,64,0.10)" : "var(--new-pl-bg)",
                   }}
                   onMouseEnter={() => setDragState({ hoveredPlaylistId: null, hoveringNewPlaylist: true })}
                   onMouseLeave={() => setDragState({ hoveringNewPlaylist: false })}
@@ -1126,41 +1133,54 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
       )}
 
       {/* Confirmação de exclusão de playlist */}
-      {confirmDeletePlaylist && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeletePlaylist(null); }}>
-          <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[340px] shadow-2xl">
-            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
-              </svg>
-              <h3 className="text-sm font-semibold text-[#E8E4E1]">{t("sidebar.deletePlaylist")}</h3>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-[12px] text-[#8F8883] leading-relaxed">
-                A playlist <span className="text-[#C2BEBC] font-medium">"{confirmDeletePlaylist.name}"</span> será excluída permanentemente. As faixas não serão apagadas do disco.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
-              <button
-                className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
-                onClick={() => setConfirmDeletePlaylist(null)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
-                onClick={() => {
-                  deletePlaylist(confirmDeletePlaylist.id);
-                  toast(`Playlist "${confirmDeletePlaylist.name}" excluída`, "info");
-                  setConfirmDeletePlaylist(null);
-                }}
-              >
-                {t("sidebar.deletePlaylist")}
-              </button>
+      {confirmDeletePlaylist && (() => {
+        // Conta todos os descendentes recursivamente
+        const countDescendants = (pid: string): number => {
+          const direct = playlists.filter((p) => p.parentId === pid);
+          return direct.reduce((acc, c) => acc + 1 + countDescendants(c.id), 0);
+        };
+        const descCount = countDescendants(confirmDeletePlaylist.id);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeletePlaylist(null); }}>
+            <div className="bg-[#1c1715] border border-white/10 rounded-xl w-[340px] shadow-2xl">
+              <div className="px-5 py-4 border-b border-white/[0.06] flex items-center gap-2.5">
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#D95340" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6.5 1.5L11.5 10.5H1.5L6.5 1.5z"/><path d="M6.5 5v2.5M6.5 9.5v.1"/>
+                </svg>
+                <h3 className="text-sm font-semibold text-[#E8E4E1]">{t("sidebar.deletePlaylist")}</h3>
+              </div>
+              <div className="px-5 py-4 flex flex-col gap-2">
+                <p className="text-[12px] text-[#8F8883] leading-relaxed">
+                  A playlist <span className="text-[#C2BEBC] font-medium">"{confirmDeletePlaylist.name}"</span> será excluída permanentemente. As faixas não serão apagadas do disco.
+                </p>
+                {descCount > 0 && (
+                  <p className="text-[12px] text-[#D95340] leading-relaxed">
+                    Esta pasta contém <span className="font-semibold">{descCount} {descCount === 1 ? "subplaylist" : "subplaylists"}</span> que também serão excluídas.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/[0.06]">
+                <button
+                  className="px-4 py-1.5 text-[12px] text-[#756D67] hover:text-[#C2BEBC] transition-colors rounded-lg hover:bg-white/[0.04]"
+                  onClick={() => setConfirmDeletePlaylist(null)}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
+                  onClick={() => {
+                    deletePlaylist(confirmDeletePlaylist.id);
+                    toast(`Playlist "${confirmDeletePlaylist.name}" excluída`, "info");
+                    setConfirmDeletePlaylist(null);
+                  }}
+                >
+                  {t("sidebar.deletePlaylist")}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

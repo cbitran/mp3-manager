@@ -86,6 +86,28 @@
   --surface-row:        rgba(255,255,255,0.02);
   --surface-row-border: rgba(255,255,255,0.05);
 
+  /* ── Variáveis de componente inline (menus, sidebar, forms) ────── */
+  --ctx-bg:             #1c1715;
+  --ctx-border:         rgba(255,255,255,0.08);
+  --ctx-text:           #E8E4E1;
+  --ctx-divider-bg:     rgba(255,255,255,0.06);
+  --tree-line:          rgba(255,255,255,0.18);
+  --tree-chevron:       rgba(255,255,255,0.30);
+  --new-pl-border:      rgba(255,255,255,0.12);
+  --new-pl-bg:          rgba(255,255,255,0.02);
+  --field-bg:           rgba(255,255,255,0.04);
+  --field-border:       rgba(255,255,255,0.08);
+  --field-text:         #F5F5F4;
+  --checkbox-border:    rgba(255,255,255,0.20);
+  --row-card-bg:        rgba(255,255,255,0.02);
+  --row-card-border:    rgba(255,255,255,0.05);
+  --radio-border:       rgba(255,255,255,0.12);
+  --icon-bg:            rgba(255,255,255,0.06);
+  --icon-text:          #8F8883;
+  --col-on:             #C2BEBC;
+  --col-off:            #605A55;
+  --col-cb-border:      rgba(255,255,255,0.15);
+
   /* Especiais */
   --camelot: var(--green-500);        /* #5BA055 — compatibilidade harmônica */
   --success:  var(--green-800);        /* #2B4C28 — save/ok */
@@ -105,6 +127,30 @@
 }
 /* Tema claro: preto com opacidade, boost → preto puro                */
 html[data-theme="light"] {
+  --ctx-bg:             #FFFFFF;
+  --ctx-border:         rgba(0,0,0,0.12);
+  --ctx-text:           rgba(0,0,0,0.82);
+  --ctx-divider-bg:     rgba(0,0,0,0.10);
+  --tree-line:          rgba(0,0,0,0.18);
+  --tree-chevron:       rgba(0,0,0,0.38);
+  --new-pl-border:      rgba(0,0,0,0.18);
+  --new-pl-bg:          rgba(0,0,0,0.02);
+  --field-bg:           rgba(0,0,0,0.04);
+  --field-border:       rgba(0,0,0,0.14);
+  --field-text:         rgba(0,0,0,0.82);
+  --checkbox-border:    rgba(0,0,0,0.25);
+  --row-card-bg:        rgba(0,0,0,0.02);
+  --row-card-border:    rgba(0,0,0,0.10);
+  --radio-border:       rgba(0,0,0,0.18);
+  --icon-bg:            rgba(0,0,0,0.06);
+  --icon-text:          rgba(0,0,0,0.55);
+  --col-on:             rgba(0,0,0,0.80);
+  --col-off:            rgba(0,0,0,0.44);
+  --col-cb-border:      rgba(0,0,0,0.22);
+  --surface-row:        rgba(0,0,0,0.02);
+  --surface-row-border: rgba(0,0,0,0.10);
+  --border-inactive:    rgba(0,0,0,0.25);
+
   --c-t1: color-mix(in srgb, #212121, black var(--tcb)); /* ≈ rgba(0,0,0,.87) */
   --c-t2: color-mix(in srgb, #333333, black var(--tcb)); /* ≈ rgba(0,0,0,.80) */
   --c-t3: color-mix(in srgb, #515151, black var(--tcb)); /* ≈ rgba(0,0,0,.68) */
@@ -743,6 +789,25 @@ html[data-theme="light"] .text-\[\#4C4743\]  { color: color-mix(in srgb, rgba(0,
 html[data-theme="light"] .text-\[\#373331\]  { color: color-mix(in srgb, rgba(0,0,0,0.30), black var(--tcb, 0%)) !important; }
 html[data-theme="light"] .text-\[\#a09890\]  { color: color-mix(in srgb, rgba(0,0,0,0.55), black var(--tcb, 0%)) !important; }
 html[data-theme="light"] .text-white         { color: color-mix(in srgb, rgba(0,0,0,0.87), black var(--tcb, 0%)) !important; }
+
+/* ── Context Menu — tema-adaptado ──────────────────────────────── */
+.ctx-menu {
+  background: var(--ctx-bg);
+  border: 1px solid var(--ctx-border);
+}
+html[data-theme="light"] .ctx-menu {
+  box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+}
+.ctx-item { color: var(--ctx-text); }
+.ctx-divider { background: var(--ctx-divider-bg); height: 1px; margin: 4px 0; }
+
+/* ── Toggle button off-state visível em light ──────────────────── */
+html[data-theme="light"] .bg-white\/\[0\.12\] {
+  background-color: rgba(0,0,0,0.12) !important;
+}
+html[data-theme="light"] .bg-white\/12 {
+  background-color: rgba(0,0,0,0.12) !important;
+}
 
 /* ── Disco MiniPlayer ─────────────────────────────────────────── */
 @keyframes mini-disc-spin {

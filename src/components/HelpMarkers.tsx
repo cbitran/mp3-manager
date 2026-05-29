@@ -78,7 +78,7 @@ function HelpBadge({
           className="fixed z-[8001] w-[300px] rounded-xl shadow-2xl border"
           style={{
             ...popoverStyle,
-            background: "#1c1715",
+            background: "var(--ctx-bg)",
             borderColor: "rgba(217,83,64,0.3)",
           }}
           onClick={(e) => e.stopPropagation()}
@@ -86,7 +86,7 @@ function HelpBadge({
           {/* Header */}
           <div
             className="flex items-start justify-between px-4 pt-3.5 pb-2"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+            style={{ borderBottom: "1px solid var(--ctx-divider-bg)" }}
           >
             <div className="flex items-center gap-2">
               <div
@@ -131,9 +131,9 @@ function HelpBadge({
                           <kbd
                             className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold"
                             style={{
-                              background: "rgba(255,255,255,0.07)",
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              color: "#C2BEBC",
+                              background: "var(--field-bg)",
+                              border: "1px solid var(--radio-border)",
+                              color: "var(--col-on)",
                               boxShadow: "0 1px 0 rgba(0,0,0,0.3)",
                             }}
                           >

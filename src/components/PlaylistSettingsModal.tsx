@@ -139,7 +139,7 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                     e.target.value = "";
                   }}
                   className="text-[10px] rounded-md px-1.5 py-1 focus:outline-none"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#8F8883", maxWidth: "120px" }}
+                  style={{ background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--icon-text)", maxWidth: "120px" }}
                 >
                   <option value="" disabled>Preset…</option>
                   {globalPropertyPresets.map((p) => (
@@ -161,7 +161,7 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                       src={coverSrc}
                       alt="Capa"
                       className="w-8 h-8 rounded object-cover shrink-0"
-                      style={{ border: "1px solid rgba(255,255,255,0.10)" }}
+                      style={{ border: "1px solid var(--radio-border)" }}
                     />
                   ) : (
                     <span className="text-[12px] text-[#605A55]">Nenhuma imagem</span>
@@ -265,7 +265,7 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                             }
                           }}
                           className="flex-1 rounded-lg px-3 py-1.5 text-[12px] focus:outline-none"
-                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(217,83,64,0.4)", color: "#C2BEBC" }}
+                          style={{ background: "var(--field-bg)", border: "1px solid rgba(217,83,64,0.4)", color: "var(--col-on)" }}
                         />
                         <button
                           onClick={() => {
@@ -379,7 +379,7 @@ function FieldRow({
       {/* Label */}
       <span
         className="text-[12px] w-16 shrink-0 font-medium"
-        style={{ color: active ? "#E8E4E1" : "#756D67" }}
+        style={{ color: active ? "var(--ctx-text)" : "var(--c-t5)" }}
       >
         {label}
       </span>

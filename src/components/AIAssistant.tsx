@@ -221,6 +221,84 @@ const KNOWLEDGE: Array<{ patterns: string[]; answer: string }> = [
     patterns: ["assistente", "ai", "chat", "como uso o assistente", "o que voce faz"],
     answer: "Posso responder dúvidas sobre como usar o TagWave, buscar músicas na sua biblioteca ('encontre [nome]'), tocar uma faixa ('tocar [nome]') e explicar qualquer funcionalidade do app. É só perguntar!",
   },
+
+  // ── TagWave Pro ───────────────────────────────────────────────────────────────
+  {
+    patterns: ["tagwave pro", "versao pro", "pro plan", "plano pro", "upgrade", "obter pro", "ativar pro", "chave pro"],
+    answer: "O TagWave Pro ($69, pagamento único) desbloqueia três recursos avançados: (1) AcoustID Fingerprinting — identifica faixas sem tag por impressão digital de áudio; (2) Filename → Tag — extrai metadados do nome do arquivo usando padrões customizáveis; (3) Editor de Tags Avançadas — visualiza e edita todos os campos ocultos de qualquer faixa. Para ativar, clique em qualquer botão PRO na toolbar ou vá em Configurações → Licença.",
+  },
+
+  // ── AcoustID ─────────────────────────────────────────────────────────────────
+  {
+    patterns: ["acoustid", "fingerprint", "impressao digital", "identificar faixa", "musica sem tag", "identificacao automatica", "reconhecer musica", "id button"],
+    answer: "O AcoustID Fingerprinting (recurso Pro) analisa o áudio de cada faixa e consulta o banco de dados global AcoustID para identificar a música, mesmo que não tenha nenhum metadado. Clique no botão 'ID' na toolbar. Funciona em lote — você pode identificar 50 faixas de uma vez e aplicar os metadados encontrados com um clique.",
+  },
+
+  // ── Filename → Tag ────────────────────────────────────────────────────────────
+  {
+    patterns: ["filename tag", "nome do arquivo tag", "extrair do nome", "nome para tag", "formato nome", "pattern nome", "arquivo para metadado", "nome para metadado"],
+    answer: "O recurso Filename → Tag (Pro) extrai metadados do nome do arquivo usando padrões. Por exemplo: se seus arquivos se chamam 'Artista - Título.mp3', você define o padrão '%artist% - %title%' e o TagWave preenche os campos automaticamente em todas as faixas. Clique no botão 'Nome→Tag' (ou 'File→Tag') na toolbar. Há um preview das primeiras 8 faixas antes de aplicar.",
+  },
+
+  // ── Extended Tags ─────────────────────────────────────────────────────────────
+  {
+    patterns: ["tags avancadas", "tags ocultas", "campos ocultos", "extended tags", "tags serato", "tags rekordbox", "ver todos campos", "campo customizado", "id3 completo"],
+    answer: "O Editor de Tags Avançadas (Pro) mostra TODOS os campos ID3 de um arquivo, incluindo dados internos do Serato, rekordbox e campos customizados. Você pode editar qualquer campo, deletar campos indesejados ou adicionar novos. Acesse clicando com botão direito em uma faixa → 'Tags avançadas', ou pelo botão 'Tags+' na toolbar.",
+  },
+
+  // ── Playlists hierárquicas ────────────────────────────────────────────────────
+  {
+    patterns: ["playlist mae", "playlist filha", "subplaylist", "playlist hierarquica", "aninhar playlist", "pasta de playlist", "playlist dentro de playlist", "hierarquia playlist"],
+    answer: "O TagWave suporta playlists hierárquicas com dois níveis. Uma playlist Mãe funciona como pool mestre — tudo que você adiciona a uma playlist Filha vai automaticamente para a Mãe. Se remover uma faixa da Filha, ela permanece na Mãe. Para criar uma Filha: clique com botão direito em uma playlist → 'Criar subplaylist aqui'. Para aninhar uma playlist existente: arraste-a (pelo ícone de 6 pontos que aparece ao passar o mouse) sobre outra playlist.",
+  },
+
+  // ── Arrastar playlist ─────────────────────────────────────────────────────────
+  {
+    patterns: ["arrastar playlist", "mover playlist", "reorganizar playlist", "drag playlist", "aninhar playlist drag", "colocar dentro de outra"],
+    answer: "Para aninhar uma playlist dentro de outra (criar hierarquia), passe o mouse sobre ela na sidebar — um ícone de 6 pontos (⠿) aparece à esquerda. Arraste esse ícone e solte sobre a playlist que deve ser a Mãe. O contorno laranja indica quando a Mãe está pronta para receber. Para desfazer, clique com botão direito → 'Remover da pasta'.",
+  },
+
+  // ── Playlist Rules ────────────────────────────────────────────────────────────
+  {
+    patterns: ["regras de playlist", "playlist rules", "propriedades globais", "aplicar automaticamente", "capa automatica", "genero automatico", "preset playlist"],
+    answer: "As Playlist Rules definem metadados que são aplicados automaticamente a cada faixa adicionada à playlist. Acesse via botão direito na playlist → Configurações. Você pode definir capa, álbum, gênero e comentário. Ao arrastar faixas para a playlist, os campos ativos são aplicados automaticamente. Você pode salvar as regras como Preset para reutilizar em outras playlists.",
+  },
+
+  // ── Tema sol/lua ──────────────────────────────────────────────────────────────
+  {
+    patterns: ["mudar tema", "trocar tema", "sol lua", "botao tema", "alternar tema", "tema rapido", "claro escuro rapido"],
+    answer: "Para trocar o tema rapidamente, clique no ícone de sol (☀) ou lua (☽) na barra de ferramentas, ao lado do ícone de engrenagem. Cada clique alterna entre tema Claro e Escuro. Para mais opções (incluindo Automático), vá em Configurações → Aparência.",
+  },
+
+  // ── Drag & Drop do Finder ─────────────────────────────────────────────────────
+  {
+    patterns: ["arrastar finder", "arrastar arquivo", "drag drop arquivo", "soltar arquivo", "drop arquivo", "jogar arquivo"],
+    answer: "Você pode arrastar arquivos de áudio diretamente do Finder (Mac) ou Explorer (Windows) para a janela do TagWave. Um modal aparecerá perguntando se você quer adicionar à Biblioteca, a uma Playlist existente ou criar uma Nova Playlist com essas faixas.",
+  },
+
+  // ── Dispositivos / Volumes ────────────────────────────────────────────────────
+  {
+    patterns: ["dispositivo", "usb", "pendrive", "hd externo", "volume", "sd card", "ssd externo", "disco externo"],
+    answer: "Na seção 'Dispositivos' no fundo da sidebar, o TagWave lista automaticamente todos os volumes conectados (HD externo, pendrive, cartão SD). Clique num volume para navegar pelos arquivos. Quando você conecta um novo dispositivo, um toast aparece com opção de adicionar à biblioteca.",
+  },
+
+  // ── Hotkeys CUE ───────────────────────────────────────────────────────────────
+  {
+    patterns: ["cue points", "pontos cue", "hot cue", "marcadores", "cue editor", "ponto de entrada", "loop point"],
+    answer: "O TagWave tem um editor completo de CUE Points estilo Serato. Clique no botão CUE na waveform do player para abrir o editor. Você pode adicionar até 8 hot cues coloridos, ajustar com precisão de milissegundos, usar Quantize para snap automático no beat, e salvar o Beat Grid. Os CUE Points são compatíveis com Serato (MP3/AIFF) e salvos em sidecar JSON para outros formatos.",
+  },
+
+  // ── Normalização de volume ────────────────────────────────────────────────────
+  {
+    patterns: ["volume diferente", "musicas com volume diferente", "normalizar volume", "replaygain", "volume igual", "equalizar volume"],
+    answer: "O TagWave não aplica normalização de volume (ReplayGain) automaticamente — isso preserva a intenção artística de cada faixa. Para equalizar volumes no mix, use o controle de volume do player ou o recurso de normalização do seu software DJ.",
+  },
+
+  // ── LibraryStats ──────────────────────────────────────────────────────────────
+  {
+    patterns: ["estatisticas", "cobertura de metadata", "top generos", "biblioteca stats", "quantas horas", "total gb", "cobertura"],
+    answer: "O painel direito tem uma aba 'Biblioteca' com estatísticas completas: cobertura de metadados (% de faixas com título, artista, gênero, BPM, capa), top 5 gêneros clicáveis (clique para filtrar a tabela por gênero), total de horas e tamanho em GB da biblioteca.",
+  },
 ];
 
 // ── Intenções conversacionais ────────────────────────────────────────────────
