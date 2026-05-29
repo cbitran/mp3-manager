@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store";
+
+const PRO_URL = "https://tagwave.app/pro";
 
 interface Props {
   children: React.ReactNode;
@@ -104,7 +107,7 @@ export function ProUpgradeModal({ onClose, feature, description }: { onClose: ()
           {!showActivate ? (
             <div className="space-y-2">
               <button
-                onClick={() => window.open("https://tagwave.app/pro", "_blank")}
+                onClick={() => openUrl(PRO_URL).catch(() => {})}
                 className="w-full py-2.5 rounded-xl text-[13px] font-bold bg-[#D95340] hover:bg-[#E07364] text-white transition-colors"
               >
                 Obter TagWave Pro →
