@@ -375,36 +375,7 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
               </button>
             );
           })}
-          {sidebarTab === "recent" && recentFolders.length > 1 && (
-            <div className="ml-auto mb-1.5 flex items-center gap-0.5">
-              <button
-                onClick={() => setLibrarySort("recent")}
-                title="Recentes primeiro"
-                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${librarySort === "recent" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
-              >
-                Recente
-              </button>
-              <button
-                onClick={() => setLibrarySort("alpha")}
-                title="Ordem alfabética"
-                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${librarySort === "alpha" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
-              >
-                A–Z
-              </button>
-              {onNewLibrary && (
-                <button
-                  onClick={onNewLibrary}
-                  title="Nova biblioteca"
-                  className="ml-0.5 p-1 rounded-md hover:bg-white/[0.08] text-[#605A55] hover:text-[#C2BEBC] transition-colors"
-                >
-                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                    <path d="M5.5 1v9M1 5.5h9"/>
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
-          {sidebarTab === "recent" && recentFolders.length <= 1 && onNewLibrary && (
+          {sidebarTab === "recent" && onNewLibrary && (
             <button
               onClick={onNewLibrary}
               title="Nova biblioteca"
@@ -415,22 +386,8 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
               </svg>
             </button>
           )}
-          {sidebarTab === "playlists" && playlists.length > 1 && (
+          {sidebarTab === "playlists" && (
             <div className="ml-auto mb-1.5 flex items-center gap-0.5">
-              <button
-                onClick={() => setPlaylistSort("recent")}
-                title="Mais recentes primeiro"
-                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${playlistSort === "recent" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
-              >
-                Recente
-              </button>
-              <button
-                onClick={() => setPlaylistSort("alpha")}
-                title="Ordem alfabética"
-                className={`px-1.5 py-0.5 rounded text-[9px] font-semibold transition-colors ${playlistSort === "alpha" ? "text-[#D95340] bg-[#D95340]/10" : "text-[#605A55] hover:text-[#8F8883]"}`}
-              >
-                A–Z
-              </button>
               <button
                 onClick={handleSyncPlaylists}
                 disabled={syncing}
@@ -476,6 +433,35 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
             <span className="text-[11px]">Toda a biblioteca</span>
             <span className="ml-auto text-[9px] font-mono text-[#605A55]">{tracks.length > 0 && !lastFolder ? tracks.length : ""}</span>
           </button>
+        )}
+
+        {/* Sub-linha de sort — visível sempre na aba ativa */}
+        {(sidebarTab === "recent" || sidebarTab === "playlists") && (
+          <div className="flex items-center gap-1 px-3 py-1 border-b border-white/[0.04]">
+            <span className="text-[9px] text-[#4C4743] uppercase tracking-widest font-bold mr-1">
+              {sidebarTab === "recent" ? "Ordem" : "Ordem"}
+            </span>
+            <button
+              onClick={() => sidebarTab === "recent" ? setLibrarySort("recent") : setPlaylistSort("recent")}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                (sidebarTab === "recent" ? librarySort : playlistSort) === "recent"
+                  ? "text-[#D95340] bg-[#D95340]/10"
+                  : "text-[#605A55] hover:text-[#8F8883]"
+              }`}
+            >
+              Recente
+            </button>
+            <button
+              onClick={() => sidebarTab === "recent" ? setLibrarySort("alpha") : setPlaylistSort("alpha")}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                (sidebarTab === "recent" ? librarySort : playlistSort) === "alpha"
+                  ? "text-[#D95340] bg-[#D95340]/10"
+                  : "text-[#605A55] hover:text-[#8F8883]"
+              }`}
+            >
+              A–Z
+            </button>
+          </div>
         )}
 
         {/* Tab content */}

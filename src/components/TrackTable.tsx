@@ -1397,7 +1397,9 @@ export default function TrackTable({
                     ? "bg-[#D95340]/[0.05] border-[#D95340]/[0.08]"
                     : selected
                     ? "track-row-selected border-white/[0.04]"
-                    : "border-white/[0.03] hover:bg-white/[0.015]"
+                    : i % 2 === 0
+                    ? "border-white/[0.03] hover:bg-white/[0.03]"
+                    : "bg-white/[0.025] border-white/[0.03] hover:bg-white/[0.05]"
                 }`}
               >
                 {/* Row number / playing indicator */}

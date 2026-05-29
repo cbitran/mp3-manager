@@ -230,16 +230,17 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                   {!showSavePreset ? (
                     <button
                       onClick={() => setShowSavePreset(true)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.03] transition-all group"
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all font-medium"
+                      style={{ background: "rgba(217,83,64,0.10)", border: "1px solid rgba(217,83,64,0.22)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.18)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.10)"; }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#605A55" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:stroke-[#C2BEBC] transition-colors flex-shrink-0">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
                         <polyline points="17 21 17 13 7 13 7 21"/>
                         <polyline points="7 3 7 8 15 8"/>
                       </svg>
-                      <span className="text-[11px] text-[#605A55] group-hover:text-[#C2BEBC] transition-colors">
-                        Salvar como preset…
-                      </span>
+                      <span className="text-[12px] text-[#D95340]">Salvar como preset</span>
                     </button>
                   ) : (
                     <div className="flex flex-col gap-2">
@@ -351,19 +352,20 @@ function FieldRow({
 }) {
   return (
     <div
-      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-all cursor-pointer"
+      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-all cursor-pointer ${
+        active ? "bg-[#D95340]/[0.07]" : "bg-white/[0.02]"
+      }`}
       style={{
-        background: active ? "rgba(217,83,64,0.07)" : "var(--surface-row)",
-        border: active ? "1px solid rgba(217,83,64,0.20)" : "1px solid var(--surface-row-border)",
+        border: active ? "1px solid rgba(217,83,64,0.20)" : "1px solid var(--surface-row-border, rgba(255,255,255,0.05))",
       }}
       onClick={onToggle}
     >
       {/* Checkbox */}
       <div
-        className="w-4 h-4 rounded-[4px] flex-shrink-0 flex items-center justify-center transition-colors"
+        className={`w-4 h-4 rounded-[4px] flex-shrink-0 flex items-center justify-center transition-colors ${active ? "" : "tw-border-inactive"}`}
         style={{
           background: active ? "#D95340" : "transparent",
-          border: active ? "1.5px solid #D95340" : "1.5px solid var(--border-inactive)",
+          border: active ? "1.5px solid #D95340" : undefined,
         }}
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
       >
