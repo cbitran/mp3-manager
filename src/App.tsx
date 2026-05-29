@@ -2025,57 +2025,37 @@ export default function App() {
           {allTracks.length > 0 && (
             <div className="flex items-center gap-1">
               {/* AcoustID */}
-              <ProGate
-                feature="AcoustID Fingerprinting"
-                description="Identifique automaticamente faixas sem metadados por fingerprint de áudio."
-              >
-                <button
-                  onClick={() => setShowAcoustID(true)}
-                  title="Identificar faixas por fingerprint (Pro)"
+              <ProGate feature={t("pro.feat1Title")} description={t("pro.feat1Desc")}>
+                <button onClick={() => setShowAcoustID(true)} title={t("pro.toolbar.acoustidTitle")}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
-                  style={{ color: "var(--c-t4)" }}
-                >
+                  style={{ color: "var(--c-t4)" }}>
                   <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
                     <circle cx="5.5" cy="5.5" r="4.5"/>
                     <path d="M3.5 5.5q1-1.5 2-1.5t2 1.5-2 1.5-2-1.5"/>
                     <circle cx="5.5" cy="5.5" r="0.8" fill="currentColor" stroke="none"/>
                   </svg>
-                  ID
+                  {t("pro.toolbar.acoustidLabel")}
                 </button>
               </ProGate>
-              {/* Filename → Tag */}
-              <ProGate
-                feature="Filename → Tag"
-                description="Extrai metadados do nome do arquivo usando padrões customizáveis."
-              >
-                <button
-                  onClick={() => setShowFilenameTag(true)}
-                  title="Extrair tags do nome do arquivo (Pro)"
+              <ProGate feature={t("pro.feat2Title")} description={t("pro.feat2Desc")}>
+                <button onClick={() => setShowFilenameTag(true)} title={t("pro.toolbar.filenameTagTitle")}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
-                  style={{ color: "var(--c-t4)" }}
-                >
+                  style={{ color: "var(--c-t4)" }}>
                   <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 5.5h7M6 3l2.5 2.5L6 8.5"/>
                   </svg>
-                  Nome→Tag
+                  {t("pro.toolbar.filenameTagLabel")}
                 </button>
               </ProGate>
-              {/* Tags Avançadas */}
-              <ProGate
-                feature="Extended Tags Editor"
-                description="Visualize e edite todos os campos ocultos de qualquer faixa, incluindo campos do Serato, rekordbox e tags customizadas."
-              >
-                <button
-                  onClick={() => setShowExtendedTags(true)}
-                  title="Editor de tags avançadas (Pro)"
+              <ProGate feature={t("pro.feat3Title")} description={t("pro.feat3Desc")}>
+                <button onClick={() => setShowExtendedTags(true)} title={t("pro.toolbar.extendedTagsTitle")}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
-                  style={{ color: "var(--c-t4)" }}
-                >
+                  style={{ color: "var(--c-t4)" }}>
                   <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="1" y="1" width="9" height="9" rx="1"/>
                     <line x1="3" y1="4" x2="8" y2="4"/><line x1="3" y1="6" x2="8" y2="6"/><line x1="3" y1="8" x2="5.5" y2="8"/>
                   </svg>
-                  Tags+
+                  {t("pro.toolbar.extendedTagsLabel")}
                 </button>
               </ProGate>
             </div>
