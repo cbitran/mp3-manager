@@ -19,8 +19,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore, type Track } from "../store";
 
 
-const IS_WIN_WAVE = navigator.platform.toLowerCase().startsWith("win") ||
-                    navigator.userAgent.toLowerCase().includes("windows");
+
 
 // ── Mini waveform ─────────────────────────────────────────────────────────────
 const MINI_BARS   = 80;
@@ -33,23 +32,21 @@ interface WaveBarMini { amp: number; bass: number; treble: number; }
 const miniWaveCache = new Map<string, WaveBarMini[]>();
 
 
-const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: string; trackId: string }) {
+const WaveformCell = memo(function WaveformCell({ path, trackId, durationSecs }: { path: string; trackId: string; durationSecs: number }) {
   const [bars, setBars] = useState<WaveBarMini[] | null>(miniWaveCache.get(path) ?? null);
-  const playerProgress = useAppStore((s) => s.playerProgress);
-  const playerDuration = useAppStore((s) => s.playerDuration);
-  const playerTrackId  = useAppStore((s) => s.playerTrackId);
-  const isCurrentTrack = trackId === playerTrackId;
 
-  // ── Scrub via AudioBufferSourceNode ──────────────────────────────
-  const scrubPcmRef    = useRef<Float32Array | null>(null);
-  const scrubCtxRef    = useRef<AudioContext | null>(null);
-  const scrubGainRef   = useRef<GainNode | null>(null);
-  const scrubBufRef    = useRef<AudioBuffer | null>(null);
-  const scrubNodeRef   = useRef<AudioBufferSourceNode | null>(null);
-  const scrubActiveRef = useRef(false);
-  const scrubPctRef    = useRef(0);
+  // Selector otimizado: só re-renderiza quando a fração desta faixa específica muda.
+  // Evita 100+ re-renders/s quando playerProgress atualiza 4×/s para todas as rows.
+  const isCurrentTrack = useAppStore((s) => s.playerTrackId === trackId);
+  const playedFraction = useAppStore((s) =>
+    s.playerTrackId === trackId && s.playerDuration > 0
+      ? s.playerProgress / s.playerDuration
+      : 0
+  );
+
+  const scrubAudioRef = useRef<HTMLAudioElement | null>(null);
   const [scrubPct, setScrubPct] = useState<number | null>(null);
-  const svgRef         = useRef<SVGSVGElement>(null);
+  const svgRef        = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (miniWaveCache.has(path)) { setBars(miniWaveCache.get(path)!); return; }
@@ -69,72 +66,15 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
     return () => { cancelled = true; };
   }, [path]);
 
-  // Pré-carrega PCM em background logo que a row fica visível.
-  // Usa queuedInvoke (max 8 concurrent) para não competir com geração de waveform.
-  // Quando o usuário clica, o PCM já está na memória → play imediato.
-  useEffect(() => {
-    if (IS_WIN_WAVE || scrubPcmRef.current) return;
-    let cancelled = false;
-    queuedInvoke<string>(
-      () => invoke("get_scrub_pcm", { path }),
-      60_000 // timeout generoso — primeiro decode pode demorar
-    )
-      .then((pcmPath) => {
-        if (cancelled) return null;
-        return fetch(convertFileSrc(pcmPath)).then((r) => r.arrayBuffer());
-      })
-      .then((ab) => {
-        if (cancelled || !ab) return;
-        scrubPcmRef.current = new Float32Array(ab);
-        buildBuf(); // monta buffer se AudioContext já existir (improvável mas seguro)
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Cleanup no unmount
   useEffect(() => {
     return () => {
-      try { scrubNodeRef.current?.stop(); } catch { /* */ }
-      scrubCtxRef.current?.close().catch(() => {});
-      scrubCtxRef.current = null; scrubGainRef.current = null;
-      scrubBufRef.current = null; scrubPcmRef.current  = null;
+      if (scrubAudioRef.current) {
+        scrubAudioRef.current.pause();
+        scrubAudioRef.current.src = '';
+        scrubAudioRef.current = null;
+      }
     };
   }, []);
-
-  function ensureCtx() {
-    if (scrubCtxRef.current || IS_WIN_WAVE) return;
-    const ctx  = new AudioContext();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.85;
-    gain.connect(ctx.destination);
-    scrubCtxRef.current  = ctx;
-    scrubGainRef.current = gain;
-    buildBuf();
-  }
-
-  function buildBuf() {
-    const ctx = scrubCtxRef.current;
-    const pcm = scrubPcmRef.current;
-    if (!ctx || !pcm || !pcm.length || scrubBufRef.current) return;
-    const buf = ctx.createBuffer(1, pcm.length, 22050);
-    buf.copyToChannel(pcm, 0);
-    scrubBufRef.current = buf;
-  }
-
-  function playAt(pct: number) {
-    const ctx  = scrubCtxRef.current;
-    const buf  = scrubBufRef.current;
-    const gain = scrubGainRef.current;
-    try { scrubNodeRef.current?.stop(); } catch { /* */ }
-    scrubNodeRef.current = null;
-    if (!ctx || !buf || !gain) return;
-    const node = ctx.createBufferSource();
-    node.buffer = buf;
-    node.connect(gain);
-    node.start(0, Math.max(0, Math.min(pct * buf.duration, buf.duration - 0.001)));
-    scrubNodeRef.current = node;
-  }
 
   function pctFromX(clientX: number): number {
     const el = svgRef.current;
@@ -149,29 +89,42 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
     e.stopPropagation();
 
     const pct = pctFromX(e.clientX);
-    scrubPctRef.current  = pct;
-    scrubActiveRef.current = true;
     setScrubPct(pct);
 
-    // AudioContext DEVE ser criado dentro do mousedown (WebKit exige user gesture)
-    ensureCtx();
-    // PCM já foi pré-carregado pelo useEffect → play imediato
-    buildBuf();
-    playAt(pct);
+    // Scrub via elemento Audio nativo — sem decode PCM, sem escrita em disco.
+    // Suporte nativo a seeking em qualquer posição da faixa.
+    if (scrubAudioRef.current) {
+      scrubAudioRef.current.pause();
+      scrubAudioRef.current.src = '';
+    }
+    const audio = new Audio();
+    audio.src = convertFileSrc(path);
+    audio.volume = 0.85;
+    // currentTime precisa ser definido após src e metadata carregarem
+    const seekAndPlay = () => {
+      audio.currentTime = pct * (durationSecs || 0);
+      audio.play().catch(() => {});
+    };
+    if (audio.readyState >= 1) {
+      seekAndPlay();
+    } else {
+      audio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+    }
+    scrubAudioRef.current = audio;
 
     const onUp = () => {
-      scrubActiveRef.current = false;
+      if (scrubAudioRef.current) {
+        scrubAudioRef.current.pause();
+        scrubAudioRef.current.src = '';
+        scrubAudioRef.current = null;
+      }
       setScrubPct(null);
-      try { scrubNodeRef.current?.stop(); } catch { /* */ }
-      scrubNodeRef.current = null;
       document.removeEventListener("mouseup", onUp);
     };
     document.addEventListener("mouseup", onUp);
   }
 
-  const pct = scrubPct !== null
-    ? scrubPct
-    : (isCurrentTrack && playerDuration > 0 ? playerProgress / playerDuration : 0);
+  const pct = scrubPct !== null ? scrubPct : playedFraction;
   const isScrubbing = scrubPct !== null;
 
   return (
@@ -799,6 +752,7 @@ export default function TrackTable({
           <WaveformCell
             path={row.original.path}
             trackId={row.original.id}
+            durationSecs={row.original.duration_secs ?? 0}
           />
         ),
         size: 90, minSize: 70,

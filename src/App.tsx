@@ -2001,16 +2001,16 @@ export default function App() {
               </button>
               <div className="absolute top-full left-0 pt-1 hidden group-hover:block z-50 min-w-[180px]">
                 <div className="py-1 rounded-md shadow-xl bg-[#1c1917] border border-white/[0.07]">
-                  <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
+                  <button onClick={() => batchEnrich("all")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "var(--text-primary)" }}>
                     {t("toolbar.enrichMenu.all")}
                   </button>
-                  <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
+                  <button onClick={() => batchEnrich("itunes")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "var(--text-primary)" }}>
                     {t("toolbar.enrichMenu.itunes")}
                   </button>
-                  <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "#E8E4E1" }}>
+                  <button onClick={() => batchEnrich("spotify")} disabled={enriching} className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors disabled:opacity-40" style={{ color: "var(--text-primary)" }}>
                     {t("toolbar.enrichMenu.spotify")}
                   </button>
-                  <div className="mx-2 my-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                  <div className="mx-2 my-1 h-px" style={{ background: "var(--divider)" }} />
                   <button
                     disabled={enriching}
                     onClick={() => {
@@ -2109,19 +2109,19 @@ export default function App() {
                       </button>
                     ))}
                     {installedDj.length > 0 && (
-                      <div className="my-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+                      <div className="my-1 h-px" style={{ background: "var(--divider)" }} />
                     )}
                     <button
                       onClick={exportM3U}
                       className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
-                      style={{ color: "#E8E4E1" }}
+                      style={{ color: "var(--text-primary)" }}
                     >
                       {t("toolbar.exportMenu.m3u")}
                     </button>
                     <button
                       onClick={exportCsv}
                       className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-white/[0.07] transition-colors"
-                      style={{ color: "#E8E4E1" }}
+                      style={{ color: "var(--text-primary)" }}
                     >
                       {t("toolbar.exportMenu.csv")}
                     </button>

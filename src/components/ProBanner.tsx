@@ -23,7 +23,7 @@ export default function ProBanner() {
     }
   }, [userIsPro]);
 
-  if (!visible || userIsPro) return null;
+  if ((!visible && !showModal) || userIsPro) return null;
 
   return (
     <>

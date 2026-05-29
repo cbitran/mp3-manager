@@ -703,7 +703,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                     className="shrink-0 rounded-full transition-colors relative cursor-pointer"
                     style={{
                       width: 32, height: 18,
-                      background: helpMarkersEnabled ? "#D95340" : "rgba(255,255,255,0.10)",
+                      background: helpMarkersEnabled ? "#D95340" : "var(--toggle-off)",
                     }}
                   >
                     <span
@@ -748,7 +748,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                     className="shrink-0 rounded-full transition-colors relative cursor-pointer"
                     style={{
                       width: 32, height: 18,
-                      background: enrichmentOptIn ? "#D95340" : "rgba(255,255,255,0.10)",
+                      background: enrichmentOptIn ? "#D95340" : "var(--toggle-off)",
                     }}
                   >
                     <span

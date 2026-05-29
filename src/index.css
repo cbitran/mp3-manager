@@ -85,6 +85,7 @@
   --border-inactive:    rgba(255,255,255,0.22);
   --surface-row:        rgba(255,255,255,0.02);
   --surface-row-border: rgba(255,255,255,0.05);
+  --toggle-off:         rgba(255,255,255,0.10);
 
   /* ── Variáveis de componente inline (menus, sidebar, forms) ────── */
   --ctx-bg:             #1c1715;
@@ -433,6 +434,7 @@ html[data-theme="light"] {
   --text-faint:     #9A9490;
   --divider:        rgba(0,0,0,0.08);
   --divider-faint:  rgba(0,0,0,0.04);
+  --toggle-off:     rgba(0,0,0,0.15);
 }
 
 html[data-theme="light"] body,

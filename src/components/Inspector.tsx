@@ -412,13 +412,11 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 updateTrack({ ...first, has_cover: true, cover_version: (first.cover_version ?? 0) + 1, issues: first.issues.filter((i) => i !== "sem capa") });
               } catch { /* silent */ }
             }}
-            className="w-full flex items-center gap-2.5 p-2 rounded-lg group transition-colors"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+            className="w-full flex items-center gap-2.5 p-2 rounded-lg group transition-colors hover:bg-white/[0.06]"
+            style={{ background: "var(--divider-faint)", border: "1px solid var(--divider)" }}
           >
             <div className="w-12 h-12 rounded-md overflow-hidden shrink-0 relative"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              style={{ background: "var(--divider-faint)", border: "1px solid var(--divider)" }}>
               {coverDataUrl ? (
                 <img src={coverDataUrl} alt="Cover" className="w-full h-full object-cover" />
               ) : (
