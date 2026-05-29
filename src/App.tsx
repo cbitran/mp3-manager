@@ -3129,7 +3129,11 @@ export default function App() {
             {/* Lista de playlists com scroll visível */}
             {playlists.length > 0 && (
               <div className="relative">
-                <div className="px-3 overflow-y-auto" style={{ maxHeight: "288px" }}>
+                <div
+                  className="px-3"
+                  style={{ maxHeight: "288px", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+                  onWheel={(e) => e.stopPropagation()}
+                >
                   {playlists.map((pl) => (
                     <button
                       key={pl.id}
@@ -3262,7 +3266,11 @@ export default function App() {
             {/* Lista de playlists com scroll visível */}
             {playlists.length > 0 && (
               <div className="relative">
-                <div className="px-3 overflow-y-auto" style={{ maxHeight: "288px" }}>
+                <div
+                  className="px-3"
+                  style={{ maxHeight: "288px", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+                  onWheel={(e) => e.stopPropagation()}
+                >
                   {playlists.map((pl) => (
                     <button
                       key={pl.id}
