@@ -690,14 +690,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   activateProLicense: async (key) => {
     if (!key.trim()) return { ok: false, error: "Chave inválida" };
+    // Endpoint do seu backend — ele chama o Paddle internamente com as credenciais seguras.
+    // Contrato esperado: POST { license_key } → { valid: true } | { valid: false, error: "..." }
+    const VALIDATE_URL = "https://api.tagwave.app/v1/licenses/validate";
     try {
-      const res = await fetch("https://api.lemonsqueezy.com/v1/licenses/validate", {
+      const res = await fetch(VALIDATE_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ license_key: key.trim() }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ license_key: key.trim() }),
       });
       const data = await res.json();
-      // LemonSqueezy retorna valid:true e o meta do produto
       const ok = data.valid === true;
       if (ok) {
         localStorage.setItem("tagwave_pro_key", key.trim());
@@ -707,8 +709,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { ok: false, error: data.error ?? "Chave não reconhecida" };
     } catch {
-      // Offline fallback: aceita chave se tiver formato válido (min 20 chars)
-      if (key.trim().length >= 20) {
+      // Offline fallback: aceita chave com formato mínimo válido (32+ chars UUID-like)
+      if (key.trim().length >= 32) {
         localStorage.setItem("tagwave_pro_key", key.trim());
         localStorage.setItem("tagwave_pro_validated", "true");
         set({ proLicenseKey: key.trim(), proValidated: true });
