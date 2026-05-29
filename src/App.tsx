@@ -3085,48 +3085,58 @@ export default function App() {
               </button>
             </div>
 
-            {/* Separator */}
+            {/* Separator + contagem */}
             {playlists.length > 0 && (
               <div className="px-5 py-2 flex items-center gap-2">
                 <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">Playlists</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
+                  Playlists{playlists.length > 5 ? ` (${playlists.length})` : ""}
+                </span>
                 <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
               </div>
             )}
 
-            {/* Lista de playlists */}
-            <div className="px-3 max-h-[240px] overflow-y-auto no-scrollbar">
-              {playlists.map((pl) => (
-                <button
-                  key={pl.id}
-                  onClick={() => {
-                    const paths = pendingFileChoice.paths;
-                    const hasRules = pl.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0;
-                    setPendingFileChoice(null);
-                    if (hasRules) {
-                      setPendingRulesConfirm({ paths, playlist: pl });
-                    } else {
-                      addToPlaylistAndMerge(pl.id, paths, false);
-                    }
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
-                  style={{ background: "transparent" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
-                    <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+            {/* Lista de playlists com scroll visível */}
+            {playlists.length > 0 && (
+              <div className="relative">
+                <div className="px-3 overflow-y-auto" style={{ maxHeight: "288px" }}>
+                  {playlists.map((pl) => (
+                    <button
+                      key={pl.id}
+                      onClick={() => {
+                        const paths = pendingFileChoice.paths;
+                        const hasRules = pl.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0;
+                        setPendingFileChoice(null);
+                        if (hasRules) {
+                          setPendingRulesConfirm({ paths, playlist: pl });
+                        } else {
+                          addToPlaylistAndMerge(pl.id, paths, false);
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                      style={{ background: "transparent" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
+                        <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {playlists.length > 5 && (
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8"
+                    style={{ background: "linear-gradient(to bottom, transparent, #1A1815)" }} />
+                )}
+              </div>
+            )}
 
             {/* Nova playlist */}
             <div className="px-3 pt-1 pb-1">
@@ -3209,39 +3219,49 @@ export default function App() {
               </button>
             </div>
 
-            {/* Separator */}
+            {/* Separator + contagem */}
             {playlists.length > 0 && (
               <div className="px-5 py-2 flex items-center gap-2">
                 <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">Playlists</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
+                  Playlists{playlists.length > 5 ? ` (${playlists.length})` : ""}
+                </span>
                 <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
               </div>
             )}
 
-            {/* Lista de playlists */}
-            <div className="px-3 max-h-[240px] overflow-y-auto no-scrollbar">
-              {playlists.map((pl) => (
-                <button
-                  key={pl.id}
-                  onClick={async () => { const fp = pendingFolderDrop; setPendingFolderDrop(null); await addFolderToPlaylist(fp, pl.id); }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
-                  style={{ background: "transparent" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
-                    <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+            {/* Lista de playlists com scroll visível */}
+            {playlists.length > 0 && (
+              <div className="relative">
+                <div className="px-3 overflow-y-auto" style={{ maxHeight: "288px" }}>
+                  {playlists.map((pl) => (
+                    <button
+                      key={pl.id}
+                      onClick={async () => { const fp = pendingFolderDrop; setPendingFolderDrop(null); await addFolderToPlaylist(fp, pl.id); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                      style={{ background: "transparent" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
+                        <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {playlists.length > 5 && (
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8"
+                    style={{ background: "linear-gradient(to bottom, transparent, #1A1815)" }} />
+                )}
+              </div>
+            )}
 
             {/* Nova playlist */}
             <div className="px-3 pt-1 pb-1">
