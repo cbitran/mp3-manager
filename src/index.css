@@ -467,6 +467,48 @@ html[data-theme="light"] .toast-container .text-\[\#F5F5F4\] { color: #D95340 !i
 /* ── Assistente IA em tema claro ─────────────────────────────── */
 html[data-theme="light"] .bg-\[\#1a1816\] { background-color: #EDE9E4 !important; }
 
+/* ── Botões com fundo coral: texto permanece branco em light ──── */
+html[data-theme="light"] .bg-\[\#D95340\]           { color: #ffffff !important; }
+html[data-theme="light"] .bg-\[\#D95340\] *          { color: inherit; }
+html[data-theme="light"] .bg-\[\#D95340\].text-white { color: #ffffff !important; }
+html[data-theme="light"] .bg-\[\#E07364\].text-white { color: #ffffff !important; }
+/* Exceção: filhos que têm cor própria não herdam */
+html[data-theme="light"] .bg-\[\#D95340\] .text-\[\#4C4743\],
+html[data-theme="light"] .bg-\[\#D95340\] .text-\[\#8F8883\] { color: rgba(255,255,255,0.70) !important; }
+
+/* ── Fade playlist nos modais "Adicionar a…" ─────────────────── */
+html[data-theme="light"] .tw-playlist-fade {
+  background: linear-gradient(to bottom, transparent, #EDE9E4) !important;
+}
+
+/* ── Campos de formulário em modais (light) ──────────────────── */
+/* Bordas de input mais visíveis */
+html[data-theme="light"] .border-b.border-white\/\[0\.08\] {
+  border-bottom-color: rgba(0,0,0,0.22) !important;
+}
+html[data-theme="light"] .focus\:border-\[\#D95340\]\/50:focus {
+  border-bottom-color: rgba(217,83,64,0.60) !important;
+}
+/* Placeholder mais contrastado */
+html[data-theme="light"] .placeholder-\[\#4C4743\]::placeholder {
+  color: rgba(0,0,0,0.38) !important;
+}
+/* Input text dentro de modais */
+html[data-theme="light"] .bg-\[\#1c1715\] input[type="text"],
+html[data-theme="light"] .bg-\[\#EDE9E4\]  input[type="text"] {
+  color: rgba(0,0,0,0.82) !important;
+}
+/* Checkbox toggle de "Propriedades Globais" — texto dos labels */
+html[data-theme="light"] .text-\[\#4C4743\] { color: rgba(0,0,0,0.46) !important; }
+
+/* ── "Salvar como preset" — borda visível em light ───────────── */
+html[data-theme="light"] .border.border-white\/\[0\.08\] {
+  border-color: rgba(0,0,0,0.18) !important;
+}
+html[data-theme="light"] .hover\:border-white\/\[0\.14\]:hover {
+  border-color: rgba(0,0,0,0.30) !important;
+}
+
 /* ── Modal Criar Playlist — texto inline → cores claras ─────── */
 html[data-theme="light"] .bg-\[\#1c1715\] h2 { color: rgba(0,0,0,0.87) !important; }
 html[data-theme="light"] .bg-\[\#1c1715\] p  { color: rgba(0,0,0,0.60) !important; }

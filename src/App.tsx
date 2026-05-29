@@ -3076,8 +3076,7 @@ export default function App() {
           onClick={() => setPendingFileChoice(null)}
         >
           <div
-            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl"
-            style={{ background: "#1A1815", border: "1px solid rgba(255,255,255,0.08)" }}
+            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl bg-[#1c1715] border border-white/[0.08]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -3156,8 +3155,8 @@ export default function App() {
                   ))}
                 </div>
                 {playlists.length > 5 && (
-                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8"
-                    style={{ background: "linear-gradient(to bottom, transparent, #1A1815)" }} />
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 tw-playlist-fade"
+                  style={{ background: "linear-gradient(to bottom, transparent, #1c1715)" }} />
                 )}
               </div>
             )}
@@ -3210,8 +3209,7 @@ export default function App() {
           onClick={() => setPendingFolderDrop(null)}
         >
           <div
-            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl"
-            style={{ background: "#1A1815", border: "1px solid rgba(255,255,255,0.08)" }}
+            className="w-[380px] rounded-2xl overflow-hidden shadow-2xl bg-[#1c1715] border border-white/[0.08]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -3281,8 +3279,8 @@ export default function App() {
                   ))}
                 </div>
                 {playlists.length > 5 && (
-                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8"
-                    style={{ background: "linear-gradient(to bottom, transparent, #1A1815)" }} />
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 tw-playlist-fade"
+                  style={{ background: "linear-gradient(to bottom, transparent, #1c1715)" }} />
                 )}
               </div>
             )}
