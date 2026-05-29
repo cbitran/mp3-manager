@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type PlaylistGlobalProperties, type Track } from "../store";
+import { invalidateCoverCacheMany } from "./coverCache";
 
 /**
  * Aplica as regras globais de uma playlist nas faixas indicadas.
@@ -69,6 +70,9 @@ export async function applyPlaylistRules(
           .catch(() => null);
       }
     }
+
+    // Invalida cache de capas ANTES de bumpar cover_version — garante re-fetch limpo no CoverCell
+    if (hasCoverField && coverB64) invalidateCoverCacheMany(paths);
 
     // Re-scan para sincronizar store com estado real do disco
     const refreshed = await invoke<Track[]>("scan_specific_files", { paths });

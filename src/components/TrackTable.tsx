@@ -371,15 +371,7 @@ const RatingCell = memo(function RatingCell({ track }: { track: Track }) {
 
 // ---------------------------------------------------------------------------
 
-// Cache LRU simples: máximo 400 entradas (capas ~50KB cada → ~20MB máx)
-const COVER_CACHE_MAX = 400;
-const coverCache = new Map<string, string>();
-function setCoverCache(key: string, value: string) {
-  if (coverCache.size >= COVER_CACHE_MAX) {
-    coverCache.delete(coverCache.keys().next().value!);
-  }
-  coverCache.set(key, value);
-}
+import { coverCache, setCoverCache } from "../lib/coverCache";
 
 const CoverCell = memo(function CoverCell({ path, hasCover, coverVersion }: { path: string; hasCover: boolean; coverVersion?: number }) {
   const cacheKey = `${path}::${coverVersion ?? 0}`;

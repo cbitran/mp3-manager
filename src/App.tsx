@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { invalidateCoverCacheMany } from "./lib/coverCache";
 import { enrichTrackFull } from "./services/SpotifyService";
 import { searchTrack as iTunesSearch } from "./services/iTunesService";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -1507,6 +1508,8 @@ export default function App() {
       const refreshed = await invoke<Track[]>("scan_specific_files", { paths: targetPaths });
       const current = useAppStore.getState().tracks;
       const freshMap = new Map(refreshed.map((t) => [t.path, t]));
+      // Invalida cache de capas ANTES de bumpar cover_version
+      invalidateCoverCacheMany(targetPaths);
       const merged = current.map((t) => {
         const fresh = freshMap.get(t.path);
         if (!fresh) return t;
@@ -1515,7 +1518,6 @@ export default function App() {
           cue_points:    t.cue_points    ?? fresh.cue_points,
           beat_phase_ms: t.beat_phase_ms ?? fresh.beat_phase_ms,
           beat_anchors:  t.beat_anchors  ?? fresh.beat_anchors,
-          // Sempre bumpamos cover_version para invalidar cache do CoverCell
           cover_version: (t.cover_version ?? 0) + 1,
         };
       });
