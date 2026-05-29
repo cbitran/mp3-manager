@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { setActiveFolderDragPath } from "../lib/folderDrag";
+import { setActiveFolderDragPath, setActiveFileDrag, clearActiveFileDrag } from "../lib/folderDrag";
 
 interface DirEntry {
   name: string;
@@ -263,6 +263,19 @@ export default function FolderBrowser({ rootPath, onLoadFolder, onLoadFiles, onC
               <div
                 key={f.path}
                 onClick={(e) => handleFileClick(f.path, idx, e)}
+                draggable={onLoadFiles !== undefined}
+                onDragStart={(e) => {
+                  if (!onLoadFiles) return;
+                  // Arrastar um arquivo selecionado = arrastar toda a seleção
+                  // Arrastar um arquivo não selecionado = arrastar só ele
+                  const paths = selectedFiles.has(f.path) && selectedFiles.size > 0
+                    ? [...selectedFiles]
+                    : [f.path];
+                  const name = folderName;
+                  setActiveFileDrag(paths, name);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                onDragEnd={() => clearActiveFileDrag()}
                 className="flex items-center gap-2 px-2 h-7 rounded-md transition-colors"
                 style={{
                   color: selectedFiles.has(f.path) ? "#C2BEBC" : "#706A65",

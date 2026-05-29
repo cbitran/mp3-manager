@@ -1,5 +1,9 @@
 import { useState } from "react";
 import { useAppStore } from "../store";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { LS_PRODUCT_URL } from "../services/LicenseService";
+
+const PRO_URL = "https://tagwave.app/pro";
 
 const TRIAL_DAYS = 14;
 
@@ -122,14 +126,35 @@ export default function TrialInfoModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <>
-              {/* Primary CTA */}
-              <button
-                onClick={() => setShowLicense(true)}
-                className="w-full py-3 rounded-xl text-[13px] font-bold uppercase tracking-wide transition-all hover:scale-[1.02] active:scale-[0.98]"
-                style={{ background: urgencyColor, color: "white", boxShadow: `0 4px 20px ${urgencyColor}55` }}
-              >
-                Obter Licença — $39
-              </button>
+              {/* Planos */}
+              <div className="flex gap-2">
+                {/* Standard */}
+                <button
+                  onClick={() => LS_PRODUCT_URL ? openUrl(LS_PRODUCT_URL).catch(() => {}) : setShowLicense(true)}
+                  className="flex-1 flex flex-col items-start gap-0.5 p-3 rounded-xl border transition-all text-left hover:border-white/[0.15]"
+                  style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.07)" }}
+                >
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#4C4743]">Standard</span>
+                  <span className="text-[22px] font-bold text-[#F5F5F4] leading-tight">$39</span>
+                  <span className="text-[9px] text-[#4C4743]">pagamento único</span>
+                  <span className="text-[9px] text-[#605A55] leading-relaxed mt-1">Gestão de tags, playlists, exportação DJ</span>
+                </button>
+
+                {/* Pro */}
+                <button
+                  onClick={() => openUrl(PRO_URL).catch(() => {})}
+                  className="flex-1 flex flex-col items-start gap-0.5 p-3 rounded-xl border transition-all text-left hover:border-[#D95340]/60"
+                  style={{ background: "rgba(217,83,64,0.07)", borderColor: "rgba(217,83,64,0.28)" }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#D95340]">Pro</span>
+                    <span className="text-[8px] bg-[#D95340] text-white px-1 py-px rounded-sm font-bold leading-tight">MAIS</span>
+                  </div>
+                  <span className="text-[22px] font-bold text-[#F5F5F4] leading-tight">$69</span>
+                  <span className="text-[9px] text-[#4C4743]">pagamento único</span>
+                  <span className="text-[9px] text-[#D95340]/70 leading-relaxed mt-1">+ AcoustID, Tags Avançadas, Filename→Tag</span>
+                </button>
+              </div>
 
               <div className="border-t border-white/[0.05]" />
 

@@ -2548,6 +2548,7 @@ export default function App() {
                 }}
                 onNavigate={() => setBrowsePath(null)}
                 onFolderDropWithChoice={(path) => setPendingFolderDrop(path)}
+                onFilesDropWithChoice={(paths, name) => { setBrowsePath(null); setPendingFileChoice({ paths, name }); }}
               />
             {/* Drag handle */}
             <div

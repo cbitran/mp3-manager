@@ -6,7 +6,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "./Toast";
 import PlaylistSettingsModal from "./PlaylistSettingsModal";
 import { applyPlaylistRules } from "../lib/playlistRules";
-import { activeFolderDragPath, setActiveFolderDragPath } from "../lib/folderDrag";
+import { activeFolderDragPath, setActiveFolderDragPath, activeFileDragPaths, activeFileDragName, clearActiveFileDrag } from "../lib/folderDrag";
 
 const IS_WIN = navigator.platform.toLowerCase().startsWith("win") ||
                navigator.userAgent.toLowerCase().includes("windows");
@@ -15,6 +15,7 @@ const FILE_MANAGER = IS_WIN ? "Explorer" : "Finder";
 interface SidebarProps {
   onFolderSelect: (folder: string) => void;
   onFolderDropWithChoice?: (folder: string) => void;
+  onFilesDropWithChoice?: (paths: string[], name: string) => void;
   onBrowse?: (path: string) => void;
   onAnalyzeBpmFolder?: (folderPath: string) => void;
   onEnrichFolder?: (folderPath: string) => void;
@@ -33,7 +34,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewSubPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFilesDropWithChoice, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewSubPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -271,9 +272,9 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
     e.preventDefault();
     dragCounterRef.current++;
     setIsDragOver(true);
-    // Detecta drag interno via variável de módulo (fallback: dataTransfer.types)
     setIsDragFolderInternal(
       activeFolderDragPath !== null ||
+      activeFileDragPaths !== null ||
       e.dataTransfer.types.includes("text/folder-path")
     );
   }
@@ -293,7 +294,16 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
     setIsDragOver(false);
     setIsDragFolderInternal(false);
 
-    // Drag interno de pasta vinda do FolderBrowser (Dispositivos).
+    // Drag de ARQUIVOS vindo do FolderBrowser (Dispositivos).
+    if (activeFileDragPaths && activeFileDragPaths.length > 0) {
+      const paths = [...activeFileDragPaths];
+      const name  = activeFileDragName;
+      clearActiveFileDrag();
+      if (onFilesDropWithChoice) onFilesDropWithChoice(paths, name);
+      return;
+    }
+
+    // Drag interno de PASTA vinda do FolderBrowser (Dispositivos).
     // Usa variável de módulo (mais confiável que dataTransfer no WebKit/Tauri).
     const folderPath = activeFolderDragPath ?? e.dataTransfer.getData("text/folder-path");
     setActiveFolderDragPath(null);
@@ -342,7 +352,11 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
             <path d="M3 7a2 2 0 012-2h3l2 3h9a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
           </svg>
           <span className="text-[11px] font-semibold text-[#D95340]/80 text-center px-3">
-            {isDragFolderInternal ? "Soltar para adicionar à biblioteca" : t("toolbar.dropToAddFolder")}
+            {activeFileDragPaths !== null
+              ? "Soltar para adicionar faixas"
+              : isDragFolderInternal
+                ? "Soltar para adicionar à biblioteca"
+                : t("toolbar.dropToAddFolder")}
           </span>
         </div>
       )}
