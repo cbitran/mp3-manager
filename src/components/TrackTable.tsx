@@ -147,22 +147,13 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
       playAt(pct);
     }
 
-    const onMove = (me: MouseEvent) => {
-      if (!scrubActiveRef.current) return;
-      const p = pctFromX(me.clientX);
-      scrubPctRef.current = p;
-      setScrubPct(p);
-      playAt(p);
-    };
     const onUp = () => {
       scrubActiveRef.current = false;
       setScrubPct(null);
       try { scrubNodeRef.current?.stop(); } catch { /* */ }
       scrubNodeRef.current = null;
-      document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-    document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
 
@@ -172,7 +163,7 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
   const isScrubbing = scrubPct !== null;
 
   return (
-    <div className="w-full flex items-center justify-center" style={{ cursor: "ew-resize" }}>
+    <div className="w-full flex items-center justify-center" style={{ cursor: "pointer" }}>
       {bars ? (
         <svg
           ref={svgRef}
@@ -182,7 +173,7 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
           className="overflow-visible"
           onMouseDown={handleMouseDown}
           onClick={(e) => e.stopPropagation()}
-          style={{ cursor: "ew-resize" }}
+          style={{ cursor: "pointer" }}
         >
           {bars.map((bar, i) => {
             const barH   = Math.max(0.8, bar.amp * (MINI_VB_H - 2));
@@ -211,7 +202,7 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
       ) : (
         <svg width="100%" height="15" viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none"
           ref={svgRef} onMouseDown={handleMouseDown} onClick={(e) => e.stopPropagation()}
-          style={{ cursor: "ew-resize" }}>
+          style={{ cursor: "pointer" }}>
           {Array.from({ length: MINI_BARS }, (_, i) => {
             const amp = 0.15 + 0.12 * Math.abs(Math.sin(i * 0.7));
             const barH = Math.max(0.8, amp * (MINI_VB_H - 2));
