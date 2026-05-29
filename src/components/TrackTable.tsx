@@ -69,6 +69,29 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
     return () => { cancelled = true; };
   }, [path]);
 
+  // Pré-carrega PCM em background logo que a row fica visível.
+  // Usa queuedInvoke (max 8 concurrent) para não competir com geração de waveform.
+  // Quando o usuário clica, o PCM já está na memória → play imediato.
+  useEffect(() => {
+    if (IS_WIN_WAVE || scrubPcmRef.current) return;
+    let cancelled = false;
+    queuedInvoke<string>(
+      () => invoke("get_scrub_pcm", { path }),
+      60_000 // timeout generoso — primeiro decode pode demorar
+    )
+      .then((pcmPath) => {
+        if (cancelled) return null;
+        return fetch(convertFileSrc(pcmPath)).then((r) => r.arrayBuffer());
+      })
+      .then((ab) => {
+        if (cancelled || !ab) return;
+        scrubPcmRef.current = new Float32Array(ab);
+        buildBuf(); // monta buffer se AudioContext já existir (improvável mas seguro)
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cleanup no unmount
   useEffect(() => {
     return () => {
@@ -132,20 +155,9 @@ const WaveformCell = memo(function WaveformCell({ path, trackId }: { path: strin
 
     // AudioContext DEVE ser criado dentro do mousedown (WebKit exige user gesture)
     ensureCtx();
-
-    if (!scrubPcmRef.current) {
-      invoke<string>("get_scrub_pcm", { path })
-        .then((pcmPath) => fetch(convertFileSrc(pcmPath)).then((r) => r.arrayBuffer()))
-        .then((ab) => {
-          scrubPcmRef.current = new Float32Array(ab);
-          buildBuf();
-          if (scrubActiveRef.current) playAt(scrubPctRef.current);
-        })
-        .catch(() => {});
-    } else {
-      buildBuf();
-      playAt(pct);
-    }
+    // PCM já foi pré-carregado pelo useEffect → play imediato
+    buildBuf();
+    playAt(pct);
 
     const onUp = () => {
       scrubActiveRef.current = false;

@@ -51,9 +51,19 @@ import { applyPlaylistRules } from "./lib/playlistRules";
 function loadingLabel(mode: "startup" | "closing" | "scanning"): string {
   const saved = localStorage.getItem("tagwave_language") ?? navigator.language;
   const lang = saved.toLowerCase();
-  if (lang.startsWith("pt")) return mode === "closing" ? "salvando…" : "carregando…";
-  if (lang.startsWith("es")) return mode === "closing" ? "guardando…" : "cargando…";
-  return mode === "closing" ? "saving…" : "loading…";
+  if (lang.startsWith("pt")) {
+    if (mode === "closing")  return "salvando…";
+    if (mode === "scanning") return "analisando faixas…";
+    return "carregando…";
+  }
+  if (lang.startsWith("es")) {
+    if (mode === "closing")  return "guardando…";
+    if (mode === "scanning") return "analizando pistas…";
+    return "cargando…";
+  }
+  if (mode === "closing")  return "saving…";
+  if (mode === "scanning") return "analysing tracks…";
+  return "loading…";
 }
 
 export default function App() {
