@@ -597,20 +597,29 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
                   const totalCount = countAll(pl.id);
 
                   const isPlDropHere = plDropTarget === pl.id;
+                  const INDENT = 18; // px por nível — mais largo que antes
                   return (
                     <div key={pl.id}>
-                      <div style={{ paddingLeft: depth * 12 }} className="relative">
+                      <div style={{ paddingLeft: depth * INDENT }} className="relative">
+                        {/* Linha vertical conectora (estilo Serato) */}
                         {depth > 0 && (
-                          <span className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]"
-                            style={{ left: (depth - 1) * 12 + 6 }} />
+                          <>
+                            {/* linha vertical do pai */}
+                            <span className="absolute top-0 bottom-0"
+                              style={{ left: (depth - 1) * INDENT + 8, width: "1px", background: "rgba(255,255,255,0.18)" }} />
+                            {/* gancho horizontal → item */}
+                            <span className="absolute"
+                              style={{ left: (depth - 1) * INDENT + 8, top: "50%", width: 8, height: "1px", background: "rgba(255,255,255,0.18)" }} />
+                          </>
                         )}
                         <div className="flex items-center gap-1 group/plrow" data-pl-id={pl.id}>
-                          {/* Drag handle para reparentar */}
+                          {/* Drag handle — sempre visível em hover */}
                           {!dragState.isDragging && (
                             <button
-                              className="shrink-0 w-4 h-4 flex items-center justify-center text-[#373331] opacity-0 group-hover/plrow:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+                              className="shrink-0 w-4 h-4 flex items-center justify-center opacity-0 group-hover/plrow:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+                              style={{ color: "rgba(255,255,255,0.30)" }}
                               onMouseDown={(e) => startPlDrag(pl.id, e)}
-                              title="Arrastar para aninhar"
+                              title="Arrastar para aninhar em outra playlist"
                             >
                               <svg width="6" height="9" viewBox="0 0 6 9" fill="currentColor">
                                 <circle cx="1.5" cy="1.5" r="1"/><circle cx="4.5" cy="1.5" r="1"/>

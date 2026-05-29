@@ -755,36 +755,36 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
               : "linear-gradient(135deg, #8B3E38, #D95340)",
           }}
         >
-          {/* Linha principal */}
-          <div className="flex items-center gap-2.5 px-3.5 pt-2.5 pb-2">
+          {/* Linha principal — texto sempre branco (fundo coral) */}
+          <div className="flex items-center gap-2.5 px-3.5 pt-2.5 pb-2" style={{ color: "white" }}>
             {enriching && !enrichProgress ? (
               <>
-                <span className="animate-spin text-white text-base">⟳</span>
-                <span className="text-white text-xs font-semibold">{t("inspector.searching")}</span>
+                <span className="animate-spin text-base">⟳</span>
+                <span className="text-xs font-semibold">{t("inspector.searching")}</span>
               </>
             ) : enrichSummary && !enrichProgress ? (
               <>
-                <span className="text-white text-sm">{enrichSummary.startsWith("✓") ? "✓" : "✗"}</span>
-                <span className="text-white/90 text-[11px] font-medium flex-1 text-left leading-tight">
+                <span className="text-sm">{enrichSummary.startsWith("✓") ? "✓" : "✗"}</span>
+                <span className="text-[11px] font-medium flex-1 text-left leading-tight" style={{ opacity: 0.9 }}>
                   {enrichSummary.replace(/^[✓✗]\s*/, "")}
                 </span>
-                <span className="text-white/50 text-xs">↺</span>
+                <span className="text-xs" style={{ opacity: 0.5 }}>↺</span>
               </>
             ) : (
               <>
-                <span className="text-white text-sm">✦</span>
+                <span className="text-sm">✦</span>
                 <div className="flex-1 text-left">
-                  <p className="text-white text-xs font-bold leading-none">
+                  <p className="text-xs font-bold leading-none">
                     {isBatch ? t("inspector.enrichCount", { count: selectedArr.length }) : t("inspector.enrichMeta")}
                   </p>
-                  <p className="text-white/55 text-[10px] mt-0.5">{t("inspector.sources")}</p>
+                  <p className="text-[10px] mt-0.5" style={{ opacity: 0.55 }}>{t("inspector.sources")}</p>
                 </div>
                 {enrichProgress ? (
-                  <span className="text-white/70 text-[10px] font-semibold tabular-nums">
+                  <span className="text-[10px] font-semibold tabular-nums" style={{ opacity: 0.7 }}>
                     {enrichProgress.done} / {enrichProgress.total}
                   </span>
                 ) : (
-                  <span className="text-white/40 text-xs">›</span>
+                  <span className="text-xs" style={{ opacity: 0.4 }}>›</span>
                 )}
               </>
             )}
