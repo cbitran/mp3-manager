@@ -374,9 +374,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: Date.now(),
       ...(parentId ? { parentId } : {}),
     };
-    const next = [pl, ...get().playlists];
-    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
-    set({ playlists: next });
+    // Propaga faixas para a mãe (e avós) ao criar filha com tracks
+    let plists = [pl, ...get().playlists];
+    if (parentId && trackPaths.length > 0) {
+      let cur = plists.find((p) => p.id === parentId);
+      while (cur) {
+        plists = plists.map((p) =>
+          p.id === cur!.id
+            ? { ...p, trackPaths: [...new Set([...p.trackPaths, ...trackPaths])], updatedAt: Date.now() }
+            : p
+        );
+        cur = cur.parentId ? plists.find((p) => p.id === cur!.parentId) : undefined;
+      }
+    }
+    localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(plists));
+    set({ playlists: plists });
     return pl.id;
   },
   updatePlaylist: (id, updates) => {
@@ -395,8 +407,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ playlists: next, activePlaylistId: active === id ? null : active });
   },
   addTracksToPlaylist: (id, trackPaths) => {
-    const next = get().playlists.map((p) => {
-      if (p.id !== id) return p;
+    // Adiciona na filha E propaga para a mãe (e avó, etc.)
+    const pls = get().playlists;
+    const idsToUpdate = new Set<string>([id]);
+    // Sobe a cadeia de parentIds
+    let cur = pls.find((p) => p.id === id);
+    while (cur?.parentId) {
+      idsToUpdate.add(cur.parentId);
+      cur = pls.find((p) => p.id === cur!.parentId);
+    }
+    const next = pls.map((p) => {
+      if (!idsToUpdate.has(p.id)) return p;
       const merged = [...new Set([...p.trackPaths, ...trackPaths])];
       return { ...p, trackPaths: merged, updatedAt: Date.now() };
     });
@@ -404,6 +425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ playlists: next });
   },
   removeTrackFromPlaylist: (id, trackPath) => {
+    // Remove APENAS da filha — nunca da mãe
     const next = get().playlists.map((p) =>
       p.id === id
         ? { ...p, trackPaths: p.trackPaths.filter((tp) => tp !== trackPath), updatedAt: Date.now() }
