@@ -72,6 +72,7 @@ export default function App() {
     daysRemaining,
     activateLicense,
     theme,
+    setTheme,
     fontScale,
     colorMode,
     helpMarkersEnabled,
@@ -410,12 +411,23 @@ export default function App() {
   const videoCount = allTracks.filter(isVideo).length;
   const hasVideos  = videoCount > 0;
 
-  // Filtra por playlist ativa (se houver)
+  // Coleta todos os paths da playlist ativa + descendentes (subplaylists aninhadas)
+  const activePlaylistAllPaths = useMemo(() => {
+    if (!activePlaylist) return null;
+    const collect = (id: string): string[] => {
+      const pl = playlists.find((p) => p.id === id);
+      if (!pl) return [];
+      const children = playlists.filter((p) => p.parentId === id);
+      return [...pl.trackPaths, ...children.flatMap((c) => collect(c.id))];
+    };
+    return new Set(collect(activePlaylist.id));
+  }, [activePlaylist, playlists]);
+
+  // Filtra por playlist ativa (se houver) — inclui faixas de todas as subplaylists
   const tracksAfterPlaylist = useMemo(() => {
-    if (!activePlaylist) return tracks;
-    const pathSet = new Set(activePlaylist.trackPaths);
-    return tracks.filter((t) => pathSet.has(t.path));
-  }, [tracks, activePlaylist]);
+    if (!activePlaylistAllPaths) return tracks;
+    return tracks.filter((t) => activePlaylistAllPaths.has(t.path));
+  }, [tracks, activePlaylistAllPaths]);
 
   // Filtra por aba de mídia (Áudio / Vídeo)
   const tracksForMedia = useMemo(() =>
@@ -494,6 +506,7 @@ export default function App() {
   const [newTracksModal, setNewTracksModal] = useState<Track[] | null>(null);
   const [playlistOffer, setPlaylistOffer]   = useState<Track[] | null>(null);
   const [createPlaylistTracks, setCreatePlaylistTracks] = useState<Track[] | null>(null);
+  const [createPlaylistParentId, setCreatePlaylistParentId] = useState<string | undefined>(undefined);
   const [exportPlaylistTarget, setExportPlaylistTarget] = useState<import("./store").Playlist | null>(null);
 
   useEffect(() => {
@@ -2407,6 +2420,41 @@ export default function App() {
               )}
             </div>
 
+            {/* Botão sol/lua — alterna entre light e dark */}
+            <button
+              onClick={() => {
+                if (theme === "light") setTheme("dark");
+                else if (theme === "dark") setTheme("auto");
+                else setTheme("light");
+              }}
+              title={theme === "light" ? "Tema: Claro (clique para Escuro)" : theme === "dark" ? "Tema: Escuro (clique para Auto)" : "Tema: Auto (clique para Claro)"}
+              className="flex items-center justify-center w-5 h-5 rounded text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/[0.06] transition-colors"
+            >
+              {theme === "light" ? (
+                /* Sol */
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                  <circle cx="5.5" cy="5.5" r="2"/>
+                  <line x1="5.5" y1="1" x2="5.5" y2="2"/><line x1="5.5" y1="9" x2="5.5" y2="10"/>
+                  <line x1="1" y1="5.5" x2="2" y2="5.5"/><line x1="9" y1="5.5" x2="10" y2="5.5"/>
+                  <line x1="2.3" y1="2.3" x2="3" y2="3"/><line x1="8" y1="8" x2="8.7" y2="8.7"/>
+                  <line x1="8.7" y1="2.3" x2="8" y2="3"/><line x1="3" y1="8" x2="2.3" y2="8.7"/>
+                </svg>
+              ) : theme === "dark" ? (
+                /* Lua */
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 6.5A4 4 0 015 2.5a4 4 0 00-1 7.8A4 4 0 009 6.5z"/>
+                </svg>
+              ) : (
+                /* Auto — sol + lua */
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                  <circle cx="4" cy="5.5" r="1.8"/>
+                  <line x1="4" y1="1" x2="4" y2="2"/><line x1="4" y1="9" x2="4" y2="10"/>
+                  <line x1="1" y1="5.5" x2="2" y2="5.5"/>
+                  <path d="M9.5 7A2.5 2.5 0 017 3.5a2.5 2.5 0 000 5z" opacity="0.7"/>
+                </svg>
+              )}
+            </button>
+
             <button
               data-help="settings-btn"
               onClick={() => setShowSettings(true)}
@@ -2446,7 +2494,8 @@ export default function App() {
                 }}
                 onExportPlaylist={(pl) => setExportPlaylistTarget(pl)}
                 onLoadAllFolders={loadAllFolders}
-                onNewPlaylist={() => setCreatePlaylistTracks([])}
+                onNewPlaylist={() => { setCreatePlaylistParentId(undefined); setCreatePlaylistTracks([]); }}
+                onNewSubPlaylist={(parentId) => { setCreatePlaylistParentId(parentId); setCreatePlaylistTracks([]); }}
                 onNewLibrary={pickFolder}
                 onFolderClear={() => {
                   // Cancela timers e limpa análise ao remover/deletar pasta
@@ -2902,7 +2951,8 @@ export default function App() {
       {createPlaylistTracks && (
         <CreatePlaylistModal
           tracks={createPlaylistTracks}
-          onClose={() => { setCreatePlaylistTracks(null); setPendingNewPlaylistPaths(null); }}
+          parentId={createPlaylistParentId}
+          onClose={() => { setCreatePlaylistTracks(null); setPendingNewPlaylistPaths(null); setCreatePlaylistParentId(undefined); }}
           onCreated={pendingNewPlaylistPaths ? (id) => {
             addToPlaylistAndMerge(id, pendingNewPlaylistPaths, true);
             setPendingNewPlaylistPaths(null);
@@ -3126,7 +3176,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Lista de playlists com scroll visível */}
+            {/* Lista de playlists com hierarquia */}
             {playlists.length > 0 && (
               <div className="relative">
                 <div
@@ -3134,36 +3184,60 @@ export default function App() {
                   style={{ maxHeight: "288px", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
                   onWheel={(e) => e.stopPropagation()}
                 >
-                  {playlists.map((pl) => (
-                    <button
-                      key={pl.id}
-                      onClick={() => {
-                        const paths = pendingFileChoice.paths;
-                        const hasRules = pl.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0;
-                        setPendingFileChoice(null);
-                        if (hasRules) {
-                          setPendingRulesConfirm({ paths, playlist: pl });
-                        } else {
-                          addToPlaylistAndMerge(pl.id, paths, false);
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
-                      style={{ background: "transparent" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                    >
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.06)" }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
-                        <p className="text-[10px] text-[#4C4743]">{pl.trackPaths.length} faixa{pl.trackPaths.length !== 1 ? "s" : ""}</p>
-                      </div>
-                    </button>
-                  ))}
+                  {(() => {
+                    const handlePlClick = (pl: typeof playlists[0]) => {
+                      const paths = pendingFileChoice.paths;
+                      const hasRules = pl.globalProperties?.enabled && (pl.globalProperties.activeFields?.length ?? 0) > 0;
+                      setPendingFileChoice(null);
+                      if (hasRules) {
+                        setPendingRulesConfirm({ paths, playlist: pl });
+                      } else {
+                        addToPlaylistAndMerge(pl.id, paths, false);
+                      }
+                    };
+                    const renderPlRow = (pl: typeof playlists[0], depth: number): React.ReactNode => {
+                      const children = playlists.filter((p) => p.parentId === pl.id);
+                      const isFolder = children.length > 0;
+                      const totalCount = isFolder
+                        ? new Set([...pl.trackPaths, ...children.flatMap((c) => c.trackPaths)]).size
+                        : pl.trackPaths.length;
+                      return (
+                        <div key={pl.id}>
+                          <button
+                            onClick={() => handlePlClick(pl)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left"
+                            style={{ background: "transparent", paddingLeft: `${12 + depth * 16}px` }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                          >
+                            {depth > 0 && (
+                              <span className="shrink-0 w-2 h-px" style={{ background: "rgba(255,255,255,0.12)" }} />
+                            )}
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                              style={{ background: isFolder ? "rgba(217,83,64,0.12)" : "rgba(255,255,255,0.06)" }}>
+                              {isFolder ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                                </svg>
+                              ) : (
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8F8883" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-medium text-[#C2BEBC] truncate">{pl.name}</p>
+                              <p className="text-[10px] text-[#4C4743]">{totalCount} faixa{totalCount !== 1 ? "s" : ""}{isFolder ? " (total)" : ""}</p>
+                            </div>
+                          </button>
+                          {children.map((c) => renderPlRow(c, depth + 1))}
+                        </div>
+                      );
+                    };
+                    const roots = playlists.filter((p) => !p.parentId);
+                    return roots.map((pl) => renderPlRow(pl, 0));
+                  })()}
                 </div>
                 {playlists.length > 5 && (
                   <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 tw-playlist-fade"

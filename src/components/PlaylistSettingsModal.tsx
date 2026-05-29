@@ -39,7 +39,6 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
       multiple: false,
     });
     if (path && typeof path === "string") {
-      // Pré-carrega b64 agora — evita problemas de path no Windows na hora de aplicar
       const b64 = await invoke<string | null>("read_file_base64", { path }).catch(() => null);
       const isPng = path.toLowerCase().endsWith(".png");
       setProps((p) => ({
@@ -47,25 +46,25 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
         cover: path,
         coverB64: b64 ?? undefined,
         coverIsPng: isPng,
+        activeFields: p.activeFields.includes("cover") ? p.activeFields : [...p.activeFields, "cover"],
       }));
-      if (!props.activeFields.includes("cover")) {
-        setProps((p) => ({ ...p, activeFields: [...p.activeFields, "cover"] }));
-      }
     }
   };
 
   const handleSave = () => {
     const prevFields = playlist.globalProperties?.activeFields ?? [];
     const prevEnabled = playlist.globalProperties?.enabled ?? false;
+    const nextEnabled = props.activeFields.length > 0;
+    const finalProps = { ...props, enabled: nextEnabled };
     const rulesChanged =
-      (props.enabled && !prevEnabled) ||
-      (props.enabled &&
+      (nextEnabled && !prevEnabled) ||
+      (nextEnabled &&
         JSON.stringify([...props.activeFields].sort()) !==
           JSON.stringify([...prevFields].sort()));
 
     updatePlaylist(playlist.id, {
       name,
-      globalProperties: props,
+      globalProperties: finalProps,
       pendingRulesApply:
         rulesChanged && playlist.trackPaths.length > 0
           ? true
@@ -75,12 +74,13 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
   };
 
   const handleApplyToAll = async () => {
-    if (playlist.trackPaths.length === 0 || !props.enabled || props.activeFields.length === 0) return;
+    if (playlist.trackPaths.length === 0 || props.activeFields.length === 0) return;
     setApplying(true);
     const { applyPlaylistRules } = await import("../lib/playlistRules");
-    await applyPlaylistRules(props, playlist.trackPaths);
+    const finalProps = { ...props, enabled: true };
+    await applyPlaylistRules(finalProps, playlist.trackPaths);
     setApplying(false);
-    updatePlaylist(playlist.id, { globalProperties: props, pendingRulesApply: false });
+    updatePlaylist(playlist.id, { globalProperties: finalProps, pendingRulesApply: false });
     onClose();
     const count = playlist.trackPaths.length;
     toast(
@@ -124,194 +124,179 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
             />
           </section>
 
-          {/* Propriedades Globais */}
+          {/* Propriedades Globais — sempre visível */}
           <section>
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
                 Propriedades Globais
               </p>
-              <button
-                onClick={() => setProps((p) => ({ ...p, enabled: !p.enabled }))}
-                className={`relative inline-flex w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-                  props.enabled ? "bg-[#D95340]" : "bg-white/[0.12]"
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-150 ${
-                    props.enabled ? "left-[18px]" : "left-0.5"
-                  }`}
-                />
-              </button>
+              {globalPropertyPresets.length > 0 && (
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const p = globalPropertyPresets.find((x) => x.id === e.target.value);
+                    if (p) setProps({ ...p.properties, enabled: true });
+                    e.target.value = "";
+                  }}
+                  className="text-[10px] rounded-md px-1.5 py-1 focus:outline-none"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#8F8883", maxWidth: "120px" }}
+                >
+                  <option value="" disabled>Preset…</option>
+                  {globalPropertyPresets.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
-            {props.enabled && (
-              <div className="flex flex-col gap-3">
-                {/* Carregar preset (só se houver presets salvos) */}
-                {globalPropertyPresets.length > 0 && (
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      const p = globalPropertyPresets.find((x) => x.id === e.target.value);
-                      if (p) setProps({ ...p.properties, enabled: true });
-                      e.target.value = "";
-                    }}
-                    className="w-full text-[11px] rounded-lg px-2 py-1.5 focus:outline-none"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#8F8883" }}
+            <div className="flex flex-col gap-2">
+              <FieldRow
+                active={props.activeFields.includes("cover")}
+                onToggle={() => toggleField("cover")}
+                label="Capa"
+              >
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {coverSrc ? (
+                    <img
+                      src={coverSrc}
+                      alt="Capa"
+                      className="w-8 h-8 rounded object-cover shrink-0"
+                      style={{ border: "1px solid rgba(255,255,255,0.10)" }}
+                    />
+                  ) : (
+                    <span className="text-[12px] text-[#605A55]">Nenhuma imagem</span>
+                  )}
+                  <button
+                    onClick={handlePickCover}
+                    className="ml-auto text-[11px] px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap flex-shrink-0 text-[#D95340] font-medium"
+                    style={{ background: "rgba(217,83,64,0.12)" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.20)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.12)"; }}
                   >
-                    <option value="" disabled>Carregar preset…</option>
-                    {globalPropertyPresets.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                )}
+                    {coverSrc ? "Trocar…" : "Escolher…"}
+                  </button>
+                </div>
+              </FieldRow>
 
-                <FieldRow
-                  active={props.activeFields.includes("cover")}
-                  onToggle={() => toggleField("cover")}
-                  label="Capa"
-                >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {coverSrc ? (
-                      <img
-                        src={coverSrc}
-                        alt="Capa"
-                        className="w-8 h-8 rounded object-cover shrink-0"
-                        style={{ border: "1px solid rgba(255,255,255,0.10)" }}
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded shrink-0 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#4C4743"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" opacity="0"/><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                      </div>
-                    )}
+              <FieldRow
+                active={props.activeFields.includes("album")}
+                onToggle={() => toggleField("album")}
+                label="Álbum"
+              >
+                <input
+                  type="text"
+                  value={props.album ?? ""}
+                  onChange={(e) => setProps((p) => ({ ...p, album: e.target.value }))}
+                  placeholder="Nome do álbum"
+                  className="flex-1 w-full bg-transparent text-[12px] text-[#C2BEBC] placeholder-[#605A55] focus:outline-none"
+                />
+              </FieldRow>
+
+              <FieldRow
+                active={props.activeFields.includes("genre")}
+                onToggle={() => toggleField("genre")}
+                label="Gênero"
+              >
+                <input
+                  type="text"
+                  value={props.genre ?? ""}
+                  onChange={(e) => setProps((p) => ({ ...p, genre: e.target.value }))}
+                  placeholder="Ex: House, Techno"
+                  className="flex-1 w-full bg-transparent text-[12px] text-[#C2BEBC] placeholder-[#605A55] focus:outline-none"
+                />
+              </FieldRow>
+
+              <FieldRow
+                active={props.activeFields.includes("comment")}
+                onToggle={() => toggleField("comment")}
+                label="Comentário"
+              >
+                <input
+                  type="text"
+                  value={props.comment ?? ""}
+                  onChange={(e) => setProps((p) => ({ ...p, comment: e.target.value }))}
+                  placeholder="Comentário"
+                  className="flex-1 w-full bg-transparent text-[12px] text-[#C2BEBC] placeholder-[#605A55] focus:outline-none"
+                />
+              </FieldRow>
+
+              <p className="text-[10px] text-[#4C4743] mt-0.5 pl-1">
+                Marque os campos que devem ser aplicados automaticamente às faixas desta playlist.
+              </p>
+
+              {/* Salvar como preset */}
+              {props.activeFields.length > 0 && (
+                <div className="border-t border-white/[0.06] pt-3 mt-1">
+                  {!showSavePreset ? (
                     <button
-                      onClick={handlePickCover}
-                      className="text-[10px] px-2 py-0.5 rounded bg-white/[0.06] hover:bg-white/[0.10] text-[#8F8883] transition-colors whitespace-nowrap flex-shrink-0"
+                      onClick={() => setShowSavePreset(true)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.03] transition-all group"
                     >
-                      {coverSrc ? "Trocar…" : "Escolher…"}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#605A55" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:stroke-[#C2BEBC] transition-colors flex-shrink-0">
+                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                      </svg>
+                      <span className="text-[11px] text-[#605A55] group-hover:text-[#C2BEBC] transition-colors">
+                        Salvar como preset…
+                      </span>
                     </button>
-                  </div>
-                </FieldRow>
-
-                <FieldRow
-                  active={props.activeFields.includes("album")}
-                  onToggle={() => toggleField("album")}
-                  label="Álbum"
-                >
-                  <input
-                    type="text"
-                    value={props.album ?? ""}
-                    onChange={(e) => setProps((p) => ({ ...p, album: e.target.value }))}
-                    placeholder="Nome do álbum"
-                    className="flex-1 w-full bg-transparent border-b border-white/[0.08] pb-0.5 text-[12px] text-[#C2BEBC] placeholder-[#4C4743] focus:outline-none focus:border-[#D95340]/50"
-                  />
-                </FieldRow>
-
-                <FieldRow
-                  active={props.activeFields.includes("genre")}
-                  onToggle={() => toggleField("genre")}
-                  label="Gênero"
-                >
-                  <input
-                    type="text"
-                    value={props.genre ?? ""}
-                    onChange={(e) => setProps((p) => ({ ...p, genre: e.target.value }))}
-                    placeholder="Ex: House, Techno"
-                    className="flex-1 w-full bg-transparent border-b border-white/[0.08] pb-0.5 text-[12px] text-[#C2BEBC] placeholder-[#4C4743] focus:outline-none focus:border-[#D95340]/50"
-                  />
-                </FieldRow>
-
-                <FieldRow
-                  active={props.activeFields.includes("comment")}
-                  onToggle={() => toggleField("comment")}
-                  label="Comentário"
-                >
-                  <input
-                    type="text"
-                    value={props.comment ?? ""}
-                    onChange={(e) => setProps((p) => ({ ...p, comment: e.target.value }))}
-                    placeholder="Comentário"
-                    className="flex-1 w-full bg-transparent border-b border-white/[0.08] pb-0.5 text-[12px] text-[#C2BEBC] placeholder-[#4C4743] focus:outline-none focus:border-[#D95340]/50"
-                  />
-                </FieldRow>
-
-                <p className="text-[10px] text-[#4C4743] mt-0.5">
-                  Faixas arrastadas para esta playlist recebem automaticamente os campos ativos.
-                </p>
-
-                {/* Salvar como preset — sempre visível ao final */}
-                {props.activeFields.length > 0 && (
-                  <div className="border-t border-white/[0.06] pt-3">
-                    {!showSavePreset ? (
-                      <button
-                        onClick={() => setShowSavePreset(true)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-white/[0.08] hover:border-white/[0.14] hover:bg-white/[0.03] transition-all group"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#605A55" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="group-hover:stroke-[#C2BEBC] transition-colors flex-shrink-0">
-                          <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-                          <polyline points="17 21 17 13 7 13 7 21"/>
-                          <polyline points="7 3 7 8 15 8"/>
-                        </svg>
-                        <span className="text-[11px] text-[#605A55] group-hover:text-[#C2BEBC] transition-colors">
-                          Salvar como preset…
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-[10px] text-[#8F8883] font-medium">Nome do preset</p>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={presetNameInput}
-                            onChange={(e) => setPresetNameInput(e.target.value)}
-                            placeholder="Ex: Sets de House"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && presetNameInput.trim()) {
-                                saveGlobalPropertyPreset(presetNameInput.trim(), props);
-                                toast("Preset salvo", "success");
-                                setShowSavePreset(false);
-                                setPresetNameInput("");
-                              }
-                              if (e.key === "Escape") {
-                                setShowSavePreset(false);
-                                setPresetNameInput("");
-                              }
-                            }}
-                            className="flex-1 rounded-lg px-3 py-1.5 text-[12px] focus:outline-none"
-                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(217,83,64,0.4)", color: "#C2BEBC" }}
-                          />
-                          <button
-                            onClick={() => {
-                              if (presetNameInput.trim()) {
-                                saveGlobalPropertyPreset(presetNameInput.trim(), props);
-                                toast("Preset salvo", "success");
-                              }
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] text-[#8F8883] font-medium">Nome do preset</p>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={presetNameInput}
+                          onChange={(e) => setPresetNameInput(e.target.value)}
+                          placeholder="Ex: Sets de House"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && presetNameInput.trim()) {
+                              saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                              toast("Preset salvo", "success");
                               setShowSavePreset(false);
                               setPresetNameInput("");
-                            }}
-                            disabled={!presetNameInput.trim()}
-                            className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors disabled:opacity-40"
-                            style={{ background: "rgba(217,83,64,0.2)", color: "#D95340" }}
-                          >
-                            Salvar
-                          </button>
-                          <button
-                            onClick={() => { setShowSavePreset(false); setPresetNameInput(""); }}
-                            className="text-[12px] text-[#605A55] hover:text-[#C2BEBC] transition-colors px-2 py-1.5"
-                          >
-                            ✕
-                          </button>
-                        </div>
+                            }
+                            if (e.key === "Escape") {
+                              setShowSavePreset(false);
+                              setPresetNameInput("");
+                            }
+                          }}
+                          className="flex-1 rounded-lg px-3 py-1.5 text-[12px] focus:outline-none"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(217,83,64,0.4)", color: "#C2BEBC" }}
+                        />
+                        <button
+                          onClick={() => {
+                            if (presetNameInput.trim()) {
+                              saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                              toast("Preset salvo", "success");
+                            }
+                            setShowSavePreset(false);
+                            setPresetNameInput("");
+                          }}
+                          disabled={!presetNameInput.trim()}
+                          className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors disabled:opacity-40"
+                          style={{ background: "rgba(217,83,64,0.2)", color: "#D95340" }}
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => { setShowSavePreset(false); setPresetNameInput(""); }}
+                          className="text-[12px] text-[#605A55] hover:text-[#C2BEBC] transition-colors px-2 py-1.5"
+                        >
+                          ✕
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </section>
 
-          {/* Faixas existentes */}
-          {props.enabled && props.activeFields.length > 0 && playlist.trackPaths.length > 0 && (
+          {/* Aplicar a faixas existentes */}
+          {props.activeFields.length > 0 && playlist.trackPaths.length > 0 && (
             <section className="border-t border-white/[0.06] pt-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -365,23 +350,44 @@ function FieldRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <button
-        onClick={onToggle}
-        className={`w-3.5 h-3.5 rounded-[3px] border flex-shrink-0 flex items-center justify-center transition-colors ${
-          active ? "bg-[#D95340] border-[#D95340]" : "bg-transparent border-white/20"
-        }`}
+    <div
+      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-all cursor-pointer"
+      style={{
+        background: active ? "rgba(217,83,64,0.07)" : "var(--surface-row)",
+        border: active ? "1px solid rgba(217,83,64,0.20)" : "1px solid var(--surface-row-border)",
+      }}
+      onClick={onToggle}
+    >
+      {/* Checkbox */}
+      <div
+        className="w-4 h-4 rounded-[4px] flex-shrink-0 flex items-center justify-center transition-colors"
+        style={{
+          background: active ? "#D95340" : "transparent",
+          border: active ? "1.5px solid #D95340" : "1.5px solid var(--border-inactive)",
+        }}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
       >
         {active && (
-          <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1 3l2 2 4-4" />
           </svg>
         )}
-      </button>
-      <span className={`text-[11px] w-16 shrink-0 ${active ? "text-[#C2BEBC]" : "text-[#4C4743]"}`}>
+      </div>
+
+      {/* Label */}
+      <span
+        className="text-[12px] w-16 shrink-0 font-medium"
+        style={{ color: active ? "#E8E4E1" : "#756D67" }}
+      >
         {label}
       </span>
-      <div className={`flex-1 min-w-0 ${active ? "" : "opacity-40 pointer-events-none"}`}>
+
+      {/* Conteúdo */}
+      <div
+        className="flex-1 min-w-0"
+        style={{ opacity: active ? 1 : 0.45, pointerEvents: active ? "auto" : "none" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>

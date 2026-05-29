@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Playlist } from "../store";
 import { invoke } from "@tauri-apps/api/core";
@@ -20,6 +20,7 @@ interface SidebarProps {
   onExportPlaylist?: (pl: Playlist) => void;
   onLoadAllFolders?: () => void;
   onNewPlaylist?: () => void;
+  onNewSubPlaylist?: (parentId: string) => void;
   onNewLibrary?: () => void;
   onFolderClear?: () => void; // limpa análise/timers ao remover pasta
   scanProgress?: number | null; // 0–1 determinado, null = indeterminado
@@ -31,7 +32,7 @@ interface DeleteDialogState {
   name: string;
 }
 
-export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
+export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrowse, onAnalyzeBpmFolder, onEnrichFolder, onExportPlaylist, onLoadAllFolders, onNewPlaylist, onNewSubPlaylist, onNewLibrary, onFolderClear, scanProgress, onNavigate }: SidebarProps) {
   const { t } = useTranslation();
   const { tracks, favoriteFolders, recentFolders, lastFolder, toggleFavorite, removeRecentFolder, setTracks, setLastFolder, isScanning, setScanning } = useAppStore();
   const updateTrack = useAppStore((s) => s.updateTrack);
@@ -45,6 +46,59 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
 
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [subfolderMap, setSubfolderMap] = useState<Record<string, string[]>>({});
+  const [expandedPlaylists, setExpandedPlaylists] = useState<Set<string>>(new Set());
+  const autoExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Drag de playlist para reparentar ─────────────────────────────
+  const plDragRef = useRef<string | null>(null);
+  const plDropTargetRef = useRef<string | null>(null);
+  const [plDragging, setPlDragging] = useState<string | null>(null);
+  const [plDropTarget, setPlDropTarget] = useState<string | null>(null);
+
+  const startPlDrag = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    plDragRef.current = id;
+    setPlDragging(id);
+    document.body.style.cursor = "grabbing";
+
+    const onMove = (me: MouseEvent) => {
+      const el = document.elementFromPoint(me.clientX, me.clientY);
+      const row = el?.closest("[data-pl-id]") as HTMLElement | null;
+      const targetId = row?.dataset.plId ?? null;
+      const pls = useAppStore.getState().playlists;
+      const dragId = plDragRef.current!;
+      const isDesc = (cid: string, aid: string): boolean => {
+        const kids = pls.filter((p) => p.parentId === aid);
+        return kids.some((k) => k.id === cid || isDesc(cid, k.id));
+      };
+      const valid = targetId && targetId !== dragId && !isDesc(targetId, dragId);
+      const next = valid ? targetId : null;
+      if (next !== plDropTargetRef.current) {
+        plDropTargetRef.current = next;
+        setPlDropTarget(next);
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      const dragId = plDragRef.current;
+      const targetId = plDropTargetRef.current;
+      if (dragId && targetId) {
+        useAppStore.getState().updatePlaylist(dragId, { parentId: targetId });
+        setExpandedPlaylists((prev) => { const next = new Set(prev); next.add(targetId); return next; });
+      }
+      plDragRef.current = null;
+      plDropTargetRef.current = null;
+      setPlDragging(null);
+      setPlDropTarget(null);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"recent" | "favorites" | "playlists">("recent");
@@ -96,6 +150,7 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
 
   useEffect(() => {
     if (dragState.isDragging) setSidebarTab("playlists");
+    else if (autoExpandTimerRef.current) { clearTimeout(autoExpandTimerRef.current); autoExpandTimerRef.current = null; }
   }, [dragState.isDragging, playlists.length]);
 
   // Contagem de faixas por pasta, calculada a partir das faixas atualmente carregadas
@@ -525,36 +580,132 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
           )}
           {sidebarTab === "playlists" && (
             <div data-help="playlists-section">
-              {playlists.length > 0
-                ? [...playlists]
-                    .sort(playlistSort === "alpha"
-                      ? (a, b) => a.name.localeCompare(b.name)
-                      : (a, b) => b.updatedAt - a.updatedAt)
-                    .map((pl) => (
-                    <PlaylistRow
-                      key={pl.id}
-                      pl={pl}
-                      isActive={activePlaylistId === pl.id}
-                      onOpen={() => { setActivePlaylistId(pl.id); onNavigate?.(); }}
-                      onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
-                      isDragging={dragState.isDragging}
-                      isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}
-                      onDragEnter={() => setDragState({ hoveredPlaylistId: pl.id, hoveringNewPlaylist: false })}
-                      onDragLeave={() => setDragState({ hoveredPlaylistId: null })}
-                    />
-                  ))
-                : !dragState.isDragging && (
-                  <div className="px-2 py-3 flex flex-col items-center gap-1 text-center">
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="16" height="14" rx="2"/>
-                      <path d="M7 8h6M7 12h4"/>
-                      <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
-                      <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
-                    </svg>
-                    <p className="text-[10px] text-[#4C4743]">{t("sidebar.noPlaylists")}</p>
-                  </div>
-                )
-              }
+              {(() => {
+                // Conta faixas únicas de uma playlist incluindo todos os descendentes
+                const countAll = (id: string): number => {
+                  const pl = playlists.find((p) => p.id === id);
+                  if (!pl) return 0;
+                  const children = playlists.filter((p) => p.parentId === id);
+                  const childPaths = new Set(children.flatMap((c) => {
+                    const recurse = (cid: string): string[] => {
+                      const cp = playlists.find((p) => p.id === cid);
+                      const cc = playlists.filter((p) => p.parentId === cid);
+                      return [...(cp?.trackPaths ?? []), ...cc.flatMap((x) => recurse(x.id))];
+                    };
+                    return recurse(c.id);
+                  }));
+                  return new Set([...pl.trackPaths, ...childPaths]).size;
+                };
+
+                const sortFn = playlistSort === "alpha"
+                  ? (a: Playlist, b: Playlist) => a.name.localeCompare(b.name)
+                  : (a: Playlist, b: Playlist) => b.updatedAt - a.updatedAt;
+
+                // Renderiza uma playlist e seus filhos recursivamente
+                const renderPl = (pl: Playlist, depth = 0): React.ReactNode => {
+                  const children = [...playlists]
+                    .filter((p) => p.parentId === pl.id)
+                    .sort(sortFn);
+                  const hasChildren = children.length > 0;
+                  const isExpanded = expandedPlaylists.has(pl.id);
+                  const totalCount = countAll(pl.id);
+
+                  const isPlDropHere = plDropTarget === pl.id;
+                  return (
+                    <div key={pl.id}>
+                      <div style={{ paddingLeft: depth * 12 }} className="relative">
+                        {depth > 0 && (
+                          <span className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]"
+                            style={{ left: (depth - 1) * 12 + 6 }} />
+                        )}
+                        <div className="flex items-center gap-1 group/plrow" data-pl-id={pl.id}>
+                          {/* Drag handle para reparentar */}
+                          {!dragState.isDragging && (
+                            <button
+                              className="shrink-0 w-4 h-4 flex items-center justify-center text-[#373331] opacity-0 group-hover/plrow:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+                              onMouseDown={(e) => startPlDrag(pl.id, e)}
+                              title="Arrastar para aninhar"
+                            >
+                              <svg width="6" height="9" viewBox="0 0 6 9" fill="currentColor">
+                                <circle cx="1.5" cy="1.5" r="1"/><circle cx="4.5" cy="1.5" r="1"/>
+                                <circle cx="1.5" cy="4.5" r="1"/><circle cx="4.5" cy="4.5" r="1"/>
+                                <circle cx="1.5" cy="7.5" r="1"/><circle cx="4.5" cy="7.5" r="1"/>
+                              </svg>
+                            </button>
+                          )}
+                          {hasChildren && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedPlaylists((prev) => {
+                                  const next = new Set(prev);
+                                  next.has(pl.id) ? next.delete(pl.id) : next.add(pl.id);
+                                  return next;
+                                });
+                              }}
+                              className="shrink-0 w-4 h-4 flex items-center justify-center text-[#605A55] hover:text-[#C2BEBC] transition-colors"
+                            >
+                              <svg width="7" height="7" viewBox="0 0 7 7" fill="currentColor"
+                                style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+                                <path d="M2 1l3 2.5L2 6V1z"/>
+                              </svg>
+                            </button>
+                          )}
+                          <div
+                            className={hasChildren || !dragState.isDragging ? "flex-1 min-w-0" : "flex-1 min-w-0 pl-4"}
+                            style={isPlDropHere ? { borderRadius: "6px", outline: "1.5px solid #D95340", outlineOffset: "1px" } : {}}
+                          >
+                            <PlaylistRow
+                              pl={{ ...pl, trackPaths: pl.trackPaths }}
+                              isActive={activePlaylistId === pl.id}
+                              onOpen={() => { if (!plDragging) { setActivePlaylistId(pl.id); onNavigate?.(); } }}
+                              onContextMenu={(e) => { e.preventDefault(); setPlaylistCtx({ x: e.clientX, y: e.clientY, pl }); }}
+                              isDragging={dragState.isDragging}
+                              isHoveredDrop={dragState.isDragging && dragState.hoveredPlaylistId === pl.id}
+                              onDragEnter={() => {
+                                setDragState({ hoveredPlaylistId: pl.id, hoveringNewPlaylist: false });
+                                if (hasChildren && !expandedPlaylists.has(pl.id)) {
+                                  if (autoExpandTimerRef.current) clearTimeout(autoExpandTimerRef.current);
+                                  autoExpandTimerRef.current = setTimeout(() => {
+                                    setExpandedPlaylists((prev) => { const next = new Set(prev); next.add(pl.id); return next; });
+                                  }, 800);
+                                }
+                              }}
+                              onDragLeave={() => {
+                                setDragState({ hoveredPlaylistId: null });
+                                if (autoExpandTimerRef.current) { clearTimeout(autoExpandTimerRef.current); autoExpandTimerRef.current = null; }
+                              }}
+                              isFolder={hasChildren}
+                              totalCount={hasChildren ? totalCount : undefined}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {hasChildren && isExpanded && (
+                        <div>{children.map((c) => renderPl(c, depth + 1))}</div>
+                      )}
+                    </div>
+                  );
+                };
+
+                const rootPlaylists = [...playlists]
+                  .filter((p) => !p.parentId)
+                  .sort(sortFn);
+
+                return rootPlaylists.length > 0
+                  ? rootPlaylists.map((pl) => renderPl(pl))
+                  : !dragState.isDragging && (
+                    <div className="px-2 py-3 flex flex-col items-center gap-1 text-center">
+                      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#4C4743" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="3" width="16" height="14" rx="2"/>
+                        <path d="M7 8h6M7 12h4"/>
+                        <circle cx="15" cy="13" r="3" fill="#4C4743" stroke="none"/>
+                        <path d="M14 13l2-1v2l-2-1z" fill="#0E0D0C" stroke="none"/>
+                      </svg>
+                      <p className="text-[10px] text-[#4C4743]">{t("sidebar.noPlaylists")}</p>
+                    </div>
+                  );
+              })()}
 
               {/* Botão Nova playlist — sempre no espaço abaixo da lista, durante uso normal */}
               {!dragState.isDragging && onNewPlaylist && (
@@ -685,6 +836,33 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onBrow
             <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className="opacity-60"><path d="M2 1.5l8 4-8 4V1.5z"/></svg>
             {t("sidebar.openPlaylist")}
           </button>
+          {onNewSubPlaylist && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={() => { const id = playlistCtx.pl.id; setPlaylistCtx(null); onNewSubPlaylist(id); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+                <path d="M1 2A1 1 0 012 1h2.5L5.5 2H9a1 1 0 011 1v4a1 1 0 01-1 1H2a1 1 0 01-1-1V2z"/>
+                <line x1="5.5" y1="4" x2="5.5" y2="7"/><line x1="4" y1="5.5" x2="7" y2="5.5"/>
+              </svg>
+              Criar subplaylist aqui
+            </button>
+          )}
+          {playlistCtx.pl.parentId && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
+              onClick={() => {
+                useAppStore.getState().updatePlaylist(playlistCtx.pl.id, { parentId: undefined });
+                setPlaylistCtx(null);
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                <path d="M1 5.5h7M5.5 3L8 5.5 5.5 8"/>
+                <path d="M1 2v7"/>
+              </svg>
+              Remover da pasta
+            </button>
+          )}
           {onExportPlaylist && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm text-[#C2BEBC] hover:bg-white/8 flex items-center gap-2"
@@ -1165,6 +1343,7 @@ const DJ_BADGE: Record<string, string> = {
 
 function PlaylistRow({
   pl, isActive, onOpen, onContextMenu, isDragging, isHoveredDrop, onDragEnter, onDragLeave,
+  isFolder, totalCount,
 }: {
   pl: Playlist;
   isActive: boolean;
@@ -1174,6 +1353,8 @@ function PlaylistRow({
   isHoveredDrop?: boolean;
   onDragEnter?: () => void;
   onDragLeave?: () => void;
+  isFolder?: boolean;
+  totalCount?: number;
 }) {
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
   const [editing, setEditing] = useState(false);
@@ -1215,11 +1396,20 @@ function PlaylistRow({
           : "text-[#8F8883] hover:text-[#C2BEBC] hover:bg-white/5"
         }`}
     >
-      <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className={`shrink-0 ${isHoveredDrop ? "opacity-80 text-[#D95340]" : "opacity-50 text-[#D95340]"}`}>
-        <rect x="1" y="1" width="9" height="2" rx="0.5"/>
-        <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
-        <rect x="1" y="8" width="5" height="2" rx="0.5"/>
-      </svg>
+      {/* Ícone: pasta-mãe (folder) ou playlist normal */}
+      {isFolder ? (
+        <svg width="12" height="11" viewBox="0 0 12 11" fill="none" className={`shrink-0 ${isHoveredDrop ? "opacity-90" : "opacity-70"}`}>
+          <path d="M1 2.5A1.5 1.5 0 012.5 1h1.586a1 1 0 01.707.293L5.5 2.5H10A1.5 1.5 0 0111.5 4v4.5A1.5 1.5 0 0110 10H2A1.5 1.5 0 01.5 8.5v-5z"
+            fill={isActive ? "rgba(217,83,64,0.25)" : "rgba(201,123,64,0.15)"}
+            stroke={isActive ? "#D95340" : "#C97B40"} strokeWidth="1"/>
+        </svg>
+      ) : (
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor" className={`shrink-0 ${isHoveredDrop ? "opacity-80 text-[#D95340]" : "opacity-50 text-[#D95340]"}`}>
+          <rect x="1" y="1" width="9" height="2" rx="0.5"/>
+          <rect x="1" y="4.5" width="7" height="2" rx="0.5"/>
+          <rect x="1" y="8" width="5" height="2" rx="0.5"/>
+        </svg>
+      )}
 
       {editing ? (
         <input
@@ -1239,13 +1429,15 @@ function PlaylistRow({
       {pl.pendingRulesApply && !editing && (
         <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" title="Regras pendentes de aplicação" />
       )}
-      {!editing && pl.trackPaths.length > 0 && (
+      {!editing && (isFolder ? (totalCount ?? 0) > 0 : pl.trackPaths.length > 0) && (
         <span className={`shrink-0 text-[9px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md ${
           isActive
             ? "bg-[#D95340]/20 text-[#D95340]"
+            : isFolder
+            ? "bg-[#C97B40]/15 text-[#C97B40]"
             : "bg-white/[0.06] text-[#605A55]"
         }`}>
-          {pl.trackPaths.length}
+          {isFolder ? (totalCount ?? 0) : pl.trackPaths.length}
         </span>
       )}
       {!editing && pl.lastExportedTo && pl.lastExportedTo.length > 0 && (

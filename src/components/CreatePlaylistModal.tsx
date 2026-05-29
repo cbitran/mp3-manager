@@ -17,6 +17,7 @@ interface Props {
   onClose: () => void;
   exportOnly?: { playlistId: string; playlistName: string };
   onCreated?: (id: string) => void;
+  parentId?: string;
 }
 
 type FieldKey = "cover" | "album" | "genre" | "comment";
@@ -42,7 +43,7 @@ const DJ_ICONS: Record<string, string> = {
 
 // ── Create mode ──────────────────────────────────────────────────────────────
 
-function CreateMode({ tracks, onClose, onCreated }: { tracks: Track[]; onClose: () => void; onCreated?: (id: string) => void }) {
+function CreateMode({ tracks, onClose, onCreated, parentId }: { tracks: Track[]; onClose: () => void; onCreated?: (id: string) => void; parentId?: string }) {
   const { t } = useTranslation();
   const createPlaylist = useAppStore((s) => s.createPlaylist);
   const updatePlaylist = useAppStore((s) => s.updatePlaylist);
@@ -81,7 +82,7 @@ function CreateMode({ tracks, onClose, onCreated }: { tracks: Track[]; onClose: 
   const handleSave = async () => {
     if (!name.trim()) return;
     const paths = tracks.map((t) => t.path);
-    const id = createPlaylist(name.trim(), paths);
+    const id = createPlaylist(name.trim(), paths, parentId);
     if (props.enabled && props.activeFields.length > 0) {
       updatePlaylist(id, { globalProperties: props });
       if (paths.length > 0) await applyPlaylistRules(props, paths);
@@ -550,7 +551,7 @@ export function PresetRow({
 
 // ── Root export ───────────────────────────────────────────────────────────────
 
-export default function CreatePlaylistModal({ tracks, onClose, exportOnly, onCreated }: Props) {
+export default function CreatePlaylistModal({ tracks, onClose, exportOnly, onCreated, parentId }: Props) {
   return (
     <div
       className="fixed inset-0 z-[500] flex items-center justify-center"
@@ -560,7 +561,7 @@ export default function CreatePlaylistModal({ tracks, onClose, exportOnly, onCre
       <div className="rounded-xl shadow-2xl w-[420px] overflow-hidden bg-[#1c1715] border border-white/[0.08]">
         {exportOnly
           ? <ExportMode tracks={tracks} onClose={onClose} exportOnly={exportOnly} />
-          : <CreateMode tracks={tracks} onClose={onClose} onCreated={onCreated} />
+          : <CreateMode tracks={tracks} onClose={onClose} onCreated={onCreated} parentId={parentId} />
         }
       </div>
     </div>

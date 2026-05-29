@@ -58,6 +58,7 @@ export interface Playlist {
   lastExportedTo?: string[];
   globalProperties?: PlaylistGlobalProperties;
   pendingRulesApply?: boolean;
+  parentId?: string;   // se definido, esta playlist é filha da playlist com este id
 }
 
 export interface DragState {
@@ -212,7 +213,7 @@ interface AppState {
   // Playlists
   playlists: Playlist[];
   activePlaylistId: string | null;
-  createPlaylist: (name: string, trackPaths: string[]) => string;
+  createPlaylist: (name: string, trackPaths: string[], parentId?: string) => string;
   updatePlaylist: (id: string, updates: Partial<Omit<Playlist, "id" | "createdAt">>) => void;
   deletePlaylist: (id: string) => void;
   addTracksToPlaylist: (id: string, trackPaths: string[]) => void;
@@ -358,12 +359,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Playlists
   playlists: JSON.parse(localStorage.getItem(PLAYLISTS_KEY) ?? "[]") as Playlist[],
   activePlaylistId: null,
-  createPlaylist: (name, trackPaths) => {
+  createPlaylist: (name, trackPaths, parentId) => {
     const pl: Playlist = {
       id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name, trackPaths,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      ...(parentId ? { parentId } : {}),
     };
     const next = [pl, ...get().playlists];
     localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
@@ -378,7 +380,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ playlists: next });
   },
   deletePlaylist: (id) => {
-    const next = get().playlists.filter((p) => p.id !== id);
+    const next = get().playlists
+      .filter((p) => p.id !== id)
+      .map((p) => p.parentId === id ? { ...p, parentId: undefined } : p);
     localStorage.setItem(PLAYLISTS_KEY, JSON.stringify(next));
     const active = get().activePlaylistId;
     set({ playlists: next, activePlaylistId: active === id ? null : active });

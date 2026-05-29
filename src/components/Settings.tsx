@@ -10,6 +10,25 @@ import { DEFAULT_SHORTCUTS, formatShortcut, captureKey } from "../shortcuts";
 
 interface DjSoftwareInfo { id: string; name: string; installed: boolean; }
 
+function Checkbox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <div
+      onClick={(e) => { e.preventDefault(); onChange(); }}
+      className="shrink-0 w-4 h-4 rounded-[4px] flex items-center justify-center transition-colors cursor-pointer"
+      style={{
+        background: checked ? "#D95340" : "transparent",
+        border: checked ? "1.5px solid #D95340" : "1.5px solid var(--border-inactive)",
+      }}
+    >
+      {checked && (
+        <svg width="8" height="6" viewBox="0 0 8 6" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 3l2 2 4-4"/>
+        </svg>
+      )}
+    </div>
+  );
+}
+
 type Tab = "appearance" | "services" | "columns" | "license" | "shortcuts" | "language" | "accessibility" | "privacy";
 
 const DJ_OPTION_IDS = ["serato", "rekordbox", "traktor", "vdj", "djay", "engine_dj", "none"] as const;
@@ -279,14 +298,14 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="space-y-2 mb-3">
                   <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-white/[0.03] border border-white/[0.04]">
-                    <input type="checkbox" checked={djA} onChange={(e) => setDjA(e.target.checked)} className="accent-[#D95340] w-3.5 h-3.5" />
+                    <Checkbox checked={djA} onChange={() => setDjA(!djA)} />
                     <div>
                       <p className="text-[13px] text-[#C2BEBC]">{t("settings.services.autoImport")}</p>
                       <p className="text-[10px] text-[#605A55]">{t("settings.services.autoImportDesc")}</p>
                     </div>
                   </label>
                   <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-white/[0.03] border border-white/[0.04]">
-                    <input type="checkbox" checked={djS} onChange={(e) => setDjS(e.target.checked)} className="accent-[#D95340] w-3.5 h-3.5" />
+                    <Checkbox checked={djS} onChange={() => setDjS(!djS)} />
                     <div>
                       <p className="text-[13px] text-[#C2BEBC]">{t("settings.services.showAll")}</p>
                       <p className="text-[10px] text-[#605A55]">{t("settings.services.showAllDesc")}</p>
@@ -318,7 +337,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                       key={id}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.03] border border-white/[0.04]"
                     >
-                      <input type="checkbox" checked={isVisible} onChange={() => toggleColumn(id)} className="accent-[#D95340] w-3.5 h-3.5" />
+                      <Checkbox checked={isVisible} onChange={() => toggleColumn(id)} />
                       <span className="text-[13px] text-[#C2BEBC]">{label}</span>
                     </label>
                   );
