@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useAppStore, type Playlist, type PlaylistGlobalProperties } from "../store";
 import { toast } from "./Toast";
 
@@ -39,7 +39,15 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
       multiple: false,
     });
     if (path && typeof path === "string") {
-      setProps((p) => ({ ...p, cover: path }));
+      // Pré-carrega b64 agora — evita problemas de path no Windows na hora de aplicar
+      const b64 = await invoke<string | null>("read_file_base64", { path }).catch(() => null);
+      const isPng = path.toLowerCase().endsWith(".png");
+      setProps((p) => ({
+        ...p,
+        cover: path,
+        coverB64: b64 ?? undefined,
+        coverIsPng: isPng,
+      }));
       if (!props.activeFields.includes("cover")) {
         setProps((p) => ({ ...p, activeFields: [...p.activeFields, "cover"] }));
       }

@@ -35,13 +35,19 @@ export async function applyPlaylistRules(
       }
     }
 
-    // Lê a imagem de capa UMA vez (antes do loop) — evita falha de path duplo no Windows
+    // Usa b64 pré-carregado se disponível (Windows: evita problemas de path na releitura)
+    // Fallback: lê do arquivo (compatibilidade com regras antigas sem coverB64)
     let coverB64: string | null = null;
     let coverIsPng = false;
-    if (hasCoverField && props.cover) {
-      coverIsPng = props.cover.toLowerCase().endsWith(".png");
-      coverB64 = await invoke<string | null>("read_file_base64", { path: props.cover })
-        .catch(() => null);
+    if (hasCoverField) {
+      if (props.coverB64) {
+        coverB64 = props.coverB64;
+        coverIsPng = props.coverIsPng ?? false;
+      } else if (props.cover) {
+        coverIsPng = props.cover.toLowerCase().endsWith(".png");
+        coverB64 = await invoke<string | null>("read_file_base64", { path: props.cover })
+          .catch(() => null);
+      }
     }
 
     // Aplica saves no disco para todas as faixas

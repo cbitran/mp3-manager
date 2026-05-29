@@ -41,7 +41,9 @@ export type FilterTab = "all" | "favorites" | "problems" | "ok" | "recent";
 export interface PlaylistGlobalProperties {
   enabled: boolean;
   activeFields: ('cover' | 'album' | 'genre' | 'comment')[];
-  cover?: string;
+  cover?: string;       // caminho nativo do arquivo (para exibir preview)
+  coverB64?: string;    // base64 pré-carregado da imagem (evita releitura no Windows)
+  coverIsPng?: boolean;
   album?: string;
   genre?: string;
   comment?: string;
