@@ -824,6 +824,150 @@ fn save_cover_b64(path: String, b64: String, is_png: bool) -> Result<(), String>
     }
 }
 
+// ── PRO: Extended Tags ──────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct RawTag { key: String, value: String }
+
+#[tauri::command]
+fn read_all_tags(path: String) -> Result<Vec<RawTag>, String> {
+    let ext = std::path::Path::new(&path)
+        .extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let mut result: Vec<RawTag> = Vec::new();
+
+    if matches!(ext.as_str(), "mp3" | "aiff" | "aif") {
+        let tag = id3::Tag::read_from_path(&path).unwrap_or_default();
+        for frame in tag.frames() {
+            let key = frame.id().to_string();
+            let value = match frame.content() {
+                id3::Content::Text(t) => t.clone(),
+                id3::Content::ExtendedText(et) => format!("{}: {}", et.description, et.value),
+                id3::Content::Comment(c) => c.text.clone(),
+                id3::Content::Lyrics(l) => l.text.clone(),
+                id3::Content::Link(l) => l.clone(),
+                _ => "(binary)".to_string(),
+            };
+            result.push(RawTag { key, value });
+        }
+    } else {
+        let tagged = lofty::probe::Probe::open(&path)
+            .map_err(|e| e.to_string())?.read().map_err(|e| e.to_string())?;
+        let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+        if let Some(t) = tag {
+            for item in t.items() {
+                let key = format!("{:?}", item.key());
+                let value = match item.value() {
+                    lofty::tag::ItemValue::Text(s) => s.clone(),
+                    lofty::tag::ItemValue::Locator(s) => s.clone(),
+                    _ => "(binary)".to_string(),
+                };
+                result.push(RawTag { key, value });
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn save_raw_tag(path: String, key: String, value: String) -> Result<(), String> {
+    let ext = std::path::Path::new(&path)
+        .extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if matches!(ext.as_str(), "mp3" | "aiff" | "aif") {
+        let mut tag = id3::Tag::read_from_path(&path).unwrap_or_default();
+        tag.set_text(&key, &value);
+        tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_raw_tag(path: String, key: String) -> Result<(), String> {
+    let ext = std::path::Path::new(&path)
+        .extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if matches!(ext.as_str(), "mp3" | "aiff" | "aif") {
+        let mut tag = id3::Tag::read_from_path(&path).unwrap_or_default();
+        tag.remove(&key);
+        tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ── PRO: AcoustID Fingerprint ────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_acoustid_fingerprint(path: String, api_key: String) -> Result<serde_json::Value, String> {
+    // Decodifica PCM via symphonia (já temos essa infra)
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let mss = symphonia::core::io::MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = symphonia::core::probe::Hint::new();
+    if let Some(ext) = std::path::Path::new(&path).extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &Default::default(), &Default::default())
+        .map_err(|e| e.to_string())?;
+    let mut reader = probed.format;
+    let track = reader.default_track().ok_or("No audio track")?.clone();
+    let codec_params = track.codec_params.clone();
+    let sample_rate = codec_params.sample_rate.unwrap_or(44100);
+    let channels = codec_params.channels.map(|c| c.count()).unwrap_or(2);
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&codec_params, &Default::default())
+        .map_err(|e| e.to_string())?;
+
+    let mut samples: Vec<i16> = Vec::new();
+    let mut duration_secs = 0u32;
+
+    loop {
+        let packet = match reader.next_packet() {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        if packet.track_id() != track.id { continue; }
+        let decoded = match decoder.decode(&packet) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        duration_secs = (decoded.frames() as u32 / sample_rate).max(duration_secs);
+        #[allow(unused_imports)]
+        use symphonia::core::audio::Signal;
+        let spec = *decoded.spec();
+        let mut buf = symphonia::core::audio::SampleBuffer::<i16>::new(decoded.frames() as u64, spec);
+        buf.copy_interleaved_ref(decoded);
+        samples.extend_from_slice(buf.samples());
+        if samples.len() > sample_rate as usize * channels * 120 { break; } // max 2min
+    }
+
+    // Estima duração real
+    if duration_secs == 0 {
+        duration_secs = (samples.len() / (sample_rate as usize * channels)) as u32;
+    }
+
+    // Gera fingerprint simples (hash das amostras) — substituir por chromaprint real em v2
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    samples[..samples.len().min(sample_rate as usize * 2)].hash(&mut hasher);
+    let fp = format!("{:x}", hasher.finish());
+
+    // Chama AcoustID API
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.acoustid.org/v2/lookup")
+        .query(&[
+            ("client", api_key.as_str()),
+            ("fingerprint", fp.as_str()),
+            ("duration", &duration_secs.to_string()),
+            ("meta", "recordings releases"),
+        ])
+        .send().await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>().await
+        .map_err(|e| e.to_string())?;
+
+    Ok(resp)
+}
+
 #[tauri::command]
 fn read_cover_base64(path: String) -> Option<String> {
     let tagged = Probe::open(&path).ok()?.read().ok()?;
@@ -3277,6 +3421,10 @@ pub fn run() {
             download_update,
             rename_from_tags,
             save_cover_batch_from_file,
+            read_all_tags,
+            save_raw_tag,
+            delete_raw_tag,
+            get_acoustid_fingerprint,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

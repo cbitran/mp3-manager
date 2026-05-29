@@ -276,6 +276,13 @@ interface AppState {
   enrichmentOptIn: boolean;
   acceptPrivacy: () => void;
   setEnrichmentOptIn: (v: boolean) => void;
+
+  // TagWave Pro
+  proLicenseKey: string | null;
+  proValidated: boolean;
+  isPro: () => boolean;
+  activateProLicense: (key: string) => Promise<{ ok: boolean; error?: string }>;
+  deactivateProLicense: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -672,6 +679,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   setEnrichmentOptIn: (v) => {
     localStorage.setItem(ENRICHMENT_OPT_IN_KEY, String(v));
     set({ enrichmentOptIn: v });
+  },
+
+  // TagWave Pro
+  proLicenseKey: localStorage.getItem("tagwave_pro_key"),
+  proValidated: localStorage.getItem("tagwave_pro_validated") === "true",
+  isPro: () => {
+    const { proLicenseKey, proValidated } = get();
+    return !!(proLicenseKey && proValidated);
+  },
+  activateProLicense: async (key) => {
+    if (!key.trim()) return { ok: false, error: "Chave inválida" };
+    try {
+      const res = await fetch("https://api.lemonsqueezy.com/v1/licenses/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ license_key: key.trim() }),
+      });
+      const data = await res.json();
+      // LemonSqueezy retorna valid:true e o meta do produto
+      const ok = data.valid === true;
+      if (ok) {
+        localStorage.setItem("tagwave_pro_key", key.trim());
+        localStorage.setItem("tagwave_pro_validated", "true");
+        set({ proLicenseKey: key.trim(), proValidated: true });
+        return { ok: true };
+      }
+      return { ok: false, error: data.error ?? "Chave não reconhecida" };
+    } catch {
+      // Offline fallback: aceita chave se tiver formato válido (min 20 chars)
+      if (key.trim().length >= 20) {
+        localStorage.setItem("tagwave_pro_key", key.trim());
+        localStorage.setItem("tagwave_pro_validated", "true");
+        set({ proLicenseKey: key.trim(), proValidated: true });
+        return { ok: true };
+      }
+      return { ok: false, error: "Sem conexão — verifique sua internet e tente novamente" };
+    }
+  },
+  deactivateProLicense: () => {
+    localStorage.removeItem("tagwave_pro_key");
+    localStorage.removeItem("tagwave_pro_validated");
+    set({ proLicenseKey: null, proValidated: false });
   },
 
   filteredTracks: () => {

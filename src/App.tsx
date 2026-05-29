@@ -39,6 +39,11 @@ import FolderBrowser from "./components/FolderBrowser";
 import NewTracksModal from "./components/NewTracksModal";
 import NewTracksPlaylistOffer from "./components/NewTracksPlaylistOffer";
 import CreatePlaylistModal from "./components/CreatePlaylistModal";
+import ProGate from "./components/ProGate";
+import ProBanner from "./components/ProBanner";
+import FilenameTagModal from "./components/pro/FilenameTagModal";
+import ExtendedTagsModal from "./components/pro/ExtendedTagsModal";
+import AcoustIDModal from "./components/pro/AcoustIDModal";
 import type { PendingNewTrack } from "./store";
 import { checkLicenseStatus } from "./services/LicenseService";
 import { applyPlaylistRules } from "./lib/playlistRules";
@@ -443,6 +448,10 @@ export default function App() {
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [missingPlaylistPaths, setMissingPlaylistPaths] = useState<{ playlistId: string; paths: string[] } | null>(null);
   const [showSettings, setShowSettings]     = useState(false);
+  const isPro = useAppStore((s) => s.isPro);
+  const [showFilenameTag, setShowFilenameTag]   = useState(false);
+  const [showExtendedTags, setShowExtendedTags] = useState(false);
+  const [showAcoustID, setShowAcoustID]         = useState(false);
   const [compact] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [newTrackIds, setNewTrackIds]       = useState<Set<string>>(new Set());
@@ -2012,6 +2021,48 @@ export default function App() {
               </div>
             </div>
           )}
+          {/* ── Botões Pro ──────────────────────────────────────────── */}
+          {allTracks.length > 0 && (
+            <div className="flex items-center gap-1">
+              {/* AcoustID */}
+              <ProGate
+                feature="AcoustID Fingerprinting"
+                description="Identifique automaticamente faixas sem metadados por fingerprint de áudio."
+              >
+                <button
+                  onClick={() => setShowAcoustID(true)}
+                  title="Identificar faixas por fingerprint (Pro)"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
+                  style={{ color: "var(--c-t4)" }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                    <circle cx="5.5" cy="5.5" r="4.5"/>
+                    <path d="M3.5 5.5q1-1.5 2-1.5t2 1.5-2 1.5-2-1.5"/>
+                    <circle cx="5.5" cy="5.5" r="0.8" fill="currentColor" stroke="none"/>
+                  </svg>
+                  ID
+                </button>
+              </ProGate>
+              {/* Filename → Tag */}
+              <ProGate
+                feature="Filename → Tag"
+                description="Extrai metadados do nome do arquivo usando padrões customizáveis."
+              >
+                <button
+                  onClick={() => setShowFilenameTag(true)}
+                  title="Extrair tags do nome do arquivo (Pro)"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors hover:bg-white/[0.04]"
+                  style={{ color: "var(--c-t4)" }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 5.5h7M6 3l2.5 2.5L6 8.5"/>
+                  </svg>
+                  Nome→Tag
+                </button>
+              </ProGate>
+            </div>
+          )}
+
           {allTracks.length > 0 && (() => {
             const hasSelection = selectedIds.size > 0;
             const canExport = hasSelection || !!activePlaylist;
@@ -2459,6 +2510,9 @@ export default function App() {
         </div>
       </div>
 
+      {/* Pro Banner */}
+      <ProBanner />
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden border-b border-white/[0.07]">
         {showSidebar && (
@@ -2684,6 +2738,11 @@ export default function App() {
                 onEnrich={(trackId) => batchEnrich("all", undefined, trackId)}
                 resetColToken={colResetToken}
                 onTrackDragStart={handleTrackDragStart}
+                onExtendedTags={(track) => {
+                  if (isPro()) { useAppStore.setState({ selectedIds: new Set([track.id]) }); setShowExtendedTags(true); }
+                  else setShowExtendedTags(true);
+                }}
+                onAcoustID={() => setShowAcoustID(true)}
               />
             </div>
             {allTracks.length > 0 && (() => {
@@ -2867,6 +2926,20 @@ export default function App() {
         />
       )}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+
+      {/* Modais Pro */}
+      {showFilenameTag && <FilenameTagModal onClose={() => setShowFilenameTag(false)} />}
+      {showExtendedTags && (() => {
+        const sel = useAppStore.getState().selectedIds;
+        const t = useAppStore.getState().tracks.find((t) => sel.has(t.id)) ?? useAppStore.getState().tracks[0];
+        return t ? <ExtendedTagsModal track={t} onClose={() => setShowExtendedTags(false)} /> : null;
+      })()}
+      {showAcoustID && (() => {
+        const { tracks: allT, selectedIds: selIds } = useAppStore.getState();
+        const targets = selIds.size > 0 ? allT.filter((t) => selIds.has(t.id)) : allT.slice(0, 50);
+        return <AcoustIDModal tracks={targets} onClose={() => setShowAcoustID(false)} />;
+      })()}
+
       {showOfflineBanner && <OfflineBanner onClose={() => setShowOfflineBanner(false)} />}
       {enrichResultModal && (
         <EnrichResultModal

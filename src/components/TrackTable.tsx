@@ -416,6 +416,8 @@ export default function TrackTable({
   enrichDoneIds,
   onOpenFolder,
   onEnrich,
+  onExtendedTags,
+  onAcoustID,
   resetColToken,
   onTrackDragStart,
 }: {
@@ -427,6 +429,8 @@ export default function TrackTable({
   enrichDoneIds?: Set<string>;
   onOpenFolder?: () => void;
   onEnrich?: (trackId?: string) => void;
+  onExtendedTags?: (track: Track) => void;
+  onAcoustID?: (tracks: Track[]) => void;
   resetColToken?: number;
   onTrackDragStart?: (trackIds: string[], startX: number, startY: number) => void;
 }) {
@@ -1488,6 +1492,39 @@ export default function TrackTable({
             {selectedIds.size > 1 && selectedIds.has(contextMenu.track.id)
               ? t("table.enrichCount", { count: selectedIds.size })
               : t("table.enrichMeta")}
+          </button>
+        )}
+        {/* Tags Avançadas (Pro) */}
+        {onExtendedTags && (
+          <button
+            className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
+            onClick={() => { const t = contextMenu.track; setContextMenu(null); onExtendedTags(t); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+              <rect x="1" y="1" width="9" height="9" rx="1"/>
+              <line x1="3" y1="4" x2="8" y2="4"/><line x1="3" y1="6" x2="8" y2="6"/><line x1="3" y1="8" x2="5.5" y2="8"/>
+            </svg>
+            Tags avançadas <span className="ml-auto text-[9px] font-bold text-[#D95340] bg-[#D95340]/15 px-1 rounded">PRO</span>
+          </button>
+        )}
+        {/* Identificar por fingerprint (Pro) */}
+        {onAcoustID && (
+          <button
+            className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "#E8E4E1" }}
+            onClick={() => {
+              const sel = contextMenu.track;
+              setContextMenu(null);
+              const targets = selectedIds.size > 1 && selectedIds.has(sel.id)
+                ? (window as unknown as { __twTracks?: typeof tracks }).__twTracks?.filter((t) => selectedIds.has(t.id)) ?? [sel]
+                : [sel];
+              onAcoustID(targets);
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="opacity-60">
+              <circle cx="5.5" cy="5.5" r="4.5"/>
+              <path d="M3.5 5.5q1-1.5 2-1.5t2 1.5-2 1.5-2-1.5"/>
+            </svg>
+            Identificar (AcoustID) <span className="ml-auto text-[9px] font-bold text-[#D95340] bg-[#D95340]/15 px-1 rounded">PRO</span>
           </button>
         )}
         {/* Analisar BPM — apenas para faixas de áudio com duração conhecida */}
