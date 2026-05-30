@@ -3159,14 +3159,49 @@ fn find_rekordbox_db() -> Option<String> {
     candidates.into_iter().find(|p| Path::new(p).exists())
 }
 
-/// Descobre o caminho da pasta _Serato_ na máquina atual.
+/// Descobre TODOS os diretórios _Serato_ na máquina (home + todos os volumes montados).
+fn find_all_serato_dirs() -> Vec<String> {
+    let mut dirs = Vec::new();
+
+    // Locais padrão no home
+    if let Ok(home) = home_dir() {
+        let home = home.to_string_lossy().into_owned();
+        for candidate in &[
+            format!("{}/Music/_Serato_", home),
+            format!("{}/Documents/Serato/_Serato_", home),
+        ] {
+            if Path::new(candidate).exists() {
+                dirs.push(candidate.clone());
+            }
+        }
+    }
+
+    // Todos os volumes montados (macOS: /Volumes/*)
+    if let Ok(entries) = std::fs::read_dir("/Volumes") {
+        for entry in entries.flatten() {
+            let serato = entry.path().join("_Serato_");
+            if serato.exists() {
+                dirs.push(serato.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    // Windows: drives de A a Z
+    #[cfg(target_os = "windows")]
+    for letter in b'A'..=b'Z' {
+        let path = format!("{}:\\_Serato_", letter as char);
+        if Path::new(&path).exists() {
+            dirs.push(path);
+        }
+    }
+
+    dirs.dedup();
+    dirs
+}
+
+/// Descobre o caminho da pasta _Serato_ principal (primeiro encontrado).
 fn find_serato_dir() -> Option<String> {
-    let home = home_dir().ok()?.to_string_lossy().into_owned();
-    let candidates = vec![
-        format!("{}/Music/_Serato_", home),
-        format!("{}/Documents/Serato/_Serato_", home),
-    ];
-    candidates.into_iter().find(|p| Path::new(p).exists())
+    find_all_serato_dirs().into_iter().next()
 }
 
 /// Verifica se um processo de software DJ está em execução.
@@ -3194,9 +3229,12 @@ fn is_process_running(name: &str) -> bool {
 /// Retorna os caminhos dos bancos de dados DJ detectados.
 #[tauri::command]
 fn detect_dj_databases() -> DjDatabasePaths {
+    let serato_dirs = find_all_serato_dirs();
     DjDatabasePaths {
         rekordbox: find_rekordbox_db(),
-        serato: find_serato_dir(),
+        serato: if serato_dirs.is_empty() { None } else {
+            Some(format!("{} local(is) encontrado(s)", serato_dirs.len()))
+        },
         rekordbox_running: is_process_running("rekordbox"),
         serato_running: is_process_running("Serato DJ Pro"),
     }
@@ -3570,41 +3608,52 @@ fn parse_hex_color(hex: &str) -> (u8, u8, u8) {
 
 // ── Serato — leitura de crates (.crate binary format) ─────────────────────
 
-/// Lê todos os crates do Serato como playlists.
+/// Lê todos os crates do Serato de TODOS os drives onde _Serato_ existe.
 #[tauri::command]
 fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
-    let serato_dir = find_serato_dir().ok_or("Pasta _Serato_ não encontrada")?;
-    let subcrates_dir = format!("{}/Subcrates", serato_dir);
-
-    if !Path::new(&subcrates_dir).exists() {
-        return Ok(vec![]);
+    let serato_dirs = find_all_serato_dirs();
+    if serato_dirs.is_empty() {
+        return Err("Pasta _Serato_ não encontrada em nenhum drive".into());
     }
 
-    let mut crates = Vec::new();
+    let mut crates: Vec<SeratoCrate> = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
 
-    for entry in WalkDir::new(&subcrates_dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
-        if !entry.file_type().is_file() { continue; }
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("crate") { continue; }
+    for serato_dir in &serato_dirs {
+        let subcrates_dir = format!("{}/Subcrates", serato_dir);
+        if !Path::new(&subcrates_dir).exists() { continue; }
 
-        let name = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Unnamed")
-            .to_string();
+        for entry in WalkDir::new(&subcrates_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+            if !entry.file_type().is_file() { continue; }
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("crate") { continue; }
 
-        let data = match std::fs::read(path) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
+            // Nome do crate: substituir %% por / para refletir hierarquia Serato
+            let raw_name = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unnamed");
+            let name = raw_name.replace("%%", " / ");
 
-        let track_paths = parse_serato_crate_file(&data);
-        crates.push(SeratoCrate {
-            name,
-            path: path.to_string_lossy().into_owned(),
-            track_paths,
-        });
+            // Não duplicar crates com mesmo nome de drives diferentes
+            if seen_names.contains(&name) { continue; }
+            seen_names.insert(name.clone());
+
+            let data = match std::fs::read(path) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+            let track_paths = parse_serato_crate_file(&data);
+            crates.push(SeratoCrate {
+                name,
+                path: path.to_string_lossy().into_owned(),
+                track_paths,
+            });
+        }
     }
 
+    // Ordenar por nome
+    crates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(crates)
 }
 
