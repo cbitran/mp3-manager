@@ -194,7 +194,6 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
   }, []);
 
   const clearFolderTracks = (path: string) => {
-    // Cancela qualquer scan/análise em curso (independente de qual pasta)
     invoke("cancel_current_scan").catch(() => {});
     onFolderClear?.();
     if (path === lastFolder) {
@@ -204,6 +203,18 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
       clearSelection();
       setLastFolder(null);
     }
+  };
+
+  // Limpa tabela de faixas completamente (sem apagar do HD)
+  const clearAllTracks = () => {
+    invoke("cancel_current_scan").catch(() => {});
+    onFolderClear?.();
+    setScanning(false);
+    setTracks([]);
+    setPlayerTrack(null);
+    clearSelection();
+    setLastFolder(null);
+    setActivePlaylistId(null);
   };
 
   const isFavorite = (path: string) => favoriteFolders.includes(path);
@@ -274,16 +285,27 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
         playlists
           .filter((p) => p.trackPaths.length > 0 && p.trackPaths.every((tp) => tp.startsWith(path)))
           .forEach((p) => deletePlaylist(p.id));
-        clearFolderTracks(path);
         removeRecentFolder(path);
         if (isFavorite(path)) toggleFavorite(path);
       });
+      // Se alguma das bibliotecas removidas era a ativa, limpa a tabela
+      if (selLibs.has(lastFolder ?? "")) clearAllTracks();
+      else selLibs.forEach((path) => clearFolderTracks(path));
       setSelLibs(new Set());
     } else if (sidebarTab === "favorites") {
-      selFavs.forEach((path) => toggleFavorite(path));
+      const hadActiveFolder = selFavs.has(lastFolder ?? "");
+      selFavs.forEach((path) => {
+        playlists
+          .filter((p) => p.trackPaths.length > 0 && p.trackPaths.every((tp) => tp.startsWith(path)))
+          .forEach((p) => deletePlaylist(p.id));
+        toggleFavorite(path);
+      });
+      if (hadActiveFolder) clearAllTracks();
       setSelFavs(new Set());
     } else if (sidebarTab === "playlists") {
+      const activeWasDeleted = selPls.has(activePlaylistId ?? "");
       selPls.forEach((id) => deletePlaylist(id));
+      if (activeWasDeleted) clearAllTracks();
       setSelPls(new Set());
     }
   };
@@ -1349,7 +1371,9 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
                 <button
                   className="px-4 py-1.5 text-[12px] font-medium bg-[#D95340] hover:bg-[#E07364] text-white rounded-lg transition-colors"
                   onClick={() => {
+                    const wasActive = activePlaylistId === confirmDeletePlaylist.id;
                     deletePlaylist(confirmDeletePlaylist.id);
+                    if (wasActive) clearAllTracks();
                     toast(`Playlist "${confirmDeletePlaylist.name}" excluída`, "info");
                     setConfirmDeletePlaylist(null);
                   }}
