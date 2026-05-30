@@ -3643,7 +3643,29 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
                 Err(_) => continue,
             };
 
-            let track_paths = parse_serato_crate_file(&data);
+            // O Serato armazena paths RELATIVOS à raiz do drive onde o _Serato_ está.
+            // Exemplo: crate em /Volumes/Musicas/_Serato_/Subcrates/
+            //   → raiz do drive = /Volumes/Musicas
+            //   → path relativo "Bon jovi/track.mp3"
+            //   → path absoluto = /Volumes/Musicas/Bon jovi/track.mp3
+            let drive_root = Path::new(serato_dir)
+                .parent() // sobe de _Serato_ para raiz do drive
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+
+            let relative_paths = parse_serato_crate_file(&data);
+            let track_paths: Vec<String> = relative_paths.into_iter()
+                .map(|rel| {
+                    if rel.starts_with('/') || (rel.len() > 2 && &rel[1..3] == ":\\") {
+                        rel // já é absoluto (macOS ou Windows)
+                    } else if drive_root.is_empty() {
+                        rel
+                    } else {
+                        format!("{}/{}", drive_root, rel)
+                    }
+                })
+                .collect();
+
             crates.push(SeratoCrate {
                 name,
                 path: path.to_string_lossy().into_owned(),
