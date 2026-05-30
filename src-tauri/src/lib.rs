@@ -3666,6 +3666,16 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
             };
 
             // Paths relativos → absolutos usando raiz do drive correto
+            // Serato macOS usa os seguintes formatos no .crate:
+            //   "Macintosh HD/Users/..." → /Users/...
+            //   "Macintosh HD/Volumes/X/..." → /Volumes/X/...
+            //   "Users/..." → /Users/... (crate no disco interno, arquivo no mesmo)
+            //   "X/..." → /Volumes/X/... (crate no disco interno, arquivo em volume externo X)
+            //   (crate em /Volumes/X) "rel/path" → /Volumes/X/rel/path
+            const BOOT_ROOTS: &[&str] = &[
+                "Users", "Library", "Applications", "System",
+                "private", "opt", "usr", "var", "tmp", "home",
+            ];
             let relative_paths = parse_serato_crate_file(&data);
             let new_paths: Vec<String> = relative_paths.into_iter()
                 .map(|rel| {
@@ -3673,14 +3683,22 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
                         // Já absoluto
                         rel
                     } else if let Some(without_machd) = rel.strip_prefix("Macintosh HD/") {
-                        // Serato às vezes escreve "Macintosh HD/Users/..." ou "Macintosh HD/Volumes/..."
+                        // "Macintosh HD/Users/..." → "/Users/..."
+                        // "Macintosh HD/Volumes/X/..." → "/Volumes/X/..."
                         format!("/{}", without_machd)
                     } else if !drive_root.is_empty() {
-                        // Drive externo: prepend /Volumes/DriveName
+                        // Crate em drive externo: prefixar com /Volumes/DriveName
                         format!("{}/{}", drive_root, rel)
                     } else {
-                        // Drive interno: path relativo à raiz do sistema → /Users/...
-                        format!("/{}", rel)
+                        // Crate no disco interno (~/Music/_Serato_)
+                        let first = rel.split('/').next().unwrap_or("");
+                        if BOOT_ROOTS.contains(&first) {
+                            // Arquivo no disco interno: "Users/..." → "/Users/..."
+                            format!("/{}", rel)
+                        } else {
+                            // Arquivo em volume externo: "DriveName/..." → "/Volumes/DriveName/..."
+                            format!("/Volumes/{}", rel)
+                        }
                     }
                 })
                 .collect();

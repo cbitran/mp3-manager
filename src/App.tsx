@@ -652,9 +652,44 @@ export default function App() {
   // Verifica arquivos faltando — ao abrir playlist ou ao app receber foco
   function checkPlaylistMissingFiles(playlistId: string | null) {
     if (!playlistId) return;
-    const playlist = useAppStore.getState().playlists.find((p) => p.id === playlistId);
+    const { playlists, tracks, updatePlaylist } = useAppStore.getState();
+    const playlist = playlists.find((p) => p.id === playlistId);
     if (!playlist || playlist.trackPaths.length === 0) return;
-    invoke<string[]>("check_paths_exist", { paths: playlist.trackPaths }).then((missing) => {
+
+    // Índice: sufixo do path (sem prefixo de volume) → path real no disco
+    // Permite auto-corrigir paths importados do Serato com formato antigo
+    const loadedByPath = new Set(tracks.map((t) => t.path));
+    const loadedBySuffix = new Map<string, string>();
+    for (const t of tracks) {
+      // Remove prefixos variáveis: "/Volumes/X/", "/Users/", etc.
+      const parts = t.path.split("/").filter(Boolean);
+      for (let i = 1; i < parts.length; i++) {
+        const suffix = parts.slice(i).join("/");
+        if (!loadedBySuffix.has(suffix)) loadedBySuffix.set(suffix, t.path);
+      }
+    }
+
+    let remapped = false;
+    const fixedPaths = playlist.trackPaths.map((p) => {
+      if (loadedByPath.has(p)) return p; // Correto
+      // Tenta corrigir via sufixo (ex: "Musicas/file.mp3" → "/Volumes/Musicas/file.mp3")
+      const suffix = p.replace(/^\/+/, "").split("/").filter(Boolean).slice(1).join("/");
+      const match = suffix ? loadedBySuffix.get(suffix) : undefined;
+      if (match) { remapped = true; return match; }
+      return p;
+    });
+
+    if (remapped) {
+      // Atualiza paths da playlist silenciosamente — nenhum modal necessário
+      updatePlaylist(playlistId, { trackPaths: fixedPaths });
+      return;
+    }
+
+    // Ignora paths que já estão carregados na biblioteca (evita falsos positivos)
+    const pathsToCheck = playlist.trackPaths.filter((p) => !loadedByPath.has(p));
+    if (pathsToCheck.length === 0) return;
+
+    invoke<string[]>("check_paths_exist", { paths: pathsToCheck }).then((missing) => {
       if (missing.length > 0) setMissingPlaylistPaths({ playlistId, paths: missing });
     }).catch(() => {});
   }

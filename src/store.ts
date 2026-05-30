@@ -192,6 +192,8 @@ interface AppState {
   setTextContrastBoost: (v: number) => void;
   globalLoading: string | null;
   setGlobalLoading: (msg: string | null) => void;
+  djExportOverlay: { softwareId: string; softwareName: string; detail?: string } | null;
+  setDjExportOverlay: (v: { softwareId: string; softwareName: string; detail?: string } | null) => void;
   fileSessionName: string | null;
   setFileSessionName: (name: string | null) => void;
   djPrimary: string;
@@ -561,6 +563,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   globalLoading: null,
   setGlobalLoading: (msg) => set({ globalLoading: msg }),
+  djExportOverlay: null,
+  setDjExportOverlay: (v) => set({ djExportOverlay: v }),
   fileSessionName: null,
   setFileSessionName: (name) => set({ fileSessionName: name }),
   djPrimary: localStorage.getItem("tagwave_dj_primary") ?? "none",
