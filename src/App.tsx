@@ -34,6 +34,7 @@ import OfflineBanner, { useIsOnline } from "./components/OfflineBanner";
 import VideoPlayerModal from "./components/VideoPlayerModal";
 import EnrichResultModal from "./components/EnrichResultModal";
 import AIAssistant from "./components/AIAssistant";
+import DjSyncModal from "./components/DjSyncModal";
 import HelpMarkers from "./components/HelpMarkers";
 import FolderBrowser from "./components/FolderBrowser";
 import NewTracksModal from "./components/NewTracksModal";
@@ -458,6 +459,7 @@ export default function App() {
   const [deleteTargets, setDeleteTargets]   = useState<Track[]>([]);
   const [missingPlaylistPaths, setMissingPlaylistPaths] = useState<{ playlistId: string; paths: string[] } | null>(null);
   const [showSettings, setShowSettings]     = useState(false);
+  const [showDjSync, setShowDjSync]         = useState(false);
   const isPro = useAppStore((s) => s.isPro);
   const [showFilenameTag, setShowFilenameTag]   = useState(false);
   const [showExtendedTags, setShowExtendedTags] = useState(false);
@@ -2505,6 +2507,17 @@ export default function App() {
               )}
             </button>
 
+            {/* DJ Sync */}
+            <button
+              onClick={() => setShowDjSync(true)}
+              title="DJ Sync — Rekordbox & Serato"
+              className="flex items-center justify-center w-5 h-5 rounded text-[#605A55] hover:text-[#D95340] hover:bg-white/[0.06] transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+              </svg>
+            </button>
+
             {/* Settings — engrenagem com dentes */}
             <button
               data-help="settings-btn"
@@ -2520,6 +2533,8 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {showDjSync && <DjSyncModal onClose={() => setShowDjSync(false)} />}
 
       {/* Pro Banner */}
       <ProBanner />

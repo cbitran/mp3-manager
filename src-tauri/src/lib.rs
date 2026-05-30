@@ -3050,6 +3050,614 @@ fn open_dj_app(software_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DJ SYNC — Rekordbox (SQLCipher) + Serato (.crate binary)
+// Mesma abordagem do Lexicon DJ: acesso direto aos bancos, sem XML intermediário.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Chave SQLCipher hardcoded do Rekordbox 6/7.
+/// Idêntica em todas as instalações, sem dependência de máquina ou licença.
+/// Fonte: https://github.com/liamcottle/pioneer-rekordbox-database-encryption
+const RB_CIPHER_KEY: &str = "402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497";
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RbCue {
+    pub position_ms: i64,
+    pub kind: i64,        // 0=memory cue, 1=hot cue, 4=loop
+    pub hot_cue_number: i64, // 0-7 para hot cues; -1 para memory cues
+    pub color_r: u8,
+    pub color_g: u8,
+    pub color_b: u8,
+    pub comment: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RbTrack {
+    pub id: i64,
+    pub path: String,
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub bpm: Option<f64>,       // BPM real (dividido por 100 internamente)
+    pub key: Option<i64>,       // Código de tom do Rekordbox (0-23)
+    pub rating: Option<u8>,     // 0-5 estrelas
+    pub cues: Vec<RbCue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RbPlaylist {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    pub is_folder: bool,
+    pub track_ids: Vec<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RbLibrary {
+    pub db_path: String,
+    pub tracks: Vec<RbTrack>,
+    pub playlists: Vec<RbPlaylist>,
+    pub total_tracks: usize,
+    pub total_cues: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SeratoCrate {
+    pub name: String,
+    pub path: String,
+    pub track_paths: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DjSyncStats {
+    pub tracks_read: usize,
+    pub tracks_matched: usize,
+    pub cues_imported: usize,
+    pub cues_exported: usize,
+    pub playlists_synced: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DjDatabasePaths {
+    pub rekordbox: Option<String>,
+    pub serato: Option<String>,
+    pub rekordbox_running: bool,
+    pub serato_running: bool,
+}
+
+/// Abre o master.db do Rekordbox com a chave SQLCipher correta.
+fn rb_open(db_path: &str) -> Result<rusqlite::Connection, String> {
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| format!("Não foi possível abrir master.db: {}", e))?;
+    // SQLCipher 4 — parâmetros padrão do Rekordbox 6/7
+    conn.execute_batch(&format!(
+        "PRAGMA key = \"x'{}'\";\
+         PRAGMA cipher_page_size = 4096;\
+         PRAGMA kdf_iter = 256000;\
+         PRAGMA cipher_hmac_algorithm = HMAC_SHA512;\
+         PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;",
+        RB_CIPHER_KEY
+    )).map_err(|e| format!("Falha na descriptografia do Rekordbox: {}", e))?;
+    // Verifica se realmente conseguiu ler (chave errada → erro aqui)
+    conn.execute_batch("SELECT count(*) FROM sqlite_master;")
+        .map_err(|e| format!("master.db inacessível (chave inválida?): {}", e))?;
+    Ok(conn)
+}
+
+/// Converte rating interno do Rekordbox (0,51,102,153,204,255) para 0-5 estrelas.
+fn rb_rating_to_stars(v: i64) -> u8 {
+    match v { 51 => 1, 102 => 2, 153 => 3, 204 => 4, 255 => 5, _ => 0 }
+}
+
+/// Converte BPM interno do Rekordbox (armazenado × 100) para float.
+fn rb_bpm(v: i64) -> f64 { v as f64 / 100.0 }
+
+/// Descobre o caminho do master.db do Rekordbox na máquina atual.
+fn find_rekordbox_db() -> Option<String> {
+    let home = home_dir().ok()?.to_string_lossy().into_owned();
+    let candidates = vec![
+        format!("{}/Library/Pioneer/rekordbox/master.db", home),
+        format!("{}/Documents/Pioneer/rekordbox/master.db", home),
+        format!("{}/AppData/Roaming/Pioneer/rekordbox/master.db", home),
+    ];
+    candidates.into_iter().find(|p| Path::new(p).exists())
+}
+
+/// Descobre o caminho da pasta _Serato_ na máquina atual.
+fn find_serato_dir() -> Option<String> {
+    let home = home_dir().ok()?.to_string_lossy().into_owned();
+    let candidates = vec![
+        format!("{}/Music/_Serato_", home),
+        format!("{}/Documents/Serato/_Serato_", home),
+    ];
+    candidates.into_iter().find(|p| Path::new(p).exists())
+}
+
+/// Verifica se um processo de software DJ está em execução.
+fn is_process_running(name: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("pgrep")
+            .arg("-x").arg(name)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("tasklist")
+            .args(["/FI", &format!("IMAGENAME eq {}", name), "/NH"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains(name))
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    { false }
+}
+
+/// Retorna os caminhos dos bancos de dados DJ detectados.
+#[tauri::command]
+fn detect_dj_databases() -> DjDatabasePaths {
+    DjDatabasePaths {
+        rekordbox: find_rekordbox_db(),
+        serato: find_serato_dir(),
+        rekordbox_running: is_process_running("rekordbox"),
+        serato_running: is_process_running("Serato DJ Pro"),
+    }
+}
+
+/// Lê a biblioteca completa do Rekordbox: faixas + hot cues + playlists.
+#[tauri::command]
+fn read_rekordbox_library(db_path: Option<String>) -> Result<RbLibrary, String> {
+    let path = db_path
+        .or_else(find_rekordbox_db)
+        .ok_or("master.db do Rekordbox não encontrado")?;
+
+    let conn = rb_open(&path)?;
+
+    // ── Faixas ──────────────────────────────────────────────────────────
+    let mut stmt = conn.prepare(
+        "SELECT c.ID, c.FolderPath, c.Title,
+                a.Name AS ArtistName,
+                c.BPM, c.Key, c.ColorID, c.Rating
+         FROM djmdContent c
+         LEFT JOIN djmdArtist a ON c.ArtistID = a.ID
+         WHERE c.FolderPath IS NOT NULL AND c.FolderPath != ''
+         ORDER BY c.ID"
+    ).map_err(|e| format!("Erro na query de faixas: {}", e))?;
+
+    let mut tracks: Vec<RbTrack> = stmt.query_map([], |row| {
+        let id: i64 = row.get(0)?;
+        let path: String = row.get(1)?;
+        let title: Option<String> = row.get(2)?;
+        let artist: Option<String> = row.get(3)?;
+        let bpm_raw: Option<i64> = row.get(4)?;
+        let key: Option<i64> = row.get(5)?;
+        let rating_raw: Option<i64> = row.get(7)?;
+        Ok(RbTrack {
+            id,
+            path,
+            title,
+            artist,
+            bpm: bpm_raw.map(rb_bpm),
+            key,
+            rating: rating_raw.map(|r| rb_rating_to_stars(r)),
+            cues: vec![],
+        })
+    }).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
+
+    // ── Hot cues + memory cues ───────────────────────────────────────────
+    let mut cue_stmt = conn.prepare(
+        "SELECT ContentID, InMsec, Kind, Number,
+                ColorRed, ColorGreen, ColorBlue, Comment
+         FROM djmdCue
+         ORDER BY ContentID, InMsec"
+    ).map_err(|e| format!("Erro na query de cues: {}", e))?;
+
+    // Mapeia ContentID → Vec<RbCue>
+    let mut cue_map: std::collections::HashMap<i64, Vec<RbCue>> = std::collections::HashMap::new();
+    let _ = cue_stmt.query_map([], |row| {
+        let content_id: i64 = row.get(0)?;
+        let pos_ms: i64 = row.get(1)?;
+        let kind: i64 = row.get(2)?;
+        let number: Option<i64> = row.get(3)?;
+        let r: Option<u8> = row.get::<_, Option<i64>>(4)?.map(|v| v as u8);
+        let g: Option<u8> = row.get::<_, Option<i64>>(5)?.map(|v| v as u8);
+        let b: Option<u8> = row.get::<_, Option<i64>>(6)?.map(|v| v as u8);
+        let comment: Option<String> = row.get(7)?;
+        Ok((content_id, RbCue {
+            position_ms: pos_ms,
+            kind,
+            hot_cue_number: number.unwrap_or(-1),
+            color_r: r.unwrap_or(204),
+            color_g: g.unwrap_or(83),
+            color_b: b.unwrap_or(64),
+            comment: comment.unwrap_or_default(),
+        }))
+    }).map(|rows| {
+        for row in rows.flatten() {
+            cue_map.entry(row.0).or_default().push(row.1);
+        }
+    });
+
+    let total_cues: usize = cue_map.values().map(|v| v.len()).sum();
+    for track in &mut tracks {
+        if let Some(cues) = cue_map.remove(&track.id) {
+            track.cues = cues;
+        }
+    }
+
+    // ── Playlists ────────────────────────────────────────────────────────
+    let mut pl_stmt = conn.prepare(
+        "SELECT ID, Name, ParentID, IsFolder FROM djmdPlaylist ORDER BY Seq"
+    ).map_err(|e| format!("Erro na query de playlists: {}", e))?;
+
+    let mut playlists: Vec<RbPlaylist> = pl_stmt.query_map([], |row| {
+        let id: i64 = row.get(0)?;
+        let name: String = row.get(1)?;
+        let parent_id: Option<i64> = row.get(2)?;
+        let is_folder: bool = row.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0;
+        Ok(RbPlaylist { id, name, parent_id, is_folder, track_ids: vec![] })
+    }).map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .collect();
+
+    // Faixas por playlist
+    let mut ps_stmt = conn.prepare(
+        "SELECT PlaylistID, ContentID FROM djmdPlaylistSong ORDER BY TrackNo"
+    ).map_err(|e| format!("Erro na query de playlist songs: {}", e))?;
+
+    let mut pl_tracks: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
+    let _ = ps_stmt.query_map([], |row| {
+        let pl_id: i64 = row.get(0)?;
+        let content_id: i64 = row.get(1)?;
+        Ok((pl_id, content_id))
+    }).map(|rows| {
+        for row in rows.flatten() {
+            pl_tracks.entry(row.0).or_default().push(row.1);
+        }
+    });
+
+    for pl in &mut playlists {
+        if let Some(ids) = pl_tracks.remove(&pl.id) {
+            pl.track_ids = ids;
+        }
+    }
+
+    let total = tracks.len();
+    Ok(RbLibrary { db_path: path, tracks, playlists, total_tracks: total, total_cues })
+}
+
+/// Importa hot cues do Rekordbox para as faixas do TagWave (match por caminho do arquivo).
+/// Salva os cues diretamente no arquivo de áudio (Serato Markers2 — ambos softwares leem).
+#[tauri::command]
+fn import_cues_from_rekordbox(
+    db_path: Option<String>,
+    tagwave_track_paths: Vec<String>,
+) -> Result<DjSyncStats, String> {
+    let path = db_path.or_else(find_rekordbox_db)
+        .ok_or("master.db não encontrado")?;
+    let lib = read_rekordbox_library(Some(path))?;
+
+    // Índice por caminho normalizado
+    let tw_set: std::collections::HashSet<String> = tagwave_track_paths
+        .iter().map(|p| p.to_lowercase()).collect();
+
+    let mut matched = 0usize;
+    let mut cues_imported = 0usize;
+
+    for rb_track in &lib.tracks {
+        if rb_track.cues.is_empty() { continue; }
+        if !tw_set.contains(&rb_track.path.to_lowercase()) { continue; }
+        matched += 1;
+
+        // Converte RbCue → CuePoint do TagWave e salva no arquivo
+        let cues: Vec<CuePoint> = rb_track.cues.iter().enumerate().map(|(i, c)| {
+            let color = format!("#{:02X}{:02X}{:02X}", c.color_r, c.color_g, c.color_b);
+            CuePoint {
+                index: if c.hot_cue_number >= 0 { c.hot_cue_number as u8 } else { (i % 8) as u8 },
+                position_ms: c.position_ms as u32,
+                label: c.comment.clone(),
+                color,
+            }
+        }).collect();
+
+        // Reutiliza o comando save_cue_points existente
+        if let Err(e) = save_cue_points(rb_track.path.clone(), cues.clone()) {
+            dlog!("[DJ Sync] save_cue_points failed for {}: {}", rb_track.path, e);
+        } else {
+            cues_imported += cues.len();
+        }
+    }
+
+    Ok(DjSyncStats {
+        tracks_read: lib.total_tracks,
+        tracks_matched: matched,
+        cues_imported,
+        cues_exported: 0,
+        playlists_synced: 0,
+    })
+}
+
+/// Exporta hot cues do TagWave para o master.db do Rekordbox.
+/// ⚠️  Rekordbox DEVE estar fechado — escrita com RB aberto corrompe o banco.
+#[tauri::command]
+fn export_cues_to_rekordbox(
+    db_path: Option<String>,
+    tracks_with_cues: Vec<TrackCueExport>,
+) -> Result<DjSyncStats, String> {
+    let path = db_path.or_else(find_rekordbox_db)
+        .ok_or("master.db não encontrado")?;
+
+    if is_process_running("rekordbox") {
+        return Err("Feche o Rekordbox antes de sincronizar. Escrita com o app aberto pode corromper o banco.".into());
+    }
+
+    // Backup antes de qualquer escrita
+    let backup = format!("{}.tagwave_backup", path);
+    if !Path::new(&backup).exists() {
+        std::fs::copy(&path, &backup).map_err(|e| format!("Backup falhou: {}", e))?;
+    }
+
+    let conn = rb_open(&path)?;
+
+    // Mapeia FolderPath → ContentID
+    let mut path_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT ID, FolderPath FROM djmdContent WHERE FolderPath IS NOT NULL")
+            .map_err(|e| e.to_string())?;
+        let _ = stmt.query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let p: String = row.get(1)?;
+            Ok((p, id))
+        }).map(|rows| {
+            for row in rows.flatten() { path_map.insert(row.0.to_lowercase(), row.1); }
+        });
+    }
+
+    let mut matched = 0usize;
+    let mut exported = 0usize;
+
+    for entry in &tracks_with_cues {
+        let content_id = match path_map.get(&entry.path.to_lowercase()) {
+            Some(id) => *id,
+            None => continue,
+        };
+        matched += 1;
+
+        // Remove cues antigas desta faixa e insere as novas
+        conn.execute("DELETE FROM djmdCue WHERE ContentID = ?", [content_id])
+            .map_err(|e| format!("DELETE cues: {}", e))?;
+
+        for cue in &entry.cues {
+            let kind: i64 = if cue.index < 8 { 1 } else { 0 }; // hot cue ou memory
+            let number: i64 = if kind == 1 { cue.index as i64 } else { -1 };
+            // Converte cor hex → RGB
+            let (r, g, b) = parse_hex_color(&cue.color);
+            conn.execute(
+                "INSERT INTO djmdCue (ContentID, InMsec, Kind, Number, ColorRed, ColorGreen, ColorBlue, Comment, UUID)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, lower(hex(randomblob(16))))",
+                rusqlite::params![content_id, cue.position_ms as i64, kind, number,
+                    r as i64, g as i64, b as i64, cue.label]
+            ).map_err(|e| format!("INSERT cue: {}", e))?;
+            exported += 1;
+        }
+    }
+
+    Ok(DjSyncStats {
+        tracks_read: tracks_with_cues.len(),
+        tracks_matched: matched,
+        cues_imported: 0,
+        cues_exported: exported,
+        playlists_synced: 0,
+    })
+}
+
+/// Exporta playlists do TagWave para o Rekordbox (cria/atualiza no master.db).
+#[tauri::command]
+fn export_playlists_to_rekordbox(
+    db_path: Option<String>,
+    playlists: Vec<PlaylistExport>,
+) -> Result<DjSyncStats, String> {
+    let path = db_path.or_else(find_rekordbox_db)
+        .ok_or("master.db não encontrado")?;
+
+    if is_process_running("rekordbox") {
+        return Err("Feche o Rekordbox antes de sincronizar.".into());
+    }
+
+    let backup = format!("{}.tagwave_backup", path);
+    if !Path::new(&backup).exists() {
+        std::fs::copy(&path, &backup).map_err(|e| format!("Backup: {}", e))?;
+    }
+
+    let conn = rb_open(&path)?;
+
+    // Mapeia FolderPath → ContentID
+    let mut path_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT ID, FolderPath FROM djmdContent WHERE FolderPath IS NOT NULL")
+            .map_err(|e| e.to_string())?;
+        let _ = stmt.query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let p: String = row.get(1)?;
+            Ok((p, id))
+        }).map(|rows| { for row in rows.flatten() { path_map.insert(row.0.to_lowercase(), row.1); } });
+    }
+
+    let mut synced = 0usize;
+
+    for pl in &playlists {
+        // Upsert playlist
+        conn.execute(
+            "INSERT OR IGNORE INTO djmdPlaylist (Name, IsFolder, ParentID, Seq, UUID)
+             VALUES (?1, 0, NULL, 0, lower(hex(randomblob(16))))",
+            rusqlite::params![pl.name]
+        ).map_err(|e| format!("INSERT playlist: {}", e))?;
+
+        let pl_id: i64 = conn.query_row(
+            "SELECT ID FROM djmdPlaylist WHERE Name = ?1 AND IsFolder = 0 LIMIT 1",
+            rusqlite::params![pl.name],
+            |row| row.get(0)
+        ).map_err(|e| format!("SELECT playlist ID: {}", e))?;
+
+        // Remove faixas antigas e reinsere
+        conn.execute("DELETE FROM djmdPlaylistSong WHERE PlaylistID = ?", [pl_id])
+            .map_err(|e| format!("DELETE playlist songs: {}", e))?;
+
+        for (i, track_path) in pl.track_paths.iter().enumerate() {
+            if let Some(&content_id) = path_map.get(&track_path.to_lowercase()) {
+                conn.execute(
+                    "INSERT INTO djmdPlaylistSong (PlaylistID, ContentID, TrackNo, UUID)
+                     VALUES (?1, ?2, ?3, lower(hex(randomblob(16))))",
+                    rusqlite::params![pl_id, content_id, i as i64 + 1]
+                ).map_err(|e| format!("INSERT song: {}", e))?;
+            }
+        }
+        synced += 1;
+    }
+
+    Ok(DjSyncStats {
+        tracks_read: playlists.len(),
+        tracks_matched: synced,
+        cues_imported: 0,
+        cues_exported: 0,
+        playlists_synced: synced,
+    })
+}
+
+/// Estrutura para exportar faixas com cues para o Rekordbox.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TrackCueExport {
+    pub path: String,
+    pub cues: Vec<CuePoint>,
+}
+
+/// Estrutura para exportar playlists para o Rekordbox.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaylistExport {
+    pub name: String,
+    pub track_paths: Vec<String>,
+}
+
+fn parse_hex_color(hex: &str) -> (u8, u8, u8) {
+    let h = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&h.get(0..2).unwrap_or("D9"), 16).unwrap_or(217);
+    let g = u8::from_str_radix(&h.get(2..4).unwrap_or("53"), 16).unwrap_or(83);
+    let b = u8::from_str_radix(&h.get(4..6).unwrap_or("40"), 16).unwrap_or(64);
+    (r, g, b)
+}
+
+// ── Serato — leitura de crates (.crate binary format) ─────────────────────
+
+/// Lê todos os crates do Serato como playlists.
+#[tauri::command]
+fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
+    let serato_dir = find_serato_dir().ok_or("Pasta _Serato_ não encontrada")?;
+    let subcrates_dir = format!("{}/Subcrates", serato_dir);
+
+    if !Path::new(&subcrates_dir).exists() {
+        return Ok(vec![]);
+    }
+
+    let mut crates = Vec::new();
+
+    for entry in WalkDir::new(&subcrates_dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() { continue; }
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("crate") { continue; }
+
+        let name = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Unnamed")
+            .to_string();
+
+        let data = match std::fs::read(path) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let track_paths = parse_serato_crate_file(&data);
+        crates.push(SeratoCrate {
+            name,
+            path: path.to_string_lossy().into_owned(),
+            track_paths,
+        });
+    }
+
+    Ok(crates)
+}
+
+/// Parser do formato binário .crate do Serato.
+/// Formato: sequência de tags TLV (4 bytes tipo + 4 bytes big-endian len + N bytes data).
+fn parse_serato_crate_file(data: &[u8]) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut pos = 0usize;
+
+    while pos + 8 <= data.len() {
+        let tag = &data[pos..pos + 4];
+        let len = u32::from_be_bytes([data[pos+4], data[pos+5], data[pos+6], data[pos+7]]) as usize;
+        pos += 8;
+        if pos + len > data.len() { break; }
+        let content = &data[pos..pos + len];
+
+        if tag == b"otrk" {
+            if let Some(p) = parse_ptrk(content) {
+                paths.push(p);
+            }
+        }
+        pos += len;
+    }
+    paths
+}
+
+fn parse_ptrk(data: &[u8]) -> Option<String> {
+    let mut pos = 0usize;
+    while pos + 8 <= data.len() {
+        let tag = &data[pos..pos + 4];
+        let len = u32::from_be_bytes([data[pos+4], data[pos+5], data[pos+6], data[pos+7]]) as usize;
+        pos += 8;
+        if pos + len > data.len() { break; }
+        if tag == b"ptrk" {
+            let path_bytes = &data[pos..pos + len];
+            let shorts: Vec<u16> = path_bytes.chunks(2)
+                .filter_map(|c| if c.len() == 2 { Some(u16::from_be_bytes([c[0], c[1]])) } else { None })
+                .collect();
+            return Some(String::from_utf16_lossy(&shorts));
+        }
+        pos += len;
+    }
+    None
+}
+
+/// Importa crates do Serato como playlists do TagWave.
+/// Retorna lista de playlists para criar no frontend.
+#[tauri::command]
+fn import_serato_crates_as_playlists() -> Result<Vec<SeratoCrate>, String> {
+    read_serato_crates()
+}
+
+// ── Restaurar backup do Rekordbox ─────────────────────────────────────────
+
+/// Restaura o backup do master.db criado antes da última sincronização.
+#[tauri::command]
+fn restore_rekordbox_backup(db_path: Option<String>) -> Result<(), String> {
+    let path = db_path.or_else(find_rekordbox_db)
+        .ok_or("master.db não encontrado")?;
+    let backup = format!("{}.tagwave_backup", path);
+
+    if !Path::new(&backup).exists() {
+        return Err("Nenhum backup disponível".into());
+    }
+    if is_process_running("rekordbox") {
+        return Err("Feche o Rekordbox antes de restaurar o backup.".into());
+    }
+    std::fs::copy(&backup, &path).map_err(|e| format!("Restauração falhou: {}", e))?;
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct RenameResult {
     pub old_path: String,
@@ -3538,6 +4146,14 @@ pub fn run() {
             save_raw_tag,
             delete_raw_tag,
             get_acoustid_fingerprint,
+            detect_dj_databases,
+            read_rekordbox_library,
+            import_cues_from_rekordbox,
+            export_cues_to_rekordbox,
+            export_playlists_to_rekordbox,
+            read_serato_crates,
+            import_serato_crates_as_playlists,
+            restore_rekordbox_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
