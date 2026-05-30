@@ -268,26 +268,11 @@ export default function DjSyncModal({ onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
 
-          {/* Status da base de dados */}
-          {paths && (
-            <div className="flex flex-col gap-1.5">
-              {tab === "rekordbox" && (
-                <StatusRow
-                  label="master.db"
-                  value={paths.rekordbox ? "Encontrado" : "Não encontrado"}
-                  detail={paths.rekordbox ?? undefined}
-                  ok={!!paths.rekordbox}
-                  warn={paths.rekordbox_running ? "Rekordbox está aberto — feche antes de exportar" : undefined}
-                />
-              )}
-              {tab === "serato" && (
-                <StatusRow
-                  label="_Serato_"
-                  value={paths.serato ? "Encontrado" : "Não encontrado"}
-                  detail={paths.serato ?? undefined}
-                  ok={!!paths.serato}
-                />
-              )}
+          {/* Aviso Rekordbox aberto (único status necessário) */}
+          {paths?.rekordbox_running && tab === "rekordbox" && (
+            <div className="px-3 py-2 rounded-lg text-[11px] flex items-center gap-1.5" style={{ background: "rgba(217,83,64,0.10)", border: "1px solid rgba(217,83,64,0.25)", color: "#E07364" }}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="#D95340"><path d="M5 1L9 9H1L5 1Z"/></svg>
+              Rekordbox está aberto — feche antes de exportar
             </div>
           )}
 
@@ -484,24 +469,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743] mb-2">{children}</p>;
 }
 
-function StatusRow({ label, value, detail, ok, warn }: { label: string; value: string; detail?: string; ok: boolean; warn?: string }) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-[#5BA055]" : "bg-[#D95340]"}`}/>
-        <span className="text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>{label}</span>
-        <span className="text-[11px] text-[#605A55] ml-1">{value}</span>
-        {detail && <span className="text-[10px] text-[#4C4743] ml-auto truncate max-w-[200px]" title={detail}>{detail.split("/").pop()}</span>}
-      </div>
-      {warn && (
-        <p className="text-[10px] text-[#D95340] mt-1 pl-1 flex items-center gap-1">
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="#D95340"><path d="M4 0.5L7.5 7H0.5L4 0.5Z"/></svg>
-          {warn}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function ActionButton({ children, onClick, disabled, loading, accent }: {
   children: React.ReactNode;
