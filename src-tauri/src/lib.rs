@@ -250,6 +250,7 @@ fn get_cue_points(path: String) -> Vec<CuePoint> {
 
 #[tauri::command]
 fn save_cue_points(path: String, cues: Vec<CuePoint>) -> Result<(), String> {
+    let saved_times = capture_mtime(&path);
     let p = Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
@@ -272,6 +273,7 @@ fn save_cue_points(path: String, cues: Vec<CuePoint>) -> Result<(), String> {
     } else {
         save_cue_sidecar(p, &cues)?;
     }
+    restore_mtime(&path, saved_times);
     Ok(())
 }
 
@@ -666,6 +668,24 @@ fn ensure_writable(path: &str) {
     }
 }
 
+/// Captura mtime+atime antes de escrever tags; retorna opaco para restore_mtime.
+/// Editar tags não deve alterar a data de modificação do arquivo —
+/// DJ softwares (Rekordbox, Serato) usam o mtime como "data adicionada à biblioteca".
+fn capture_mtime(path: &str) -> Option<(std::time::SystemTime, std::time::SystemTime)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.accessed().ok()?))
+}
+
+/// Restaura mtime+atime após escrita de tags.
+fn restore_mtime(path: &str, saved: Option<(std::time::SystemTime, std::time::SystemTime)>) {
+    if let Some((mtime, atime)) = saved {
+        if let Ok(f) = std::fs::OpenOptions::new().write(true).open(path) {
+            let ft = std::fs::FileTimes::new().set_modified(mtime).set_accessed(atime);
+            let _ = f.set_times(ft);
+        }
+    }
+}
+
 #[tauri::command]
 fn save_tags(
     path: String, title: Option<String>, artist: Option<String>,
@@ -673,6 +693,7 @@ fn save_tags(
     track_number: Option<u32>, bpm: Option<String>, key: Option<String>,
     rating: Option<u8>, comment: Option<String>, total_tracks: Option<u32>,
 ) -> Result<(), String> {
+    let saved_times = capture_mtime(&path);
     let fmt = file_format(Path::new(&path));
     if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
         // id3 para formatos que usam ID3v2 nativamente (WAV = ID3v2 em chunk RIFF)
@@ -724,16 +745,18 @@ fn save_tags(
         ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())?;
     }
+    restore_mtime(&path, saved_times);
     Ok(())
 }
 
 #[tauri::command]
 async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
+    let saved_times = capture_mtime(&path);
     let client = cover_client();
     let cover_data = client.get(&cover_url).send().await.map_err(|e| e.to_string())?
         .bytes().await.map_err(|e| e.to_string())?.to_vec();
     let fmt = file_format(Path::new(&path));
-    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
+    let result = if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" {
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
         tag.remove("APIC");
         tag.add_frame(Picture {
@@ -751,15 +774,18 @@ async fn save_cover(path: String, cover_url: String) -> Result<(), String> {
         tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(LoftyMime::Jpeg), None, cover_data));
         ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
-    }
+    };
+    restore_mtime(&path, saved_times);
+    result
 }
 
 #[tauri::command]
 fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> {
+    let saved_times = capture_mtime(&path);
     let cover_data = fs::read(&image_path).map_err(|e| e.to_string())?;
     let is_png = image_path.to_lowercase().ends_with(".png");
     let fmt = file_format(Path::new(&path));
-    if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
+    let result = if fmt == "MP3" || fmt == "AIFF" || fmt == "AIF" || fmt == "WAV" {
         let mime = if is_png { "image/png".to_string() } else { "image/jpeg".to_string() };
         let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
         tag.remove("APIC");
@@ -784,7 +810,9 @@ fn save_cover_from_file(path: String, image_path: String) -> Result<(), String> 
         tag.push_picture(LoftyPic::new_unchecked(LoftyPicType::CoverFront, Some(lofty_mime), None, cover_data));
         ensure_writable(&path);
         tagged.save_to_path(&path, lofty::config::WriteOptions::default()).map_err(|e| e.to_string())
-    }
+    };
+    restore_mtime(&path, saved_times);
+    result
 }
 
 /// Aplica capa a partir de dados base64 — alternativa ao save_cover_from_file para evitar
@@ -1872,6 +1900,7 @@ fn save_beat_grid(path: String, phase_ms: f32) -> Result<(), String> {
         .map(|e| e.to_lowercase()).unwrap_or_default();
     if ext != "mp3" && ext != "aiff" && ext != "aif" { return Ok(()); }
 
+    let saved_times = capture_mtime(&path);
     let mut tag = id3::Tag::read_from_path(&path).unwrap_or_else(|_| id3::Tag::new());
     tag.remove_extended_text(Some("TAGWAVE_BEAT_PHASE"), None);
     tag.add_frame(id3::frame::ExtendedText {
@@ -1879,7 +1908,9 @@ fn save_beat_grid(path: String, phase_ms: f32) -> Result<(), String> {
         value: format!("{:.2}", phase_ms),
     });
     ensure_writable(&path);
-    tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string())
+    let result = tag.write_to_path(&path, id3::Version::Id3v24).map_err(|e| e.to_string());
+    restore_mtime(&path, saved_times);
+    result
 }
 
 // ── Beat Anchors ──────────────────────────────────────────────────────────────
@@ -1900,6 +1931,7 @@ fn load_beat_anchor_sidecar(path: &Path) -> Option<Vec<BeatAnchor>> {
 
 #[tauri::command]
 fn save_beat_anchors(path: String, anchors: Vec<BeatAnchor>) -> Result<(), String> {
+    let saved_times = capture_mtime(&path);
     let p = Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
@@ -1921,6 +1953,7 @@ fn save_beat_anchors(path: String, anchors: Vec<BeatAnchor>) -> Result<(), Strin
         let json = serde_json::to_vec(&anchors).map_err(|e| e.to_string())?;
         fs::write(&sp, json).map_err(|e| e.to_string())?;
     }
+    restore_mtime(&path, saved_times);
     Ok(())
 }
 
