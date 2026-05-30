@@ -850,8 +850,8 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           )}
         </button>
 
-        {/* Botão Salvar */}
-        <button
+        {/* Botão Salvar — oculto quando faixa está bloqueada */}
+        {!isLocked && <button
           data-help="save-tags-btn"
           onClick={handleSave}
           disabled={saving}
@@ -881,7 +881,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
               {t("common.save")}
             </>
           )}
-        </button>
+        </button>}
       </div>
     </div>
   );
