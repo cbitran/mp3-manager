@@ -198,6 +198,8 @@ interface AppState {
   djAutoImport: boolean;
   djShowAll: boolean;
   setDjPrefs: (primary: string, autoImport: boolean, showAll: boolean) => void;
+  seratoAutoSync: boolean;
+  setSeratoAutoSync: (v: boolean) => void;
 
   // Pastas onde enriquecimento já foi tentado — modal não reaparece
   enrichedFolders: string[];
@@ -569,6 +571,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem("tagwave_dj_autoimport", String(autoImport));
     localStorage.setItem("tagwave_dj_showall", String(showAll));
     set({ djPrimary: primary, djAutoImport: autoImport, djShowAll: showAll });
+  },
+  seratoAutoSync: localStorage.getItem("tagwave_serato_autosync") === "true",
+  setSeratoAutoSync: (v) => {
+    localStorage.setItem("tagwave_serato_autosync", String(v));
+    set({ seratoAutoSync: v });
   },
 
   setTracks: (tracks) =>

@@ -1799,6 +1799,38 @@ export default function App() {
     return () => { unlisten?.(); };
   }, []);
 
+  // ── Auto-sync Serato ─────────────────────────────────────────────────────
+  const seratoAutoSync = useAppStore((s) => s.seratoAutoSync);
+  const seratoAutoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevPlaylistsRef = useRef<typeof playlists>(playlists);
+
+  useEffect(() => {
+    const prev = prevPlaylistsRef.current;
+    prevPlaylistsRef.current = playlists;
+
+    if (!seratoAutoSync) return;
+    // Só dispara quando algo realmente mudou (comparação de referência do array)
+    if (prev === playlists) return;
+
+    if (seratoAutoSyncTimerRef.current) clearTimeout(seratoAutoSyncTimerRef.current);
+    seratoAutoSyncTimerRef.current = setTimeout(async () => {
+      const allTracks = useAppStore.getState().tracks;
+      const toExport = useAppStore.getState().playlists.filter((pl) => pl.trackPaths.length > 0);
+      let ok = 0;
+      for (const pl of toExport) {
+        const plTracks = pl.trackPaths
+          .map((path) => allTracks.find((t) => t.path === path))
+          .filter(Boolean) as typeof allTracks;
+        if (plTracks.length === 0) continue;
+        try {
+          await invoke("export_playlist_to_dj", { playlistName: pl.name, softwareId: "serato", tracks: plTracks });
+          ok++;
+        } catch { /* silencioso — não interrompe o fluxo */ }
+      }
+      if (ok > 0) toast(`${ok} playlist${ok > 1 ? "s" : ""} sincronizada${ok > 1 ? "s" : ""} com o Serato`, "info");
+    }, 800);
+  }, [playlists, seratoAutoSync]);
+
   const cleanupCount = allTracks.filter((t) => t.issues.length > 0).length;
 
   function autoSelectCleanup() {

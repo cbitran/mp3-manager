@@ -65,6 +65,8 @@ type RbAction = "idle" | "reading" | "importing_cues" | "exporting_cues" | "expo
 
 export default function DjSyncModal({ onClose }: Props) {
   const tracks = useAppStore((s) => s.tracks);
+  const seratoAutoSync = useAppStore((s) => s.seratoAutoSync);
+  const setSeratoAutoSync = useAppStore((s) => s.setSeratoAutoSync);
 
   const [tab, setTab] = useState<Tab>("rekordbox");
   const [paths, setPaths] = useState<DjDatabasePaths | null>(null);
@@ -255,7 +257,7 @@ export default function DjSyncModal({ onClose }: Props) {
         {/* Tabs */}
         <div className="flex border-b border-white/[0.06]">
           {(["rekordbox", "serato"] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
+            <button key={t} onClick={() => { setTab(t); setError(null); }}
               className={`px-5 py-2.5 text-[12px] font-semibold transition-colors capitalize ${
                 tab === t ? "text-[#D95340] border-b-2 border-[#D95340]" : "text-[#605A55] hover:text-[#8F8883]"
               }`}>
@@ -391,6 +393,24 @@ export default function DjSyncModal({ onClose }: Props) {
           {/* ── SERATO ── */}
           {tab === "serato" && (
             <>
+              {/* Auto-sync toggle */}
+              <section>
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-lg" style={{ background: seratoAutoSync ? "rgba(217,83,64,0.06)" : "rgba(255,255,255,0.03)", border: `1px solid ${seratoAutoSync ? "rgba(217,83,64,0.2)" : "rgba(255,255,255,0.05)"}` }}>
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: seratoAutoSync ? "#D95340" : "var(--text-primary)" }}>Sincronização automática</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "#605A55" }}>
+                      {seratoAutoSync ? "Playlists exportadas ao Serato automaticamente ao salvar" : "Exportar manualmente via menu da playlist"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSeratoAutoSync(!seratoAutoSync)}
+                    className={`relative inline-flex w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${seratoAutoSync ? "bg-[#D95340]" : "bg-white/[0.12]"}`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all duration-150 ${seratoAutoSync ? "left-[18px]" : "left-0.5"}`} />
+                  </button>
+                </div>
+              </section>
+
               <section>
                 <SectionTitle>1. Ler crates do Serato</SectionTitle>
                 <p className="text-[11px] text-[#605A55] mb-3">
