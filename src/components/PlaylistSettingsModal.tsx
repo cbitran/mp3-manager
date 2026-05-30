@@ -21,7 +21,6 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
     playlist.globalProperties ?? { enabled: false, activeFields: [] }
   );
   const [applying, setApplying] = useState(false);
-  const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetNameInput, setPresetNameInput] = useState("");
 
   const toggleField = (field: FieldKey) => {
@@ -126,27 +125,10 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
 
           {/* Propriedades Globais — sempre visível */}
           <section>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center mb-3">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[#4C4743]">
                 Propriedades Globais
               </p>
-              {globalPropertyPresets.length > 0 && (
-                <select
-                  defaultValue=""
-                  onChange={(e) => {
-                    const p = globalPropertyPresets.find((x) => x.id === e.target.value);
-                    if (p) setProps({ ...p.properties, enabled: true });
-                    e.target.value = "";
-                  }}
-                  className="text-[10px] rounded-md px-1.5 py-1 focus:outline-none"
-                  style={{ background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--icon-text)", maxWidth: "120px" }}
-                >
-                  <option value="" disabled>Preset…</option>
-                  {globalPropertyPresets.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              )}
             </div>
 
             <div className="flex flex-col gap-2">
@@ -224,75 +206,60 @@ export default function PlaylistSettingsModal({ playlist, onClose }: Props) {
                 Marque os campos que devem ser aplicados automaticamente às faixas desta playlist.
               </p>
 
-              {/* Salvar como preset */}
-              {props.activeFields.length > 0 && (
-                <div className="border-t border-white/[0.06] pt-3 mt-1">
-                  {!showSavePreset ? (
-                    <button
-                      onClick={() => setShowSavePreset(true)}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all font-medium"
-                      style={{ background: "rgba(217,83,64,0.10)", border: "1px solid rgba(217,83,64,0.22)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.18)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(217,83,64,0.10)"; }}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D95340" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
-                        <polyline points="17 21 17 13 7 13 7 21"/>
-                        <polyline points="7 3 7 8 15 8"/>
-                      </svg>
-                      <span className="text-[12px] text-[#D95340]">Salvar como preset</span>
-                    </button>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[10px] text-[#8F8883] font-medium">Nome do preset</p>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={presetNameInput}
-                          onChange={(e) => setPresetNameInput(e.target.value)}
-                          placeholder="Ex: Sets de House"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && presetNameInput.trim()) {
-                              saveGlobalPropertyPreset(presetNameInput.trim(), props);
-                              toast("Preset salvo", "success");
-                              setShowSavePreset(false);
-                              setPresetNameInput("");
-                            }
-                            if (e.key === "Escape") {
-                              setShowSavePreset(false);
-                              setPresetNameInput("");
-                            }
-                          }}
-                          className="flex-1 rounded-lg px-3 py-1.5 text-[12px] focus:outline-none"
-                          style={{ background: "var(--field-bg)", border: "1px solid rgba(217,83,64,0.4)", color: "var(--col-on)" }}
-                        />
-                        <button
-                          onClick={() => {
-                            if (presetNameInput.trim()) {
-                              saveGlobalPropertyPreset(presetNameInput.trim(), props);
-                              toast("Preset salvo", "success");
-                            }
-                            setShowSavePreset(false);
-                            setPresetNameInput("");
-                          }}
-                          disabled={!presetNameInput.trim()}
-                          className="px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors disabled:opacity-40"
-                          style={{ background: "rgba(217,83,64,0.2)", color: "#D95340" }}
-                        >
-                          Salvar
-                        </button>
-                        <button
-                          onClick={() => { setShowSavePreset(false); setPresetNameInput(""); }}
-                          className="text-[12px] text-[#605A55] hover:text-[#C2BEBC] transition-colors px-2 py-1.5"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* Presets — sempre visível */}
+              <div className="border-t border-white/[0.06] pt-3 mt-1 flex flex-col gap-2">
+                {/* Dropdown de presets existentes */}
+                {globalPropertyPresets.length > 0 && (
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const p = globalPropertyPresets.find((x) => x.id === e.target.value);
+                      if (p) setProps({ ...p.properties, enabled: true });
+                      e.target.value = "";
+                    }}
+                    className="w-full rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none"
+                    style={{ background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--col-on)" }}
+                  >
+                    <option value="" disabled>Carregar preset…</option>
+                    {globalPropertyPresets.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Input de nome + botão salvar — sempre visível */}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={presetNameInput}
+                    onChange={(e) => setPresetNameInput(e.target.value)}
+                    placeholder="Nome do preset…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && presetNameInput.trim()) {
+                        saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                        toast("Preset salvo", "success");
+                        setPresetNameInput("");
+                      }
+                    }}
+                    className="flex-1 rounded-lg px-3 py-1.5 text-[12px] focus:outline-none"
+                    style={{ background: "var(--field-bg)", border: "1px solid var(--field-border)", color: "var(--col-on)" }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (presetNameInput.trim()) {
+                        saveGlobalPropertyPreset(presetNameInput.trim(), props);
+                        toast("Preset salvo", "success");
+                        setPresetNameInput("");
+                      }
+                    }}
+                    disabled={!presetNameInput.trim()}
+                    className="px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-colors disabled:opacity-35 whitespace-nowrap"
+                    style={{ background: "rgba(217,83,64,0.15)", color: "#D95340", border: "1px solid rgba(217,83,64,0.25)" }}
+                  >
+                    Salvar
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
           </section>
 
