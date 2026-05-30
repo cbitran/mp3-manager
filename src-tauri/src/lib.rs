@@ -3077,8 +3077,9 @@ pub struct RbTrack {
     pub path: String,
     pub title: Option<String>,
     pub artist: Option<String>,
-    pub bpm: Option<f64>,       // BPM real (dividido por 100 internamente)
-    pub key: Option<i64>,       // Código de tom do Rekordbox (0-23)
+    pub bpm: Option<f64>,       // BPM real (RB armazena × 100 → dividido aqui)
+    pub key: Option<i64>,       // não usado — mantido para compatibilidade
+    pub key_name: Option<String>, // nome do tom: "Am", "F#m", "C", etc.
     pub rating: Option<u8>,     // 0-5 estrelas
     pub cues: Vec<RbCue>,
 }
@@ -3211,64 +3212,67 @@ fn read_rekordbox_library(db_path: Option<String>) -> Result<RbLibrary, String> 
     let conn = rb_open(&path)?;
 
     // ── Faixas ──────────────────────────────────────────────────────────
+    // Nomes reais confirmados no schema do Rekordbox 7:
+    // KeyID → djmdKey.ScaleName, ArtistID → djmdArtist.Name, BPM × 100
     let mut stmt = conn.prepare(
         "SELECT c.ID, c.FolderPath, c.Title,
                 a.Name AS ArtistName,
-                c.BPM, c.Key, c.ColorID, c.Rating
+                c.BPM, k.ScaleName, c.Rating
          FROM djmdContent c
          LEFT JOIN djmdArtist a ON c.ArtistID = a.ID
+         LEFT JOIN djmdKey k ON c.KeyID = k.ID
          WHERE c.FolderPath IS NOT NULL AND c.FolderPath != ''
          ORDER BY c.ID"
     ).map_err(|e| format!("Erro na query de faixas: {}", e))?;
 
     let mut tracks: Vec<RbTrack> = stmt.query_map([], |row| {
-        let id: i64 = row.get(0)?;
+        let id: i64 = row.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0))?;
         let path: String = row.get(1)?;
         let title: Option<String> = row.get(2)?;
         let artist: Option<String> = row.get(3)?;
         let bpm_raw: Option<i64> = row.get(4)?;
-        let key: Option<i64> = row.get(5)?;
-        let rating_raw: Option<i64> = row.get(7)?;
+        let key_name: Option<String> = row.get(5)?;
+        let rating_raw: Option<i64> = row.get(6)?;
         Ok(RbTrack {
             id,
             path,
             title,
             artist,
             bpm: bpm_raw.map(rb_bpm),
-            key,
-            rating: rating_raw.map(|r| rb_rating_to_stars(r)),
+            key: None, // chave como texto abaixo
+            rating: rating_raw.map(rb_rating_to_stars),
             cues: vec![],
+            key_name,
         })
     }).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
     .collect();
 
     // ── Hot cues + memory cues ───────────────────────────────────────────
+    // Color é um INTEGER único no RB7 (não RGB separados); -1 = sem cor.
+    // Número do hot cue é derivado da ordem (Kind=1 → hot cue; Kind=0 → memory).
     let mut cue_stmt = conn.prepare(
-        "SELECT ContentID, InMsec, Kind, Number,
-                ColorRed, ColorGreen, ColorBlue, Comment
+        "SELECT ContentID, InMsec, Kind, Color, Comment
          FROM djmdCue
+         WHERE rb_local_deleted = 0 OR rb_local_deleted IS NULL
          ORDER BY ContentID, InMsec"
     ).map_err(|e| format!("Erro na query de cues: {}", e))?;
 
-    // Mapeia ContentID → Vec<RbCue>
-    let mut cue_map: std::collections::HashMap<i64, Vec<RbCue>> = std::collections::HashMap::new();
+    // Mapeia ContentID (string) → Vec<RbCue>
+    let mut cue_map: std::collections::HashMap<String, Vec<RbCue>> = std::collections::HashMap::new();
     let _ = cue_stmt.query_map([], |row| {
-        let content_id: i64 = row.get(0)?;
+        let content_id: String = row.get(0)?;
         let pos_ms: i64 = row.get(1)?;
         let kind: i64 = row.get(2)?;
-        let number: Option<i64> = row.get(3)?;
-        let r: Option<u8> = row.get::<_, Option<i64>>(4)?.map(|v| v as u8);
-        let g: Option<u8> = row.get::<_, Option<i64>>(5)?.map(|v| v as u8);
-        let b: Option<u8> = row.get::<_, Option<i64>>(6)?.map(|v| v as u8);
-        let comment: Option<String> = row.get(7)?;
+        let _color_int: Option<i64> = row.get(3)?;
+        let comment: Option<String> = row.get(4)?;
         Ok((content_id, RbCue {
             position_ms: pos_ms,
             kind,
-            hot_cue_number: number.unwrap_or(-1),
-            color_r: r.unwrap_or(204),
-            color_g: g.unwrap_or(83),
-            color_b: b.unwrap_or(64),
+            hot_cue_number: -1, // será atribuído por índice ao montar o track
+            color_r: 217,
+            color_g: 83,
+            color_b: 64,
             comment: comment.unwrap_or_default(),
         }))
     }).map(|rows| {
@@ -3277,38 +3281,57 @@ fn read_rekordbox_library(db_path: Option<String>) -> Result<RbLibrary, String> 
         }
     });
 
+    // Numerar hot cues sequencialmente por faixa
+    for cues in cue_map.values_mut() {
+        let mut hot_idx: i64 = 0;
+        for cue in cues.iter_mut() {
+            if cue.kind == 1 { cue.hot_cue_number = hot_idx; hot_idx += 1; }
+        }
+    }
+
     let total_cues: usize = cue_map.values().map(|v| v.len()).sum();
     for track in &mut tracks {
-        if let Some(cues) = cue_map.remove(&track.id) {
+        let key = track.id.to_string();
+        if let Some(cues) = cue_map.remove(&key) {
             track.cues = cues;
         }
     }
 
     // ── Playlists ────────────────────────────────────────────────────────
+    // Rekordbox 7: tabela djmdPlaylist, Attribute=1 indica pasta, ParentID='root'
     let mut pl_stmt = conn.prepare(
-        "SELECT ID, Name, ParentID, IsFolder FROM djmdPlaylist ORDER BY Seq"
+        "SELECT ID, Name, ParentID, Attribute FROM djmdPlaylist
+         WHERE (rb_local_deleted = 0 OR rb_local_deleted IS NULL)
+         ORDER BY Seq"
     ).map_err(|e| format!("Erro na query de playlists: {}", e))?;
 
     let mut playlists: Vec<RbPlaylist> = pl_stmt.query_map([], |row| {
-        let id: i64 = row.get(0)?;
+        let id_str: String = row.get(0)?;
+        let id = id_str.parse::<i64>().unwrap_or(0);
         let name: String = row.get(1)?;
-        let parent_id: Option<i64> = row.get(2)?;
-        let is_folder: bool = row.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0;
+        let parent_raw: Option<String> = row.get(2)?;
+        let parent_id: Option<i64> = parent_raw
+            .filter(|s| s != "root")
+            .and_then(|s| s.parse::<i64>().ok());
+        let attr: Option<i64> = row.get(3)?;
+        let is_folder = attr.unwrap_or(0) == 1;
         Ok(RbPlaylist { id, name, parent_id, is_folder, track_ids: vec![] })
     }).map_err(|e| e.to_string())?
     .filter_map(|r| r.ok())
     .collect();
 
-    // Faixas por playlist
+    // Faixas por playlist — tabela real: djmdSongPlaylist
     let mut ps_stmt = conn.prepare(
-        "SELECT PlaylistID, ContentID FROM djmdPlaylistSong ORDER BY TrackNo"
+        "SELECT PlaylistID, ContentID FROM djmdSongPlaylist
+         WHERE (rb_local_deleted = 0 OR rb_local_deleted IS NULL)
+         ORDER BY TrackNo"
     ).map_err(|e| format!("Erro na query de playlist songs: {}", e))?;
 
     let mut pl_tracks: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
     let _ = ps_stmt.query_map([], |row| {
-        let pl_id: i64 = row.get(0)?;
-        let content_id: i64 = row.get(1)?;
-        Ok((pl_id, content_id))
+        let pl_id: String = row.get(0)?;
+        let content_id: String = row.get(1)?;
+        Ok((pl_id.parse::<i64>().unwrap_or(0), content_id.parse::<i64>().unwrap_or(0)))
     }).map(|rows| {
         for row in rows.flatten() {
             pl_tracks.entry(row.0).or_default().push(row.1);
