@@ -532,6 +532,8 @@ export default function TrackTable({
     tracks: allTracks,
     toggleTrackFavorite,
     favoriteTrackPaths,
+    toggleLockTrack,
+    lockedTrackPaths,
     requestPlay,
     columnVisibility,
     setColumnVisibility,
@@ -548,6 +550,8 @@ export default function TrackTable({
     tracks: s.tracks,
     toggleTrackFavorite: s.toggleTrackFavorite,
     favoriteTrackPaths: s.favoriteTrackPaths,
+    toggleLockTrack: s.toggleLockTrack,
+    lockedTrackPaths: s.lockedTrackPaths,
     requestPlay: s.requestPlay,
     columnVisibility: s.columnVisibility,
     setColumnVisibility: s.setColumnVisibility,
@@ -633,6 +637,7 @@ export default function TrackTable({
   const DEFAULT_VISIBILITY: VisibilityState = {
     num: true,
     favorite: true,
+    lock: true,
     tipo: false,
     adicionada: false,
     comment: false,
@@ -723,6 +728,46 @@ export default function TrackTable({
             </svg>
           </button>
         ),
+        size: 28,
+      }),
+
+      // Cadeado de proteção de metadados
+      col.display({
+        id: "lock",
+        header: () => (
+          <svg width="10" height="11" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="text-[#8F8883] mx-auto">
+            <rect x="1" y="5" width="8" height="5.5" rx="1.2"/>
+            <path d="M3 5V3.5a2 2 0 0 1 4 0V5"/>
+          </svg>
+        ),
+        cell: ({ row }) => {
+          const locked = lockedTrackPaths.has(row.original.path);
+          return (
+            <button
+              title={locked ? "Desbloquear metadados" : "Bloquear metadados"}
+              onClick={(e) => { e.stopPropagation(); toggleLockTrack(row.original.path); }}
+              className={`leading-none transition-colors ${
+                locked ? "text-[#D95340]" : "text-[#4C4743] hover:text-[#8F8883]"
+              }`}
+            >
+              {locked ? (
+                // Cadeado fechado
+                <svg width="10" height="11" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="1" y="5" width="8" height="5.5" rx="1.2" fill="currentColor" fillOpacity="0.15"/>
+                  <path d="M3 5V3.5a2 2 0 0 1 4 0V5"/>
+                  <circle cx="5" cy="7.8" r="0.8" fill="currentColor"/>
+                  <line x1="5" y1="8.6" x2="5" y2="9.5"/>
+                </svg>
+              ) : (
+                // Cadeado aberto
+                <svg width="10" height="11" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="1" y="5" width="8" height="5.5" rx="1.2"/>
+                  <path d="M3 5V3.5a2 2 0 0 1 4 0V2"/>
+                </svg>
+              )}
+            </button>
+          );
+        },
         size: 28,
       }),
 
@@ -1111,7 +1156,7 @@ export default function TrackTable({
         size: 130, minSize: 80,
       }),
     ],
-    [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite, playlists]
+    [bpmCompatIds, keyCompatIds, favoriteTrackPaths, toggleTrackFavorite, lockedTrackPaths, toggleLockTrack, playlists]
   );
 
   const table = useReactTable({
@@ -1821,6 +1866,40 @@ export default function TrackTable({
           </svg>
           {favoriteTrackPaths.has(contextMenu.track.path) ? t("table.removeFromFavs") : t("table.addToFavs")}
         </button>
+        <button
+          className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2"
+          style={{ color: lockedTrackPaths.has(contextMenu.track.path) ? "#D95340" : "var(--ctx-text)" }}
+          onClick={() => {
+            const isLocked = lockedTrackPaths.has(contextMenu.track.path);
+            const targetPaths = selectedIds.size > 1
+              ? tracks.filter((t) => selectedIds.has(t.id)).map((t) => t.path)
+              : [contextMenu.track.path];
+            // Se clicado está bloqueado → desbloquear todos; caso contrário → bloquear todos
+            targetPaths.forEach((p) => {
+              if (isLocked ? lockedTrackPaths.has(p) : !lockedTrackPaths.has(p)) {
+                toggleLockTrack(p);
+              }
+            });
+            setContextMenu(null);
+          }}
+        >
+          {lockedTrackPaths.has(contextMenu.track.path) ? (
+            // Cadeado fechado (desbloquear)
+            <svg width="11" height="12" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="5" width="8" height="5.5" rx="1.2" fill="currentColor" fillOpacity="0.15"/>
+              <path d="M3 5V3.5a2 2 0 0 1 4 0V5"/>
+              <circle cx="5" cy="7.8" r="0.8" fill="currentColor"/>
+              <line x1="5" y1="8.6" x2="5" y2="9.5"/>
+            </svg>
+          ) : (
+            // Cadeado aberto (bloquear)
+            <svg width="11" height="12" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+              <rect x="1" y="5" width="8" height="5.5" rx="1.2"/>
+              <path d="M3 5V3.5a2 2 0 0 1 4 0V2"/>
+            </svg>
+          )}
+          {lockedTrackPaths.has(contextMenu.track.path) ? "Desbloquear metadados" : "Bloquear metadados"}
+        </button>
         <div className="h-px bg-white/[0.06] my-1" />
         <button
           className="w-full px-3 py-1.5 text-left text-[12px] hover:bg-white/[0.06] flex items-center gap-2" style={{ color: "var(--ctx-text)" }}
@@ -2022,6 +2101,7 @@ export default function TrackTable({
         {([
           { id: "num",           label: t("settings.columns.colNum")      },
           { id: "favorite",      label: t("settings.columns.colFav")      },
+          { id: "lock",          label: "Cadeado"                         },
           { id: "onda",          label: t("settings.columns.colWave")     },
           { id: "capa",          label: t("settings.columns.colCover")    },
           { id: "album",         label: t("settings.columns.colAlbum")    },

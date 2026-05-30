@@ -51,10 +51,11 @@ function Field({ label, value, onChange, onBlur, onKeyDown, disabled, placeholde
 
 export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProgress }: { onClose?: () => void; embedded?: boolean; onBatchEnrich?: () => void; enrichProgress?: { done: number; total: number } | null } = {}) {
   const { t } = useTranslation();
-  const { selectedIds, tracks, updateTrack, playerTrackId, isPlayingGlobal, clearSelection } = useAppStore();
+  const { selectedIds, tracks, updateTrack, playerTrackId, isPlayingGlobal, clearSelection, lockedTrackPaths, toggleLockTrack } = useAppStore();
   const selectedArr = [...selectedIds];
   const isBatch = selectedArr.length > 1;
   const first = tracks.find((t) => t.id === selectedArr[0]);
+  const isLocked = !isBatch && !!first && lockedTrackPaths.has(first.path);
 
   const [title, setTitle]               = useState(first?.title ?? "");
   const [artist, setArtist]             = useState(first?.artist ?? "");
@@ -235,6 +236,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
   }
 
   async function handleSave() {
+    if (isLocked) return;
     setSaving(true);
     try {
       const targets = isBatch ? tracks.filter((t) => selectedIds.has(t.id)) : [first!];
@@ -691,18 +693,60 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
       )}
 
       {/* Tags ID3 header */}
-      <div className="px-3 pt-3 pb-0">
+      <div className="px-3 pt-3 pb-0 flex items-center justify-between">
         <p className="text-[9px] font-bold text-[#8F8883] uppercase tracking-widest">{t("inspector.tagsId3")}</p>
+        {/* Botão de cadeado no header da seção */}
+        {!isBatch && first && (
+          <button
+            title={isLocked ? "Desbloquear metadados" : "Bloquear metadados (proteção contra edição)"}
+            onClick={() => toggleLockTrack(first.path)}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors text-[9px] font-bold uppercase tracking-widest ${
+              isLocked
+                ? "text-[#D95340] bg-[rgba(217,83,64,0.12)] hover:bg-[rgba(217,83,64,0.2)]"
+                : "text-[#4C4743] hover:text-[#8F8883]"
+            }`}
+          >
+            {isLocked ? (
+              <svg width="9" height="10" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="5" width="8" height="5.5" rx="1.2" fill="currentColor" fillOpacity="0.2"/>
+                <path d="M3 5V3.5a2 2 0 0 1 4 0V5"/>
+                <circle cx="5" cy="7.8" r="0.8" fill="currentColor"/>
+                <line x1="5" y1="8.6" x2="5" y2="9.5"/>
+              </svg>
+            ) : (
+              <svg width="9" height="10" viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="5" width="8" height="5.5" rx="1.2"/>
+                <path d="M3 5V3.5a2 2 0 0 1 4 0V2"/>
+              </svg>
+            )}
+            {isLocked ? "Bloqueado" : "Bloquear"}
+          </button>
+        )}
       </div>
 
+      {/* Banner de aviso quando bloqueado */}
+      {isLocked && (
+        <div className="mx-3 mt-2 px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: "rgba(217,83,64,0.10)", border: "1px solid rgba(217,83,64,0.25)" }}>
+          <svg width="12" height="13" viewBox="0 0 10 11" fill="none" stroke="#D95340" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="5" width="8" height="5.5" rx="1.2" fill="rgba(217,83,64,0.15)"/>
+            <path d="M3 5V3.5a2 2 0 0 1 4 0V5"/>
+            <circle cx="5" cy="7.8" r="0.8" fill="#D95340"/>
+            <line x1="5" y1="8.6" x2="5" y2="9.5"/>
+          </svg>
+          <p className="text-[10px] text-[#D95340] leading-tight flex-1">
+            Metadados bloqueados — edição e enriquecimento desativados
+          </p>
+        </div>
+      )}
+
       {/* Fields */}
-      <div className="flex flex-col gap-2.5 px-3 py-3" data-help="inspector-fields">
-        {!isBatch && <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />}
-        {!isBatch && <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />}
-        <Field label={t("inspector.album")} value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
-        <Field label={t("inspector.genre")} value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+      <div className={`flex flex-col gap-2.5 px-3 py-3 ${isLocked ? "opacity-50 pointer-events-none select-none" : ""}`} data-help="inspector-fields">
+        {!isBatch && <Field label={t("inspector.title")} value={title} onChange={setTitle} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isLocked} />}
+        {!isBatch && <Field label={t("inspector.artist")} value={artist} onChange={setArtist} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isLocked} />}
+        <Field label={t("inspector.album")} value={album} onChange={setAlbum} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isLocked} />
+        <Field label={t("inspector.genre")} value={genre} onChange={setGenre} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isLocked} />
         <div className="grid grid-cols-2 gap-2">
-          <Field label={t("inspector.year")} value={year} onChange={setYear} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} />
+          <Field label={t("inspector.year")} value={year} onChange={setYear} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} disabled={isLocked} />
           <div>
             <label className="text-[10px] font-semibold text-[#8F8883] uppercase tracking-widest block mb-1">
               {t("inspector.track")}
@@ -713,6 +757,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 onChange={(e) => setTrackNumber(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                disabled={isLocked}
                 placeholder="—"
                 className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
               />
@@ -722,6 +767,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
                 onChange={(e) => setTotalTracks(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={(e) => e.key === "Enter" && handleSave()}
+                disabled={isLocked}
                 placeholder="—"
                 title="Total de faixas"
                 className="w-full px-2.5 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs text-[#C2BEBC] placeholder-[#373331] focus:outline-none focus:border-[#D95340] focus:bg-white/8 transition-colors font-mono"
@@ -730,10 +776,10 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={t("inspector.bpm")} value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
-          <Field label={t("inspector.key")} value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono />
+          <Field label={t("inspector.bpm")} value={bpm} onChange={setBpm} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono disabled={isLocked} />
+          <Field label={t("inspector.key")} value={key} onChange={setKey} onBlur={handleSave} onKeyDown={(e) => e.key === "Enter" && handleSave()} mono disabled={isLocked} />
         </div>
-        <Field label={t("inspector.comment")} value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline={!isBatch} />
+        <Field label={t("inspector.comment")} value={comment} onChange={setComment} onBlur={handleSave} placeholder="—" multiline={!isBatch} disabled={isLocked} />
       </div>
 
       </div>{/* fim área scrollável */}
@@ -745,7 +791,7 @@ export default function Inspector({ onClose, embedded, onBatchEnrich, enrichProg
           data-tour="enrich-inspector"
           data-help="enrich-inspector"
           onClick={isBatch && onBatchEnrich ? onBatchEnrich : enrichAll}
-          disabled={enriching || !!enrichProgress}
+          disabled={enriching || !!enrichProgress || isLocked}
           className="w-full rounded-lg disabled:opacity-90 overflow-hidden"
           style={{
             background: enriching && !enrichProgress

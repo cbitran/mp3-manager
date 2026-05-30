@@ -85,6 +85,7 @@ export interface UndoEntry {
 const LAST_FOLDER_KEY    = "mp3mgr_lastFolder";
 const FAVORITES_KEY      = "mp3mgr_favorites";
 const FAV_TRACKS_KEY     = "mp3mgr_favTracks";
+const LOCKED_TRACKS_KEY  = "tagwave_lockedTracks";
 const RECENT_KEY         = "mp3mgr_recentFolders";
 
 const PLAYLISTS_KEY      = "tagwave_playlists";
@@ -128,6 +129,7 @@ interface AppState {
   favoriteFolders: string[];
   recentFolders: string[];
   favoriteTrackPaths: Set<string>;
+  lockedTrackPaths: Set<string>;
 
   // Trial / Licença
   trialStartDate: Date;
@@ -154,6 +156,8 @@ interface AppState {
   removeRecentFolder: (path: string) => void;
   toggleTrackFavorite: (path: string) => void;
   isTrackFavorite: (path: string) => boolean;
+  toggleLockTrack: (path: string) => void;
+  isTrackLocked: (path: string) => boolean;
   filteredTracks: () => Track[];
 
   // Column visibility (persisted)
@@ -324,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   favoriteFolders: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]"),
   recentFolders: JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]"),
   favoriteTrackPaths: new Set(JSON.parse(localStorage.getItem(FAV_TRACKS_KEY) ?? "[]")),
+  lockedTrackPaths: new Set(JSON.parse(localStorage.getItem(LOCKED_TRACKS_KEY) ?? "[]")),
 
   // Pastas onde enriquecimento já foi tentado
   enrichedFolders: JSON.parse(localStorage.getItem("tagwave_enriched_folders") ?? "[]") as string[],
@@ -654,6 +659,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   isTrackFavorite: (path) => get().favoriteTrackPaths.has(path),
+
+  toggleLockTrack: (path) => {
+    const next = new Set(get().lockedTrackPaths);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    localStorage.setItem(LOCKED_TRACKS_KEY, JSON.stringify([...next]));
+    set({ lockedTrackPaths: next });
+  },
+
+  isTrackLocked: (path) => get().lockedTrackPaths.has(path),
 
   // Trial computed
   isTrialActivated: () => get().licenseKey.length > 0,

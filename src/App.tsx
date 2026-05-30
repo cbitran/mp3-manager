@@ -869,6 +869,9 @@ export default function App() {
     } else {
       targets = freshTracks.filter((t) => !t.genre || !t.album || !t.year);
     }
+    // Excluir faixas com metadados bloqueados
+    const lockedPaths = useAppStore.getState().lockedTrackPaths;
+    targets = targets.filter((t) => !lockedPaths.has(t.path));
     if (targets.length === 0) { toast(t("toolbar.toast.allMetaComplete"), "info"); return; }
     return runEnrich(source, targets, isExplicitSelection, freshTracks, folderPath);
   }
