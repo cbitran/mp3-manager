@@ -3129,16 +3129,11 @@ pub struct DjDatabasePaths {
 fn rb_open(db_path: &str) -> Result<rusqlite::Connection, String> {
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("Não foi possível abrir master.db: {}", e))?;
-    // SQLCipher 4 — parâmetros padrão do Rekordbox 6/7
-    conn.execute_batch(&format!(
-        "PRAGMA key = \"x'{}'\";\
-         PRAGMA cipher_page_size = 4096;\
-         PRAGMA kdf_iter = 256000;\
-         PRAGMA cipher_hmac_algorithm = HMAC_SHA512;\
-         PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;",
-        RB_CIPHER_KEY
-    )).map_err(|e| format!("Falha na descriptografia do Rekordbox: {}", e))?;
-    // Verifica se realmente conseguiu ler (chave errada → erro aqui)
+    // Chave como string simples (passphrase) — formato exato que o Rekordbox usa.
+    // NÃO usar x'...' (hex literal) — pyrekordbox confirmou que a chave é passphrase.
+    conn.execute_batch(&format!("PRAGMA key = '{}';", RB_CIPHER_KEY))
+        .map_err(|e| format!("Falha na descriptografia do Rekordbox: {}", e))?;
+    // Verifica se realmente conseguiu ler
     conn.execute_batch("SELECT count(*) FROM sqlite_master;")
         .map_err(|e| format!("master.db inacessível (chave inválida?): {}", e))?;
     Ok(conn)
