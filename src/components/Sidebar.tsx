@@ -113,6 +113,16 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
   const [volumes, setVolumes] = useState<{ path: string; name: string }[]>([]);
   const [playlistCtx, setPlaylistCtx] = useState<{ x: number; y: number; pl: Playlist } | null>(null);
   const [confirmDeletePlaylist, setConfirmDeletePlaylist] = useState<{ id: string; name: string } | null>(null);
+
+  // ── Seleção múltipla por aba ──────────────────────────────────────────
+  const [selLibs, setSelLibs] = useState<Set<string>>(new Set());
+  const [selFavs, setSelFavs] = useState<Set<string>>(new Set());
+  const [selPls,  setSelPls]  = useState<Set<string>>(new Set());
+
+  const toggleSel = (_: Set<string>, setFn: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) => {
+    setFn((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  };
+  const clearSel = () => { setSelLibs(new Set()); setSelFavs(new Set()); setSelPls(new Set()); };
   const [settingsPlaylist, setSettingsPlaylist] = useState<Playlist | null>(null);
   const dragState = useAppStore((s) => s.dragState);
   const setDragState = useAppStore((s) => s.setDragState);
@@ -249,15 +259,33 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
   };
 
   const handleRemoveFromList = (path: string) => {
-    // Auto-delete playlists cujas faixas são todas desta pasta
     playlists
       .filter((p) => p.trackPaths.length > 0 && p.trackPaths.every((tp) => tp.startsWith(path)))
       .forEach((p) => deletePlaylist(p.id));
-
     clearFolderTracks(path);
     removeRecentFolder(path);
     if (isFavorite(path)) toggleFavorite(path);
     setDeleteDialog(null);
+  };
+
+  const handleDeleteSelected = () => {
+    if (sidebarTab === "recent") {
+      selLibs.forEach((path) => {
+        playlists
+          .filter((p) => p.trackPaths.length > 0 && p.trackPaths.every((tp) => tp.startsWith(path)))
+          .forEach((p) => deletePlaylist(p.id));
+        clearFolderTracks(path);
+        removeRecentFolder(path);
+        if (isFavorite(path)) toggleFavorite(path);
+      });
+      setSelLibs(new Set());
+    } else if (sidebarTab === "favorites") {
+      selFavs.forEach((path) => toggleFavorite(path));
+      setSelFavs(new Set());
+    } else if (sidebarTab === "playlists") {
+      selPls.forEach((id) => deletePlaylist(id));
+      setSelPls(new Set());
+    }
   };
 
 
@@ -377,6 +405,7 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
                 onClick={() => {
                   setSidebarTab(tab.id);
                   if (tab.id !== "playlists") setActivePlaylistId(null);
+                  clearSel();
                   onNavigate?.();
                 }}
                 className={`flex items-center gap-1 px-1.5 pb-2 text-[10px] font-semibold transition-colors border-b-2 -mb-px ${
@@ -485,6 +514,83 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
           </div>
         )}
 
+        {/* ── Barra de seleção múltipla ─────────────────────────────────── */}
+        {(() => {
+          const sel = sidebarTab === "recent" ? selLibs : sidebarTab === "favorites" ? selFavs : selPls;
+          const allItems = sidebarTab === "recent"
+            ? recentFolders
+            : sidebarTab === "favorites"
+              ? favoriteFolders
+              : playlists.map((p) => p.id);
+          const allSelected = allItems.length > 0 && allItems.every((id) => sel.has(id));
+
+          if (allItems.length === 0) return null;
+
+          return (
+            <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-white/[0.04]">
+              {/* Checkbox selecionar todos */}
+              <button
+                onClick={() => {
+                  if (allSelected) {
+                    if (sidebarTab === "recent") setSelLibs(new Set());
+                    else if (sidebarTab === "favorites") setSelFavs(new Set());
+                    else setSelPls(new Set());
+                  } else {
+                    const all = new Set(allItems);
+                    if (sidebarTab === "recent") setSelLibs(all);
+                    else if (sidebarTab === "favorites") setSelFavs(all);
+                    else setSelPls(new Set(allItems));
+                  }
+                }}
+                className="flex items-center gap-1.5 text-[10px] font-semibold transition-colors"
+                style={{ color: sel.size > 0 ? "#D95340" : "var(--c-t6)" }}
+              >
+                <span
+                  className="flex items-center justify-center rounded"
+                  style={{
+                    width: 14, height: 14, flexShrink: 0,
+                    background: allSelected ? "#D95340" : sel.size > 0 ? "rgba(217,83,64,0.15)" : "var(--surface-row)",
+                    border: `1.5px solid ${allSelected ? "#D95340" : sel.size > 0 ? "rgba(217,83,64,0.5)" : "var(--border-inactive)"}`,
+                  }}
+                >
+                  {allSelected && (
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1.5 4 3 5.5 6.5 2"/>
+                    </svg>
+                  )}
+                  {!allSelected && sel.size > 0 && (
+                    <svg width="8" height="2" viewBox="0 0 8 2" fill="none" stroke="#D95340" strokeWidth="1.8" strokeLinecap="round">
+                      <line x1="1" y1="1" x2="7" y2="1"/>
+                    </svg>
+                  )}
+                </span>
+                {sel.size > 0 ? `${sel.size} selecionado${sel.size > 1 ? "s" : ""}` : "Selecionar"}
+              </button>
+
+              {sel.size > 0 && (
+                <>
+                  <button
+                    onClick={clearSel}
+                    className="text-[10px] text-[#605A55] hover:text-[#8F8883] transition-colors"
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    onClick={handleDeleteSelected}
+                    className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
+                    style={{ background: "rgba(217,83,64,0.12)", color: "#D95340" }}
+                  >
+                    <svg width="9" height="10" viewBox="0 0 9 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1.5 3h6M3 3V1.5h3V3M2.5 3l.5 5h3l.5-5"/>
+                    </svg>
+                    Remover ({sel.size})
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto no-scrollbar px-2 pt-2">
           {sidebarTab === "recent" && (
@@ -511,29 +617,50 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
                 ).map((f) => {
                   const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
                   return (
-                    <div key={f}
+                    <div key={f} className="flex items-center gap-1 group/selrow"
                       onMouseEnter={() => { hoveredFolderRef.current = { path: f, name }; }}
                       onMouseLeave={() => { hoveredFolderRef.current = null; }}
                     >
-                      <FolderRow
-                        path={f}
-                        isSelected={lastFolder === f}
-                        isFavorite={isFavorite(f)}
-                        isExpanded={expandedFolders.has(f)}
-                        subfolders={subfolderMap[f] ?? null}
-                        trackCount={folderTrackCount(f)}
-                        onOpen={() => onFolderSelect(f)}
-                        onToggleExpand={() => toggleExpand(f)}
-                        onToggleExpandPath={toggleExpand}
-                        onToggleFavorite={() => toggleFavorite(f)}
-                        onContextMenu={(e) => handleContextMenu(e, f)}
-                        onFolderSelect={onFolderSelect}
-                        lastFolder={lastFolder}
-                        tracks={tracks}
-                        expandedFolders={expandedFolders}
-                        subfolderMap={subfolderMap}
-                        activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
-                      />
+                      {/* Checkbox de seleção */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSel(selLibs, setSelLibs, f); }}
+                        className="shrink-0 flex items-center justify-center rounded transition-all"
+                        style={{
+                          width: 14, height: 14, marginLeft: 2,
+                          opacity: selLibs.has(f) ? 1 : 0,
+                          background: selLibs.has(f) ? "#D95340" : "var(--surface-row)",
+                          border: `1.5px solid ${selLibs.has(f) ? "#D95340" : "var(--border-inactive)"}`,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                        onMouseLeave={(e) => { if (!selLibs.has(f)) (e.currentTarget as HTMLButtonElement).style.opacity = "0"; }}
+                      >
+                        {selLibs.has(f) && (
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="1.5 4 3 5.5 6.5 2"/>
+                          </svg>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <FolderRow
+                          path={f}
+                          isSelected={lastFolder === f}
+                          isFavorite={isFavorite(f)}
+                          isExpanded={expandedFolders.has(f)}
+                          subfolders={subfolderMap[f] ?? null}
+                          trackCount={folderTrackCount(f)}
+                          onOpen={() => onFolderSelect(f)}
+                          onToggleExpand={() => toggleExpand(f)}
+                          onToggleExpandPath={toggleExpand}
+                          onToggleFavorite={() => toggleFavorite(f)}
+                          onContextMenu={(e) => handleContextMenu(e, f)}
+                          onFolderSelect={onFolderSelect}
+                          lastFolder={lastFolder}
+                          tracks={tracks}
+                          expandedFolders={expandedFolders}
+                          subfolderMap={subfolderMap}
+                          activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
+                        />
+                      </div>
                     </div>
                   );
                 })
@@ -557,29 +684,49 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
               ? favoriteFolders.map((f) => {
                   const name = f.split(/[\\/]/).filter(Boolean).pop() ?? f;
                   return (
-                    <div key={f}
+                    <div key={f} className="flex items-center gap-1 group/selrow"
                       onMouseEnter={() => { hoveredFolderRef.current = { path: f, name }; }}
                       onMouseLeave={() => { hoveredFolderRef.current = null; }}
                     >
-                      <FolderRow
-                        path={f}
-                        isSelected={lastFolder === f}
-                        isFavorite={isFavorite(f)}
-                        isExpanded={expandedFolders.has(f)}
-                        subfolders={subfolderMap[f] ?? null}
-                        trackCount={folderTrackCount(f)}
-                        onOpen={() => onFolderSelect(f)}
-                        onToggleExpand={() => toggleExpand(f)}
-                        onToggleExpandPath={toggleExpand}
-                        onToggleFavorite={() => toggleFavorite(f)}
-                        onContextMenu={(e) => handleContextMenu(e, f)}
-                        onFolderSelect={onFolderSelect}
-                        lastFolder={lastFolder}
-                        tracks={tracks}
-                        expandedFolders={expandedFolders}
-                        subfolderMap={subfolderMap}
-                        activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
-                      />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSel(selFavs, setSelFavs, f); }}
+                        className="shrink-0 flex items-center justify-center rounded transition-all"
+                        style={{
+                          width: 14, height: 14, marginLeft: 2,
+                          opacity: selFavs.has(f) ? 1 : 0,
+                          background: selFavs.has(f) ? "#D95340" : "var(--surface-row)",
+                          border: `1.5px solid ${selFavs.has(f) ? "#D95340" : "var(--border-inactive)"}`,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                        onMouseLeave={(e) => { if (!selFavs.has(f)) (e.currentTarget as HTMLButtonElement).style.opacity = "0"; }}
+                      >
+                        {selFavs.has(f) && (
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="1.5 4 3 5.5 6.5 2"/>
+                          </svg>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <FolderRow
+                          path={f}
+                          isSelected={lastFolder === f}
+                          isFavorite={isFavorite(f)}
+                          isExpanded={expandedFolders.has(f)}
+                          subfolders={subfolderMap[f] ?? null}
+                          trackCount={folderTrackCount(f)}
+                          onOpen={() => onFolderSelect(f)}
+                          onToggleExpand={() => toggleExpand(f)}
+                          onToggleExpandPath={toggleExpand}
+                          onToggleFavorite={() => toggleFavorite(f)}
+                          onContextMenu={(e) => handleContextMenu(e, f)}
+                          onFolderSelect={onFolderSelect}
+                          lastFolder={lastFolder}
+                          tracks={tracks}
+                          expandedFolders={expandedFolders}
+                          subfolderMap={subfolderMap}
+                          activeScanProgress={lastFolder === f && isScanning ? scanProgress : undefined}
+                        />
+                      </div>
                     </div>
                   );
                 })
@@ -634,6 +781,25 @@ export default function Sidebar({ onFolderSelect, onFolderDropWithChoice, onFile
                           </>
                         )}
                         <div className="flex items-center gap-1 group/plrow" data-pl-id={pl.id}>
+                          {/* Checkbox de seleção */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSel(selPls, setSelPls, pl.id); }}
+                            className="shrink-0 flex items-center justify-center rounded transition-all"
+                            style={{
+                              width: 13, height: 13,
+                              opacity: selPls.has(pl.id) ? 1 : 0,
+                              background: selPls.has(pl.id) ? "#D95340" : "var(--surface-row)",
+                              border: `1.5px solid ${selPls.has(pl.id) ? "#D95340" : "var(--border-inactive)"}`,
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                            onMouseLeave={(e) => { if (!selPls.has(pl.id)) (e.currentTarget as HTMLButtonElement).style.opacity = "0"; }}
+                          >
+                            {selPls.has(pl.id) && (
+                              <svg width="7" height="7" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1.5 4 3 5.5 6.5 2"/>
+                              </svg>
+                            )}
+                          </button>
                           {/* Drag handle — sempre visível em hover */}
                           {!dragState.isDragging && (
                             <button
