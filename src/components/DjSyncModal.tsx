@@ -97,13 +97,32 @@ export default function DjSyncModal({ onClose }: Props) {
     setRbAction("importing_cues");
     setError(null);
     try {
+      // Passa todos os caminhos do TagWave para match; também importa playlists do RB
       const twPaths = tracks.map((t) => t.path);
       const stats = await invoke<DjSyncStats>("import_cues_from_rekordbox", {
         dbPath: paths?.rekordbox ?? null,
         tagwaveTrackPaths: twPaths,
       });
-      setLastStats(stats);
-      toast(`${stats.cues_imported} cues importados de ${stats.tracks_matched} faixas`, "success");
+
+      // Importar playlists do Rekordbox automaticamente junto com os cues
+      const { createPlaylist, playlists: existing } = useAppStore.getState();
+      let plImported = 0;
+      for (const pl of rbLib.playlists.filter((p) => !p.is_folder && p.track_ids.length > 0)) {
+        if (existing.some((e) => e.name.toLowerCase() === pl.name.toLowerCase())) continue;
+        // Mapear track_ids → caminhos reais do master.db
+        const plPaths = pl.track_ids
+          .map((id) => rbLib.tracks.find((t) => t.id === id)?.path)
+          .filter(Boolean) as string[];
+        if (plPaths.length > 0) { createPlaylist(pl.name, plPaths); plImported++; }
+      }
+
+      setLastStats({ ...stats, playlists_synced: plImported });
+      const msg = [
+        stats.cues_imported > 0 ? `${stats.cues_imported} cues importados` : "",
+        plImported > 0 ? `${plImported} playlists criadas` : "",
+        stats.tracks_matched === 0 ? "Nenhuma faixa em comum — escaneie as pastas primeiro" : "",
+      ].filter(Boolean).join(" · ");
+      toast(msg || "Importação concluída", stats.cues_imported > 0 ? "success" : "info");
     } catch (e) {
       setError(String(e));
     }
@@ -187,18 +206,19 @@ export default function DjSyncModal({ onClose }: Props) {
   async function importSeratoCratesAsPlaylists() {
     if (!seratoCrates) return;
     setError(null);
-    const { createPlaylist, tracks: twTracks } = useAppStore.getState();
+    const { createPlaylist, playlists: existing } = useAppStore.getState();
     let imported = 0;
 
     for (const crate of seratoCrates) {
       if (crate.track_paths.length === 0) continue;
-      // Só importa caminhos que existem na biblioteca TagWave
-      const matched = crate.track_paths.filter((cp) =>
-        twTracks.some((t) => t.path.toLowerCase() === cp.toLowerCase())
+      // Importa mesmo que as faixas não estejam carregadas — os caminhos ficam
+      // salvos na playlist e serão resolvidos quando o usuário escanear as pastas
+      const alreadyExists = existing.some(
+        (p) => p.name.toLowerCase() === crate.name.toLowerCase()
       );
-      if (matched.length === 0) continue;
+      if (alreadyExists) continue;
 
-      createPlaylist(crate.name, matched);
+      createPlaylist(crate.name, crate.track_paths);
       imported++;
     }
 
