@@ -3617,47 +3617,40 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
     }
 
     let mut crates: Vec<SeratoCrate> = Vec::new();
-    let mut seen_names = std::collections::HashSet::new();
+    // Usa HashMap para mesclar crates com mesmo nome de drives diferentes
+    let mut crate_map: std::collections::HashMap<String, SeratoCrate> = std::collections::HashMap::new();
 
     for serato_dir in &serato_dirs {
         let subcrates_dir = format!("{}/Subcrates", serato_dir);
         if !Path::new(&subcrates_dir).exists() { continue; }
+
+        // Raiz do drive deste _Serato_ (pai de _Serato_)
+        let drive_root = Path::new(serato_dir)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
 
         for entry in WalkDir::new(&subcrates_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
             if !entry.file_type().is_file() { continue; }
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("crate") { continue; }
 
-            // Nome do crate: substituir %% por / para refletir hierarquia Serato
             let raw_name = path.file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("Unnamed");
             let name = raw_name.replace("%%", " / ");
-
-            // Não duplicar crates com mesmo nome de drives diferentes
-            if seen_names.contains(&name) { continue; }
-            seen_names.insert(name.clone());
 
             let data = match std::fs::read(path) {
                 Ok(d) => d,
                 Err(_) => continue,
             };
 
-            // O Serato armazena paths RELATIVOS à raiz do drive onde o _Serato_ está.
-            // Exemplo: crate em /Volumes/Musicas/_Serato_/Subcrates/
-            //   → raiz do drive = /Volumes/Musicas
-            //   → path relativo "Bon jovi/track.mp3"
-            //   → path absoluto = /Volumes/Musicas/Bon jovi/track.mp3
-            let drive_root = Path::new(serato_dir)
-                .parent() // sobe de _Serato_ para raiz do drive
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-
+            // Paths relativos → absolutos usando raiz do drive correto
             let relative_paths = parse_serato_crate_file(&data);
-            let track_paths: Vec<String> = relative_paths.into_iter()
+            let new_paths: Vec<String> = relative_paths.into_iter()
                 .map(|rel| {
                     if rel.starts_with('/') || (rel.len() > 2 && &rel[1..3] == ":\\") {
-                        rel // já é absoluto (macOS ou Windows)
+                        rel
                     } else if drive_root.is_empty() {
                         rel
                     } else {
@@ -3666,15 +3659,22 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
                 })
                 .collect();
 
-            crates.push(SeratoCrate {
-                name,
+            // Crate com mesmo nome em drive diferente → mesclar faixas (sem duplicatas)
+            let entry = crate_map.entry(name.clone()).or_insert_with(|| SeratoCrate {
+                name: name.clone(),
                 path: path.to_string_lossy().into_owned(),
-                track_paths,
+                track_paths: Vec::new(),
             });
+            for p in new_paths {
+                if !entry.track_paths.contains(&p) {
+                    entry.track_paths.push(p);
+                }
+            }
         }
     }
 
-    // Ordenar por nome
+    // Converter HashMap → Vec e ordenar por nome
+    let mut crates: Vec<SeratoCrate> = crate_map.into_values().collect();
     crates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(crates)
 }
