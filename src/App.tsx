@@ -1774,6 +1774,11 @@ export default function App() {
     init();
   }, []);
 
+  // Windows: remove decorações nativas para usar apenas os controles customizados
+  useEffect(() => {
+    if (IS_WIN) getCurrentWindow().setDecorations(false).catch(() => {});
+  }, []);
+
   // Salva cache no fechamento
   useEffect(() => {
     let unlisten: (() => void) | null = null;

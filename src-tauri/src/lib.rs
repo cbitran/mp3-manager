@@ -3638,11 +3638,17 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
         let subcrates_dir = format!("{}/Subcrates", serato_dir);
         if !Path::new(&subcrates_dir).exists() { continue; }
 
-        // Raiz do drive deste _Serato_ (pai de _Serato_)
-        let drive_root = Path::new(serato_dir)
-            .parent()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        // Raiz do drive deste _Serato_:
+        // - Drive externo (/Volumes/X/_Serato_) → raiz = /Volumes/X
+        // - Drive interno (~/Music/_Serato_ ou similar) → raiz = / (paths no .crate são relativos à raiz do sistema)
+        let drive_root: String = if serato_dir.starts_with("/Volumes/") {
+            Path::new(serato_dir)
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        } else {
+            String::new() // boot disk: paths já são relativos a /
+        };
 
         for entry in WalkDir::new(&subcrates_dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
             if !entry.file_type().is_file() { continue; }
@@ -3664,11 +3670,17 @@ fn read_serato_crates() -> Result<Vec<SeratoCrate>, String> {
             let new_paths: Vec<String> = relative_paths.into_iter()
                 .map(|rel| {
                     if rel.starts_with('/') || (rel.len() > 2 && &rel[1..3] == ":\\") {
+                        // Já absoluto
                         rel
-                    } else if drive_root.is_empty() {
-                        rel
-                    } else {
+                    } else if let Some(without_machd) = rel.strip_prefix("Macintosh HD/") {
+                        // Serato às vezes escreve "Macintosh HD/Users/..." ou "Macintosh HD/Volumes/..."
+                        format!("/{}", without_machd)
+                    } else if !drive_root.is_empty() {
+                        // Drive externo: prepend /Volumes/DriveName
                         format!("{}/{}", drive_root, rel)
+                    } else {
+                        // Drive interno: path relativo à raiz do sistema → /Users/...
+                        format!("/{}", rel)
                     }
                 })
                 .collect();
