@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -2828,14 +2828,14 @@ fn write_serato_crate(tracks: &[Track], path: &Path) -> Result<(), String> {
     // otrk chunk per track
     for track in tracks {
         // macOS: arquivos em /Volumes/Nome/... → "Nome/..." (Serato usa nome do volume diretamente)
-        //        arquivos na raiz /Users/...   → "Macintosh HD/Users/..."
+        //        arquivos na raiz /Users/...   → "Users/..." (sem leading slash)
         // Windows: "C:/Users/..." (forward slashes, as-is)
         #[cfg(target_os = "macos")]
-        let serato_path = if track.path.starts_with("/Volumes/") {
-            // External volume: Serato stores as "Macintosh HD/Volumes/DriveName/..."
-            format!("Macintosh HD{}", track.path)
+        let serato_path = if let Some(without_volumes) = track.path.strip_prefix("/Volumes/") {
+            // External volume: strip "/Volumes/" → "DriveName/path/..."
+            without_volumes.to_string()
         } else {
-            // Boot disk: strip leading slash (Serato stores as "Users/..." not "/Users/...")
+            // Boot disk: strip leading slash → "Users/..."
             track.path.trim_start_matches('/').to_string()
         };
         #[cfg(target_os = "windows")]
@@ -2964,12 +2964,26 @@ fn export_playlist_to_dj(
 
     match software_id.as_str() {
         "serato" => {
-            #[cfg(target_os = "windows")]
-            let dir = home.join("Documents").join("My Serato").join("Subcrates");
-            #[cfg(not(target_os = "windows"))]
-            let dir = home.join("Music").join("_Serato_").join("Subcrates");
+            // Restaura o separador Serato ("%%") que foi convertido para " / " na importação,
+            // e permite "%" no nome para preservar a hierarquia de pastas do Serato.
+            let serato_crate_name: String = playlist_name
+                .replace(" / ", "%%")
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '%' { c } else { '_' })
+                .collect();
+
+            // Usa o diretório _Serato_ principal detectado no sistema (mais robusto que caminho hardcoded).
+            let dir = if let Some(serato_dir) = find_serato_dir() {
+                PathBuf::from(serato_dir).join("Subcrates")
+            } else {
+                #[cfg(target_os = "windows")]
+                let fallback = home.join("Documents").join("My Serato").join("Subcrates");
+                #[cfg(not(target_os = "windows"))]
+                let fallback = home.join("Music").join("_Serato_").join("Subcrates");
+                fallback
+            };
             fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let path = dir.join(format!("{}.crate", safe_name));
+            let path = dir.join(format!("{}.crate", serato_crate_name));
             write_serato_crate(&tracks, &path)?;
             Ok(path.to_string_lossy().to_string())
         }
